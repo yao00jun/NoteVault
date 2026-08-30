@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.0",
+			"CompanyName": "NoteVault",
+			"FileDescription": "本地优先的个人知识库管理工具",
+			"LegalCopyright": "© 2026, NoteVault",
+			"ProductName": "NoteVault",
+			"Comments": "This is a comment"
+		}
+	}
+}

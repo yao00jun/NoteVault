@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUnusedParameters": false,
+    "noImplicitAny": false,
+    "jsx": "preserve",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "lib": ["ESNext", "DOM"],
+    "skipLibCheck": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      // 绑定聚合层：wails3 按 Go 包生成绑定，输出是 internal/ 下的嵌套结构，
+      // 且每次构建都会清空 bindings 重生成。业务代码只面向下面这两个稳定路径，
+      // 由 src/bindings 聚合并转出（精确匹配优先于下面的 @bindings/* 通配）。
+      "@bindings/github.com/notevault/notevault/index.js": ["src/bindings/index.ts"],
+      "@bindings/github.com/notevault/notevault/models.js": ["src/bindings/models.ts"],
+      "@bindings/*": ["bindings/*"]
+    },
+    "types": ["vite/client"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue", "bindings"]
+}

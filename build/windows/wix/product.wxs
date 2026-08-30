@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  NoteVault MSI installer manifest (WiX Toolset v4/v7)
+  Build: wix build product.wxs -o ../../bin/notevault-0.1.0-amd64.msi
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="NoteVault"
+           Manufacturer="NoteVault"
+           Version="0.1.0"
+           UpgradeCode="B5A11B74-358B-44EF-8ECB-32DD2C1D664C"
+           Scope="perMachine"
+           Language="2052">
+
+    <MajorUpgrade DowngradeErrorMessage="已安装更新版本的 NoteVault，无法降级。(A newer version of NoteVault is already installed.)" />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- 主程序（64 位） -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="NoteVault">
+        <Component Id="NoteVaultExe" Bitness="always64" Guid="29378561-C5EC-43AC-AB9A-AC05F53E0A9A">
+          <File Id="NoteVaultMainExe" Source="..\..\..\bin\notevault.exe" />
+          <RemoveFolder Id="RemoveINSTALLFOLDER" On="uninstall" />
+          <RegistryValue Root="HKMU"
+                         Key="Software\NoteVault"
+                         Name="InstallPath"
+                         Type="string"
+                         Value="[INSTALLFOLDER]"
+                         KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <!-- 开始菜单快捷方式 -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="NoteVault">
+        <Component Id="StartMenuShortcut" Bitness="always64" Guid="39C6DFC8-9160-4AAF-8FFF-EFC6B7F8218B">
+          <Shortcut Id="StartMenuShortcut"
+                    Name="NoteVault"
+                    Description="本地优先的个人知识库管理工具"
+                    Target="[INSTALLFOLDER]notevault.exe"
+                    WorkingDirectory="INSTALLFOLDER" />
+          <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+          <RegistryValue Root="HKMU"
+                         Key="Software\NoteVault"
+                         Name="StartMenuShortcut"
+                         Type="integer"
+                         Value="1"
+                         KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="NoteVault" Level="1">
+      <ComponentRef Id="NoteVaultExe" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+  </Package>
+</Wix>

@@ -1,0 +1,7 @@
+dist
+bindings
+node_modules
+bin
+coverage
+pnpm-lock.yaml
+*.config.js

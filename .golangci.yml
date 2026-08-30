@@ -1,0 +1,43 @@
+# golangci-lint v2 配置
+# 本地运行: golangci-lint run ./...
+# CI 运行: golangci/golangci-lint-action@v8
+version: "2"
+
+linters:
+  # standard 默认启用: errcheck / govet / ineffassign / staticcheck / unused
+  default: standard
+  enable:
+    - gosec       # 安全扫描（G 系列检查）
+    - misspell    # 常见拼写错误
+  settings:
+    gosec:
+      excludes:
+        - G304 # 导出/打包按用户指定路径写文件，动态路径是设计使然
+        - G306 # 用户数据文件用 0644，刻意保证跨工具可读（非凭据文件）
+        - G404 # 弱随机数：提醒 ID 非安全场景，允许 math/rand
+  exclusions:
+    generated: lax
+    rules:
+      # 测试文件：允许忽略错误返回与弱随机数（测试注重可读性）
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+      # Wails 生成的平台胶水代码（build/ 目录）
+      - path: build/
+        linters:
+          - gosec
+          - unused
+      # 导出服务：按用户指定路径写入/遍历是功能本身（G122/G703 误报）
+      - path: exportservice\.go
+        linters:
+          - gosec
+        text: "G122|G703"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    paths:
+      - build/

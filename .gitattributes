@@ -1,0 +1,15 @@
+# 统一行尾：Go/TS/Vue 源码强制 LF，防止 Windows 提交引入 CRLF 导致 gofmt/golangci-lint 失败
+*.go text eol=lf
+*.ts text eol=lf
+*.vue text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf

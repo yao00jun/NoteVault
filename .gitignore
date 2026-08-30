@@ -1,0 +1,41 @@
+.task
+bin
+frontend/dist
+frontend/node_modules
+# Playwright E2E 产物（本地运行生成，不提交）
+frontend/playwright-report
+frontend/test-results
+frontend/e2e/screenshots
+build/linux/appimage/build
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+# Mobile generated (per-machine; overlays hold absolute paths)
+build/ios/xcode/overlay.json
+build/ios/xcode/gen/
+build/android/overlay.json
+build/android/gen/
+
+# Local build artifacts (root)
+notevault.exe
+*.syso
+*.log
+coverage.out
+.wv2_*
+welcome_issue.png
+
+# WorkBuddy local data (private notes/skills, not for public repo)
+.workbuddy/
+
+# Wails build cache
+.build-cache/
+
+# 中间过程文档与交付物（非源码，不对外提供）
+deliverables/
+docs/
+
+# E2E 测试基建与产物（需浏览器环境，非编译必需）
+frontend/e2e/
+frontend/playwright.config.ts
+frontend/playwright.desktop.config.ts
+
+# 备份文件
+*.bak

@@ -1,0 +1,211 @@
+/* ============================================================
+   NoteVault 主题系统 - 3 套主题
+   切换方式：<html data-theme="macos|winui|islands-dark">
+   ============================================================ */
+
+/* ---------- 通用变量（所有主题共享） ---------- */
+:root {
+  /* 字体 */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI Variable",
+    "Segoe UI", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+
+  /* 字号 */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-lg: 15px;
+  --text-xl: 18px;
+  --text-2xl: 22px;
+
+  /* 间距 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* 动画 */
+  --transition-fast: 0.12s ease;
+  --transition-base: 0.2s ease;
+  --transition-slow: 0.3s ease;
+
+  /* 层级 */
+  --z-dropdown: 100;
+  --z-modal: 200;
+  --z-toast: 300;
+}
+
+/* ============================================================
+   主题一：macOS - 通透、毛玻璃、细腻优雅
+   ============================================================ */
+[data-theme="macos"] {
+  /* 背景层 */
+  --bg-window: rgba(245, 245, 247, 0.92);
+  --bg-sidebar: rgba(236, 236, 238, 0.7);
+  --bg-content: #ffffff;
+  --bg-card: rgba(255, 255, 255, 0.75);
+  --bg-hover: rgba(0, 0, 0, 0.05);
+  --bg-active: rgba(0, 122, 255, 0.12);
+  --bg-input: rgba(255, 255, 255, 0.8);
+
+  /* 文字 */
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-muted: #a1a1a6;
+  --text-inverse: #ffffff;
+
+  /* 强调色 - 苹果蓝 */
+  --accent: #007aff;
+  --accent-hover: #0a84ff;
+  --accent-active: #0066cc;
+
+  /* 功能色 */
+  --success: #34c759;
+  --warning: #ff9500;
+  --error: #ff3b30;
+  --info: #5ac8fa;
+
+  /* 边框 */
+  --border: rgba(0, 0, 0, 0.08);
+  --border-light: rgba(0, 0, 0, 0.04);
+  --border-accent: rgba(0, 122, 255, 0.4);
+
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+
+  /* 毛玻璃 */
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-blur: blur(20px) saturate(180%);
+  --glass-border: rgba(255, 255, 255, 0.5);
+
+  /* 侧边栏宽度 */
+  --sidebar-width: 240px;
+  --titlebar-height: 44px;
+  --statusbar-height: 28px;
+}
+
+/* ============================================================
+   主题二：WinUI - Fluent Design、云母效果、现代紧凑
+   ============================================================ */
+[data-theme="winui"] {
+  /* 背景层 */
+  --bg-window: #f3f3f3;
+  --bg-sidebar: #eaeaea;
+  --bg-content: #ffffff;
+  --bg-card: #ffffff;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --bg-active: rgba(0, 120, 212, 0.08);
+  --bg-input: #ffffff;
+
+  /* 文字 */
+  --text-primary: #1a1a1a;
+  --text-secondary: #5c5c5c;
+  --text-muted: #8a8a8a;
+  --text-inverse: #ffffff;
+
+  /* 强调色 - Win11 蓝 */
+  --accent: #0078d4;
+  --accent-hover: #106ebe;
+  --accent-active: #005a9e;
+
+  /* 功能色 */
+  --success: #107c10;
+  --warning: #ca5010;
+  --error: #c42b1c;
+  --info: #0078d4;
+
+  /* 边框 */
+  --border: #e5e5e5;
+  --border-light: #f0f0f0;
+  --border-accent: rgba(0, 120, 212, 0.4);
+
+  /* 圆角 - Win11 风格 */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.08);
+
+  /* 亚克力/云母 */
+  --glass-bg: rgba(249, 249, 249, 0.85);
+  --glass-blur: blur(30px) saturate(150%);
+  --glass-border: rgba(0, 0, 0, 0.06);
+
+  /* 侧边栏宽度 */
+  --sidebar-width: 260px;
+  --titlebar-height: 40px;
+  --statusbar-height: 26px;
+}
+
+/* ============================================================
+   主题三：JetBrains Islands Dark - 深灰、岛屿卡片、橙色强调
+   ============================================================ */
+[data-theme="islands-dark"] {
+  /* 背景层 */
+  --bg-window: #1e1f22;
+  --bg-sidebar: #2b2d30;
+  --bg-content: #1e1f22;
+  --bg-card: #323437;
+  --bg-hover: #3c3f41;
+  --bg-active: #4b4e51;
+  --bg-input: #323437;
+
+  /* 文字 */
+  --text-primary: #e6e6e6;
+  --text-secondary: #a9a9a9;
+  --text-muted: #6c6c6c;
+  --text-inverse: #1e1f22;
+
+  /* 强调色 - JetBrains 橙 */
+  --accent: #f0a732;
+  --accent-hover: #ffb84d;
+  --accent-active: #d4922a;
+
+  /* 功能色 */
+  --success: #6aab73;
+  --warning: #f0a732;
+  --error: #bc3f3c;
+  --info: #5e81ac;
+
+  /* 边框 */
+  --border: #3c3f41;
+  --border-light: #4b4e51;
+  --border-accent: rgba(240, 167, 50, 0.4);
+
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+
+  /* 毛玻璃（深色） */
+  --glass-bg: rgba(50, 52, 55, 0.85);
+  --glass-blur: blur(20px) saturate(150%);
+  --glass-border: rgba(255, 255, 255, 0.06);
+
+  /* 侧边栏宽度 */
+  --sidebar-width: 240px;
+  --titlebar-height: 42px;
+  --statusbar-height: 28px;
+}
