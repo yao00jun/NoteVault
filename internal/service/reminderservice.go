@@ -1,12 +1,14 @@
 package service
 
 import (
-	"encoding/json"
+	"log"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/notevault/notevault/internal/infra/schema"
 )
 
 // Reminder 表示一个提醒
@@ -53,9 +55,18 @@ func (s *ReminderService) loadReminders(workspacePath string) ([]*Reminder, erro
 		return nil, err
 	}
 
-	var reminders []*Reminder
-	if err := json.Unmarshal(data, &reminders); err != nil {
+	// 统一版本信封（E-7）。提醒是用户数据：旧的裸数组格式必须继续能读，
+	// 否则升级一次等于所有提醒静默消失。
+	reminders, res, err := schema.UnmarshalAs[[]*Reminder](data, schema.Reminders)
+	if err != nil {
 		return nil, err
+	}
+	if res.Compat == schema.CompatNewer {
+		log.Printf("[reminder] 索引 schemaVersion=%d 高于当前支持的 %d，按当前结构尽力解析",
+			res.FileVersion, schema.Reminders.Version)
+	}
+	if reminders == nil {
+		reminders = []*Reminder{}
 	}
 
 	return reminders, nil
@@ -70,7 +81,10 @@ func (s *ReminderService) saveReminders(workspacePath string, reminders []*Remin
 		return err
 	}
 
-	data, err := json.MarshalIndent(reminders, "", "  ")
+	if reminders == nil {
+		reminders = []*Reminder{}
+	}
+	data, err := schema.MarshalAs(schema.Reminders, reminders)
 	if err != nil {
 		return err
 	}

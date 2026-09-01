@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@codemirror/autocomplete':
+        specifier: 6.20.3
+        version: 6.20.3
       '@codemirror/commands':
         specifier: ^6.11.0
         version: 6.11.0
@@ -28,7 +31,7 @@ importers:
         version: 6.43.9
       '@wailsio/runtime':
         specifier: latest
-        version: 3.0.0-beta.12
+        version: 3.0.0-beta.16
       codemirror:
         specifier: ^6.0.2
         version: 6.0.2
@@ -626,8 +629,8 @@ packages:
       '@vue/server-renderer':
         optional: true
 
-  '@wailsio/runtime@3.0.0-beta.12':
-    resolution: {integrity: sha512-2B456rspX5rDXYhNjRqXNDOPkRXjletGJ4R3beF2FGs7K67MTovLy9acXHYb8nolzL96kygyJ622RIjB45oumg==}
+  '@wailsio/runtime@3.0.0-beta.16':
+    resolution: {integrity: sha512-IzaYrUKYDmvWDXf3Pqfl0onT1R5T5YHTx+AnK9vX4MyuE1PF3lXZmQrtvtfYNAsBnL+9e+iCJvIROGhjyf1rew==}
 
   abbrev@2.0.0:
     resolution: {integrity: sha512-6/mh1E2u2YgEsCHdY0Yx5oW+61gZU+1vXaoiHHrpKeuRNNgFvS+/jrwHiQhB5apAf5oB7UB7E19ol2R2LKH8hQ==}
@@ -2254,7 +2257,7 @@ snapshots:
     optionalDependencies:
       '@vue/server-renderer': 3.5.41
 
-  '@wailsio/runtime@3.0.0-beta.12': {}
+  '@wailsio/runtime@3.0.0-beta.16': {}
 
   abbrev@2.0.0: {}
 

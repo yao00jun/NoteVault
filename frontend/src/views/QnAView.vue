@@ -39,6 +39,8 @@ async function ask() {
     return
   }
   const ai = settingsStore.settings.ai
+  const emb = settingsStore.settings.embedding
+  const rerank = settingsStore.settings.rerank
   if (!ai.apiKey || !ai.apiKey.trim()) {
     messages.value.push({ role: 'assistant', content: t('qna.noApiKey'), error: true })
     return
@@ -53,6 +55,15 @@ async function ask() {
       ai.apiKey,
       ai.baseURL,
       ai.model,
+      emb.baseURL,
+      emb.model,
+      emb.apiKey,
+      {
+        provider: rerank.provider,
+        baseURL: rerank.baseURL,
+        model: rerank.model,
+        apiKey: rerank.apiKey,
+      },
       currentWorkspace.value.path,
       q,
     )

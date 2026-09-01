@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,6 +14,8 @@ import (
 	"time"
 
 	"github.com/notevault/notevault/internal/core"
+	"github.com/notevault/notevault/internal/infra/fsutil"
+	"github.com/notevault/notevault/internal/infra/schema"
 	"github.com/notevault/notevault/internal/service"
 )
 
@@ -508,14 +511,18 @@ func finalizePermissions(m *core.PluginManifest) error {
 }
 
 // loadEnabledState 读取启用状态 JSON
-// 文件不存在视为全禁用（不报错）
+// 文件不存在 / 损坏视为全禁用（不报错）
+//
+// 走统一版本信封（E-7），旧的裸 map[string]bool 格式仍能读出（CompatLegacy）。
+// 高版本文件（CompatNewer）也按当前结构尽力解析：最坏情况是某个插件的启用位读错，
+// 用户重新点一下开关即可，比整份状态丢弃体验更好。
 func (s *PluginService) loadEnabledState() map[string]bool {
 	data, err := os.ReadFile(s.stateFile)
 	if err != nil {
 		return map[string]bool{}
 	}
-	out := map[string]bool{}
-	if err := jsonUnmarshalInto(data, &out); err != nil {
+	out, _, err := schema.UnmarshalAs[map[string]bool](data, schema.PluginState)
+	if err != nil || out == nil {
 		return map[string]bool{}
 	}
 	return out
@@ -526,22 +533,34 @@ func (s *PluginService) saveEnabledState(m map[string]bool) error {
 	if err := os.MkdirAll(filepath.Dir(s.stateFile), 0750); err != nil {
 		return core.WrapError(core.ErrPermission, "创建状态目录失败", err)
 	}
-	data, err := jsonMarshalValue(m)
+	if m == nil {
+		m = map[string]bool{}
+	}
+	data, err := schema.MarshalAs(schema.PluginState, m)
 	if err != nil {
 		return core.WrapError(core.ErrInternal, "序列化插件状态失败", err)
 	}
-	return os.WriteFile(s.stateFile, data, 0640)
+	return fsutil.AtomicWrite(s.stateFile, data, 0640)
 }
 
 // loadTrustState 读取信任授权记录
 // 文件不存在/损坏视为「无任何授权」（不报错）——安全默认值
+//
+// 与启用状态不同，这里对 CompatNewer 采取保守策略：高版本可能给授权加了
+// 我们读不懂的附加约束（例如作用域、有效期），按当前结构解析等于无视这些约束、
+// 可能误放行。宁可让用户重新确认一次。
 func (s *PluginService) loadTrustState() map[string]trustRecord {
 	data, err := os.ReadFile(s.trustFile)
 	if err != nil {
 		return map[string]trustRecord{}
 	}
-	out := map[string]trustRecord{}
-	if err := jsonUnmarshalInto(data, &out); err != nil {
+	out, res, err := schema.UnmarshalAs[map[string]trustRecord](data, schema.PluginTrust)
+	if err != nil || out == nil {
+		return map[string]trustRecord{}
+	}
+	if res.Compat == schema.CompatNewer {
+		log.Printf("[plugin] 信任状态 schemaVersion=%d 高于当前支持的 %d，为安全起见按「无任何授权」处理",
+			res.FileVersion, schema.PluginTrust.Version)
 		return map[string]trustRecord{}
 	}
 	return out
@@ -552,15 +571,17 @@ func (s *PluginService) saveTrustState(m map[string]trustRecord) error {
 	if err := os.MkdirAll(filepath.Dir(s.trustFile), 0750); err != nil {
 		return core.WrapError(core.ErrPermission, "创建信任状态目录失败", err)
 	}
-	data, err := jsonMarshalValue(m)
+	if m == nil {
+		m = map[string]trustRecord{}
+	}
+	data, err := schema.MarshalAs(schema.PluginTrust, m)
 	if err != nil {
 		return core.WrapError(core.ErrInternal, "序列化插件信任状态失败", err)
 	}
-	// 注意：这里没有走 service 包的 atomicWrite（那是 service 的私有实现，plugin 取不到）。
-	// 半截写入的最坏后果是解析失败，而 loadTrustState 对解析失败的处理是
-	// 「视为无任何授权」——这是安全方向的默认值，不会误放行，代价只是用户需重新确认。
-	// TODO: 把 atomicWrite 提取到 internal/fsutil 共享包，届时此处一并改用原子写。
-	return os.WriteFile(s.trustFile, data, 0640)
+	// 原子写：半截写入会让 loadTrustState 判为「无任何授权」，虽然是安全方向的
+	// 默认值（不会误放行），但用户得重新确认一遍所有插件。
+	// atomicWrite 已从 service 包提到 internal/infra/fsutil，两边共用同一份实现。
+	return fsutil.AtomicWrite(s.trustFile, data, 0640)
 }
 
 // GrantTrust 授权某个插件以 full 信任等级运行。

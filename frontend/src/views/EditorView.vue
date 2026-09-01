@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import { FileText, Plus, X, Save, Columns, Edit3, Eye, Sparkles, Download, FileDown, FileCode, Loader2 } from 'lucide-vue-next'
+import EditorTabBar from '@/components/editor/EditorTabBar.vue'
+import EditorBacklinks from '@/components/editor/EditorBacklinks.vue'
+import EditorSummaryPanel from '@/components/editor/EditorSummaryPanel.vue'
 import FileTree from '@/components/editor/FileTree.vue'
 import type { FileNode } from '@/components/editor/FileTree.vue'
 import MarkdownEditor from '@/components/editor/MarkdownEditor.vue'
@@ -14,11 +16,13 @@ import { useI18n } from 'vue-i18n'
 import { FileService, WorkspaceService, SearchService, TagService, ArchiveService, TrashService, SummarizeService, ExportService } from '@bindings/github.com/notevault/notevault/index.js'
 import { arrayBufferToBase64, generateMarkdownImage } from '@/utils/image'
 import { marked } from 'marked'
+import { useToast } from '@/composables/useToast'
 
 const workspaceStore = useWorkspaceStore()
 const route = useRoute()
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
+const toast = useToast()
 
 // 标签页数据结构
 interface Tab {
@@ -377,19 +381,133 @@ async function handlePasteImage(payload: { file: File; insertText: (text: string
   }
 }
 
-// 处理 wiki-link 点击
-async function handleWikiLinkClick(link: string) {
+// 待跳转锚点：打开目标文件后用它滚动到对应 heading / 块
+// - 当 wiki-link 指向的文件还没在标签页里时，先 openFile，加载完后 watch activeTab 触发滚动
+// - file 为空时由 MarkdownPreview 自己处理同文件锚点跳转，不会进到这里
+const pendingAnchor = ref<{ anchor: string; block: string } | null>(null)
+
+// 处理 wiki-link 点击（接收结构化对象，支持锚点 / 块跳转）
+async function handleWikiLinkClick(target: { file: string; anchor: string; block: string; raw: string }) {
   if (!currentWorkspace.value) return
-  // 尝试在文件树中找到匹配的文件
-  const targetFile = findFileByName(fileTree.value, link)
-  if (targetFile) {
-    openFile(targetFile)
-  } else {
-    // 如果找不到，询问是否创建新文档
-    if (confirm(t('editor.createLinkDoc', { name: link }))) {
-      const fileName = link.endsWith('.md') ? link : link + '.md'
-      handleNewFileWithName(fileName)
+  const { file, anchor, block, raw } = target
+
+  // 同文件锚点：MarkdownPreview 自己已经处理了滚动，不会传到这层。
+  // 但保险起见，如果 file 为空且 anchor/block 非空，记下 pending 让 watch 触发
+  if (!file) {
+    if (anchor || block) {
+      pendingAnchor.value = { anchor, block }
+      tryScrollToPendingAnchor()
     }
+    return
+  }
+
+  // 跨文件：在文件树里找匹配
+  const targetFile = findFileByName(fileTree.value, file)
+  if (targetFile) {
+    // 已在标签页 → 切换后立即滚动；否则 openFile 异步加载，watch 触发滚动
+    const existing = findTabIndex(targetFile.path) >= 0
+    if (anchor || block) {
+      pendingAnchor.value = { anchor, block }
+    }
+    await openFile(targetFile)
+    if (existing && (anchor || block)) {
+      // 已打开：预览 DOM 早已渲染，同步尝试即可，失败就是锚点真不存在
+      resolvePendingAnchor()
+    }
+  } else {
+    // 找不到，询问是否创建新文档（用 file 名，不带锚点）
+    if (confirm(t('editor.createLinkDoc', { name: file }))) {
+      const fileName = file.endsWith('.md') ? file : file + '.md'
+      await handleNewFileWithName(fileName)
+    }
+  }
+}
+
+/**
+ * ¶ 复制块 / 标题链接后的回调。
+ * 剪贴板不可用（非安全上下文或权限被拒）时也要有反馈，
+ * 否则用户点了 ¶ 什么都没发生会以为是 bug。
+ */
+function handleAnchorCopy(info: { text: string; ok: boolean }) {
+  if (info.ok) {
+    toast.success(t('editor.linkCopied', { text: info.text }))
+    return
+  }
+  // 剪贴板写不进去：文本打进 console 兜底，避免内容彻底丢失
+  console.warn('[anchor-copy] clipboard unavailable, link text:', info.text)
+  toast.error(t('editor.copyFallbackPrompt'), 6000)
+}
+
+/**
+ * 尝试滚动到 pendingAnchor，失败即认为目标锚点不存在。
+ * 必须清空 pending——否则它会一直挂着，下次切标签页时误触发跳转。
+ */
+function resolvePendingAnchor() {
+  if (!pendingAnchor.value) return
+  if (tryScrollToPendingAnchor()) return
+  const { anchor, block } = pendingAnchor.value
+  pendingAnchor.value = null
+  const label = block ? `^${block}` : anchor
+  if (label) {
+    toast.warning(t('editor.anchorNotFound', { anchor: label }))
+  }
+}
+
+// 在当前预览中尝试滚动到 pendingAnchor
+// 失败时保留 pending，等 watch(activeTab) 或下个 tick 重试一次
+function tryScrollToPendingAnchor(): boolean {
+  if (!pendingAnchor.value) return false
+  const { anchor, block } = pendingAnchor.value
+  // 找到当前可见的预览容器
+  const root = document.querySelector('.markdown-preview') as HTMLElement | null
+  if (!root) return false
+  let ok = false
+  if (block) {
+    const el = root.querySelector(`[data-block-id="${cssEscape(block)}"]`) as HTMLElement | null
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      ok = true
+    }
+  }
+  if (!ok && anchor) {
+    const slug = slugifyHeading(anchor)
+    let el: HTMLElement | null = slug ? (root.querySelector(`#${cssEscape(slug)}`) as HTMLElement | null) : null
+    if (!el) {
+      const headings = Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'))
+      for (const h of headings) {
+        // 优先读 data-heading-text（预览注入 ¶ 后 textContent 会带 "¶"）
+        const raw = (h as HTMLElement).dataset.headingText ?? (h.textContent || '').replace(/¶$/, '')
+        if (raw.trim() === anchor.trim()) {
+          el = h as HTMLElement
+          break
+        }
+      }
+    }
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      ok = true
+    }
+  }
+  if (ok) {
+    pendingAnchor.value = null
+  }
+  return ok
+}
+
+function slugifyHeading(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+}
+
+function cssEscape(s: string): string {
+  try {
+    return CSS.escape(s)
+  } catch {
+    return s.replace(/["\\]/g, '\\$&')
   }
 }
 
@@ -470,6 +588,20 @@ function findFileByPath(nodes: FileNode[], path: string): FileNode | null {
 // 监听当前标签页变化，加载反向链接
 watch(activeTabIndex, () => {
   loadBacklinks()
+})
+// 文件加载完成后尝试滚动到待跳转锚点
+// 跨文件 [[note#heading]] 点击后：先 openFile 异步加载，加载完 activeTab 变化触发此 watch
+watch(activeTab, () => {
+  if (pendingAnchor.value && activeTab.value) {
+    nextTick(() => {
+      // 给 MarkdownPreview 一帧时间渲染 HTML
+      requestAnimationFrame(() => {
+        if (tryScrollToPendingAnchor()) return
+        // 第一次失败（DOM 还没渲染完），再等一帧；第二帧仍失败就提示并放弃
+        requestAnimationFrame(() => resolvePendingAnchor())
+      })
+    })
+  }
 })
 watch(() => workspaceStore.activeFile, async (requestedPath) => {
   if (!requestedPath) return
@@ -718,102 +850,22 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       </div>
     </div>
     <!-- 标签页栏 -->
-    <div class="tab-bar">
-      <div class="tabs-container">
-        <div
-          v-for="(tab, index) in tabs"
-          :key="tab.path"
-          class="tab-item"
-          :data-testid="`tab-${tab.name}`"
-          :class="{ active: index === activeTabIndex }"
-          @click="switchToTab(index)"
-        >
-          <FileText :size="13" />
-          <span class="tab-name">{{ tab.name }}</span>
-          <span
-            v-if="tab.isDirty"
-            class="tab-dirty"
-          >●</span>
-          <button
-            class="tab-close"
-            @click="closeTab(index, $event)"
-          >
-            <X :size="12" />
-          </button>
-        </div>
-      </div>
-
-      <button
-        class="tab-new"
-        :title="t('editor.newDoc')"
-        @click="handleNewFile('')"
-      >
-        <Plus :size="14" />
-      </button>
-
-      <!-- 右侧工具栏 -->
-      <div class="tab-tools">
-        <span
-          v-if="isSaving"
-          class="save-status"
-          data-testid="save-status"
-        >{{ t('editor.saving') }}</span>
-        <span
-          v-else-if="activeTab?.lastSavedAt"
-          class="save-status"
-          data-testid="save-status"
-        >{{ t('editor.savedAt', { time: activeTab.lastSavedAt }) }}</span>
-        <button
-          class="tool-btn"
-          :title="t('editor.aiSummary')"
-          @click="handleSummarize"
-        >
-          <Sparkles :size="14" />
-        </button>
-        <button
-          class="tool-btn"
-          :title="t('editor.exportMd')"
-          :disabled="isExporting"
-          @click="exportMarkdown"
-        >
-          <FileDown :size="14" />
-        </button>
-        <button
-          class="tool-btn"
-          :title="t('editor.exportHtml')"
-          :disabled="isExporting"
-          @click="exportSingleHTML"
-        >
-          <FileCode :size="14" />
-        </button>
-        <button
-          class="tool-btn"
-          :title="t('editor.save')"
-          @click="saveCurrentTab"
-          data-testid="save-button"
-        >
-          <Save :size="14" />
-        </button>
-        <button
-          class="tool-btn"
-          :title="t('editor.viewMode', { mode: viewMode })"
-          @click="toggleViewMode"
-        >
-          <Columns
-            v-if="viewMode === 'split'"
-            :size="14"
-          />
-          <Edit3
-            v-else-if="viewMode === 'editor'"
-            :size="14"
-          />
-          <Eye
-            v-else
-            :size="14"
-          />
-        </button>
-      </div>
-    </div>
+    <EditorTabBar
+      :tabs="tabs"
+      :active-tab-index="activeTabIndex"
+      :is-saving="isSaving"
+      :active-tab="activeTab"
+      :view-mode="viewMode"
+      :is-exporting="isExporting"
+      @switch-tab="switchToTab"
+      @close-tab="closeTab"
+      @new-file="handleNewFile('')"
+      @summarize="handleSummarize"
+      @export-md="exportMarkdown"
+      @export-html="exportSingleHTML"
+      @save="saveCurrentTab"
+      @toggle-view="toggleViewMode"
+    />
 
     <!-- 编辑器主区域 -->
     <div class="editor-main">
@@ -890,84 +942,31 @@ watch(() => workspaceStore.fileTreeVersion, () => {
               <div class="pane-body">
                 <MarkdownPreview
                   :content="fileContent"
+                  :workspace-path="currentWorkspace?.path"
+                  :current-file-name="activeTab?.name"
                   @wiki-link-click="handleWikiLinkClick"
+                  @anchor-copy="handleAnchorCopy"
                 />
               </div>
             </div>
           </div>
 
           <!-- 反向链接面板 -->
-          <div
-            v-if="backlinks.length > 0"
-            class="backlinks-panel"
-          >
-            <div class="backlinks-header">
-              <span>🔗 {{ t('editor.backlinks', { count: backlinks.length }) }}</span>
-            </div>
-            <div class="backlinks-list">
-              <div
-                v-for="link in backlinks"
-                :key="link.path"
-                class="backlink-item"
-                @click="openBacklink(link)"
-              >
-                <FileText :size="14" />
-                <span>{{ link.name }}</span>
-              </div>
-            </div>
-          </div>
+          <EditorBacklinks
+            :backlinks="backlinks"
+            @open="openBacklink"
+          />
         </div>
       </div>
 
       <!-- AI 总结面板 -->
-      <div
-        v-if="summaryOpen"
-        class="summary-overlay"
-        @click.self="summaryOpen = false"
-      >
-        <div class="summary-modal">
-          <div class="summary-header">
-            <span class="summary-title"><Sparkles :size="16" /> {{ t('editor.aiSummary') }}</span>
-            <button
-              class="summary-close"
-              @click="summaryOpen = false"
-            >
-              <X :size="16" />
-            </button>
-          </div>
-          <div class="summary-body">
-            <div
-              v-if="isSummarizing"
-              class="summary-loading"
-            >
-              <Loader2
-                :size="18"
-                class="spin"
-              />
-              <span>{{ t('editor.summarizing') }}</span>
-            </div>
-            <pre
-              v-else
-              class="summary-text"
-            >{{ summary }}</pre>
-          </div>
-          <div class="summary-footer">
-            <button
-              class="btn-ghost"
-              @click="summaryOpen = false"
-            >
-              {{ t('common.close') }}
-            </button>
-            <button
-              class="btn-primary"
-              :disabled="!summary || isSummarizing"
-              @click="insertSummaryToNote"
-            >
-              <Download :size="14" /> {{ t('editor.insertToNote') }}
-            </button>
-          </div>
-        </div>
-      </div>
+      <EditorSummaryPanel
+        :open="summaryOpen"
+        :summary="summary"
+        :is-summarizing="isSummarizing"
+        @close="summaryOpen = false"
+        @insert="insertSummaryToNote"
+      />
     </div>
   </div>
 </template>
@@ -978,138 +977,6 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-/* 标签页栏 */
-.tab-bar {
-  display: flex;
-  align-items: center;
-  height: 38px;
-  background: var(--bg-sidebar);
-  border-bottom: 1px solid var(--border);
-  padding: 0 var(--space-2);
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.tabs-container {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex: 1;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-.tabs-container::-webkit-scrollbar {
-  height: 3px;
-}
-
-.tabs-container::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 2px;
-}
-
-.tab-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  height: 30px;
-  padding: 0 var(--space-2) 0 var(--space-3);
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
-  max-width: 200px;
-  flex-shrink: 0;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-bottom: none;
-}
-
-.tab-item:hover {
-  background: var(--bg-hover);
-}
-
-.tab-item.active {
-  background: var(--bg-content);
-  color: var(--text-primary);
-}
-
-.tab-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tab-dirty {
-  color: var(--accent);
-  font-size: 10px;
-  flex-shrink: 0;
-}
-
-.tab-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 3px;
-  color: var(--text-muted);
-  transition: background var(--transition-fast), color var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.tab-close:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.tab-new {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  transition: background var(--transition-fast), color var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.tab-new:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.tab-tools {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-  margin-left: var(--space-2);
-}
-
-.save-status {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-
-.tool-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.tool-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
 }
 
 /* 编辑器主区域 */
@@ -1221,54 +1088,6 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   overflow: hidden;
 }
 
-/* 反向链接面板 */
-.backlinks-panel {
-  border-top: 1px solid var(--border);
-  background: var(--bg-sidebar);
-  max-height: 150px;
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-}
-
-.backlinks-header {
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid var(--border);
-}
-
-.backlinks-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  overflow-y: auto;
-}
-
-.backlink-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.backlink-item:hover {
-  background: var(--accent-alpha);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
 /* 文件拖拽 */
 .editor-view.drag-over {
   position: relative;
@@ -1305,128 +1124,4 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   margin: 0;
 }
 
-/* AI 总结面板 */
-.summary-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-}
-
-.summary-modal {
-  width: min(640px, 90%);
-  max-height: 80%;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-window);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
-}
-
-.summary-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border);
-}
-
-.summary-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.summary-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  transition: all var(--transition-fast);
-}
-.summary-close:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.summary-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-4);
-}
-
-.summary-loading {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
-.summary-text {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: inherit;
-  font-size: var(--text-sm);
-  line-height: 1.7;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.summary-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--border);
-}
-
-.btn-primary,
-.btn-ghost {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: var(--text-inverse);
-  border: 1px solid transparent;
-}
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-ghost {
-  background: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-}
-.btn-ghost:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.spin {
-  animation: spin 0.8s linear infinite;
-}
 </style>

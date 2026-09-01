@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { Events } from '@wailsio/runtime'
 import { ref, onScopeDispose } from 'vue'
 import {
   FileService,
@@ -67,7 +68,6 @@ export const usePluginRuntimeStore = defineStore('plugin-runtime', () => {
         },
         async writeFile(relativePath, content) {
           const result = await FileService.SaveFile(requireWorkspacePath(), relativePath, content)
-          void pollWorkspaceChanges() // 立即广播，不等下一次轮询
           return result
         },
         async listFiles() {
@@ -76,16 +76,13 @@ export const usePluginRuntimeStore = defineStore('plugin-runtime', () => {
         },
         async createFile(relativePath, content) {
           const result = await FileService.CreateFile(requireWorkspacePath(), relativePath, content)
-          void pollWorkspaceChanges()
           return result
         },
         async deleteFile(relativePath) {
           await FileService.DeleteFile(requireWorkspacePath(), relativePath)
-          void pollWorkspaceChanges()
         },
         async renameFile(relativePath, newName) {
           const result = await FileService.RenameFile(requireWorkspacePath(), relativePath, newName)
-          void pollWorkspaceChanges()
           return result
         },
         async getAllTags() {
@@ -217,34 +214,32 @@ export const usePluginRuntimeStore = defineStore('plugin-runtime', () => {
     if (schema) pluginSettings.value = { ...pluginSettings.value, [pluginId]: { ...schema } }
   }
 
-  // 工作区文件树快照与轮询定时器（#27）
-  let treeSnapshot = new Map<string, string>()
-  let watchTimer: ReturnType<typeof setInterval> | null = null
+  // ---------------------------------------------------------------------------
+  // 工作区文件变更（E-6）：由后端 fsnotify 实时推送（workspace:file-changed），
+  // 替换旧方案"前端轮询文件树 + 快照比对"——不再有 3 秒延迟，也不再每次
+  // 遍历整棵树重算修改时间。事件 payload 是 { type, path }：
+  // type ∈ create / modify / delete，path 为相对工作区根目录的 "/" 分隔路径，
+  // 与 WorkspaceEvent 完全同构，直接转发给声明了 workspace.read 的插件。
+  // ---------------------------------------------------------------------------
+  let stopFileEventSubscription: (() => void) | null = null
 
-  /** 比对文件树快照，把差异作为事件广播给插件。 */
-  async function pollWorkspaceChanges(): Promise<void> {
+  function startFileEventSubscription(): void {
+    if (stopFileEventSubscription) return
     try {
-      const tree = (await FileService.GetFileTree(requireWorkspacePath())) ?? []
-      const next = buildTreeSnapshot(tree)
-      const events = diffTreeSnapshots(treeSnapshot, next)
-      treeSnapshot = next
-      for (const event of events) host.emitWorkspaceEvent(event)
-    } catch {
-      // 没有可用工作区（未选择或已被删除）时静默跳过，不打扰用户
+      stopFileEventSubscription = Events.On('workspace:file-changed', (ev) => {
+        // 后端单参数 Emit → data 就是事件对象本身；这里仍做结构校验，
+        // 防御未来 payload 变更或传输层异常把脏数据喂给插件。
+        const data = ev?.data as { path?: unknown, type?: unknown } | null | undefined
+        if (!data) return
+        const { path, type } = data
+        if (typeof path !== 'string' || path === '') return
+        if (type !== 'create' && type !== 'modify' && type !== 'delete') return
+        host.emitWorkspaceEvent({ path, type })
+      })
+    } catch (error) {
+      // 没有事件总线的环境（单测 / 非 Wails 预览）静默降级：插件只是收不到推送
+      console.warn('[pluginRuntime] 文件变更事件订阅失败:', error)
     }
-  }
-
-  function startWatching(): void {
-    if (watchTimer) return
-    watchTimer = setInterval(() => {
-      void pollWorkspaceChanges()
-    }, WATCH_INTERVAL_MS)
-  }
-
-  function stopWatching(): void {
-    if (!watchTimer) return
-    clearInterval(watchTimer)
-    watchTimer = null
   }
 
   // 热重载（P15）：定期检查插件源码是否变化，变了就重启该插件。
@@ -265,9 +260,10 @@ export const usePluginRuntimeStore = defineStore('plugin-runtime', () => {
     hotReloadTimer = null
   }
 
-  // 两个定时器必须在 store 作用域销毁时清掉，否则会一直空转
+  // 订阅与定时器必须在 store 作用域销毁时清掉，否则会一直空转
   onScopeDispose(() => {
-    stopWatching()
+    stopFileEventSubscription?.()
+    stopFileEventSubscription = null
     stopHotReload()
   })
 
@@ -336,9 +332,8 @@ export const usePluginRuntimeStore = defineStore('plugin-runtime', () => {
     } catch (error) {
       runtimeError.value = error instanceof Error ? error.message : String(error)
     } finally {
-      // 先建立基线快照再开始监听：否则第一次比对会把已有文件全报成 create
-      await pollWorkspaceChanges()
-      startWatching()
+      // 文件变更由后端 fsnotify 推送（E-6），这里只负责订阅一次
+      startFileEventSubscription()
       startHotReload()
       if (!quiet) loading.value = false
       initialized.value = true
@@ -436,43 +431,12 @@ export const usePluginRuntimeStore = defineStore('plugin-runtime', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 工作区变更事件（#27）
+// 工作区变更事件（#27 → E-6 改造）
 //
-// 用「比对文件树快照」而不是 fs watcher：后端没有引入 fsnotify，
-// 而插件列表本来就要定期刷新，顺带比对一次文件树即可。
-// 代价是存在 WATCH_INTERVAL_MS 的延迟；插件自己触发的写操作会立即比对，不走这个延迟。
+// 事件源已从「前端比对文件树快照」迁到「后端 fsnotify 实时推送」，
+// 订阅逻辑见本文件 startFileEventSubscription。这里只剩文件树的
+// 展平工具（插件 listFiles 能力仍在用）。
 // ---------------------------------------------------------------------------
-const WATCH_INTERVAL_MS = 3000
-
-function buildTreeSnapshot(nodes: Array<FileNode | null>): Map<string, string> {
-  const snapshot = new Map<string, string>()
-  const walk = (list: Array<FileNode | null>): void => {
-    for (const node of list) {
-      if (!node) continue
-      if (node.isDir) walk(node.children ?? [])
-      // modTime 在绑定类型里可空；缺失时退化成空串（同一文件两次都为空 → 不会误报 modify）
-      else snapshot.set(node.path, node.modTime ?? '')
-    }
-  }
-  walk(nodes)
-  return snapshot
-}
-
-function diffTreeSnapshots(
-  previous: Map<string, string>,
-  next: Map<string, string>,
-): WorkspaceEvent[] {
-  const events: WorkspaceEvent[] = []
-  for (const [path, modTime] of next) {
-    const before = previous.get(path)
-    if (before === undefined) events.push({ path, type: 'create' })
-    else if (before !== modTime) events.push({ path, type: 'modify' })
-  }
-  for (const path of previous.keys()) {
-    if (!next.has(path)) events.push({ path, type: 'delete' })
-  }
-  return events
-}
 
 // flattenFileTree 把文件树展平成路径列表。
 // 插件拿扁平列表比递归树好处理——遍历、过滤、聚合都是最常见的用法。

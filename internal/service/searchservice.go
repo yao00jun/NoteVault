@@ -1,17 +1,52 @@
 package service
 
 import (
-	"sort"
+	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
+// SearchIndexStats 描述索引的覆盖情况，供状态栏提示（P0-5）
+type SearchIndexStats struct {
+	DocCount     int  `json:"docCount"`     // 已索引文档数
+	TokenCount   int  `json:"tokenCount"`   // 倒排表 token 数
+	ScanComplete bool `json:"scanComplete"` // false = 触及 maxScanFiles 上限，仍有文件未扫
+	SkippedCount int  `json:"skippedCount"` // 因体积超过 maxSearchFileSize 被跳过的文件数
+}
+
+// GetIndexStats 返回当前工作区索引的覆盖情况。
+//
+// 前端应当据此在状态栏提示用户「有 N 个文件未被索引」，
+// 而不是让超限静默发生。
+func (s *SearchService) GetIndexStats(workspacePath string) (*SearchIndexStats, error) {
+	if strings.TrimSpace(workspacePath) == "" {
+		return nil, fmt.Errorf("未选择工作区")
+	}
+
+	idx := s.idxOf(workspacePath)
+	_ = idx.LoadSummary(workspacePath)
+	if _, err := idx.refresh(workspacePath); err != nil {
+		return nil, err
+	}
+
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	return &SearchIndexStats{
+		DocCount:     len(idx.docs),
+		TokenCount:   len(idx.inverted),
+		ScanComplete: idx.scanComplete,
+		SkippedCount: idx.skippedOversize,
+	}, nil
+}
+
 // SearchResult 表示一个搜索结果
 type SearchResult struct {
-	Path       string `json:"path"`
-	Title      string `json:"title"`
-	Snippet    string `json:"snippet"`
-	MatchCount int    `json:"matchCount"`
+	Path       string    `json:"path"`
+	Title      string    `json:"title"`
+	Snippet    string    `json:"snippet"`
+	MatchCount int       `json:"matchCount"`
+	ModTime    time.Time `json:"modTime"` // P0-4：供前端「按最近修改」排序
 }
 
 // 搜索健壮性常量
@@ -31,18 +66,41 @@ const (
 // 避免每次搜索都全量读盘。
 type SearchService struct {
 	fileService *FileService
+	// indexes 索引注册表（E-4）。nil 时回落到包级默认注册表，
+	// 这样零值实例（测试里直接 &SearchService{}）依然可用。
+	indexes *SearchIndexRegistry
 	// maxResults 结果截断上限；<=0 时回落 defaultMaxSearchResults。
 	// 刻意不加导出 setter：Wails 会把 Service 的导出方法全部绑成前端 API，
 	// 仅为测试开洞会污染绑定契约（见 ports_contract_test.go）。
 	maxResults int
 }
 
-// NewSearchService 创建搜索服务实例
+// NewSearchService 创建搜索服务实例（索引走包级默认注册表）
 func NewSearchService(fileService *FileService) *SearchService {
 	return &SearchService{
 		fileService: fileService,
 		maxResults:  defaultMaxSearchResults,
 	}
+}
+
+// NewSearchServiceWithRegistry 创建搜索服务实例，并显式指定索引注册表。
+//
+// 生产装配（container.go）应始终用这个构造函数：让索引的所有权与释放
+// 时机集中到容器持有的那一个注册表上，而不是散落在全局。
+func NewSearchServiceWithRegistry(fileService *FileService, indexes *SearchIndexRegistry) *SearchService {
+	return &SearchService{
+		fileService: fileService,
+		indexes:     indexes,
+		maxResults:  defaultMaxSearchResults,
+	}
+}
+
+// idxOf 返回工作区对应的索引。nil 注册表回落到包级默认注册表。
+func (s *SearchService) idxOf(workspacePath string) *searchIndex {
+	if s.indexes != nil {
+		return s.indexes.Get(workspacePath)
+	}
+	return defaultIndexRegistry.Get(workspacePath)
 }
 
 // resultCap 返回生效的结果上限（零值或非法值回落默认值，保证零值实例可用）
@@ -64,7 +122,7 @@ func (s *SearchService) Search(workspacePath string, query string) ([]*SearchRes
 	}
 
 	// 获取/创建索引并增量更新
-	idx := getSearchIndex(workspacePath)
+	idx := s.idxOf(workspacePath)
 	// 冷启动加速：先尝试从磁盘加载索引摘要（已加载则幂等 no-op）
 	_ = idx.LoadSummary(workspacePath)
 	if _, err := idx.refresh(workspacePath); err != nil {
@@ -76,48 +134,52 @@ func (s *SearchService) Search(workspacePath string, query string) ([]*SearchRes
 	idx.maybeSaveSummary(workspacePath)
 
 	queryLower := strings.ToLower(query)
+	queryTokens := tokenize(queryLower)
+	if len(queryTokens) == 0 {
+		return []*SearchResult{}, nil
+	}
 
-	// 用反向索引筛选候选文档。这里只取文档指针，不取正文——正文在锁外按需加载，
-	// 避免把磁盘 IO 放进索引读锁内（那会阻塞并发的 refresh）。
+	// BM25 打分。全程在内存中完成——只依赖 tokenFreq / docLen / 倒排表长度，
+	// 不读任何正文。这与旧实现有本质区别：
+	//   旧：对每个候选文档 ReadFile + strings.Count，IO 随候选集线性增长
+	//       （1000 文档库实测 p95 ≈ 100ms，因为中文字面查询的候选集几乎等于全库）；
+	//   新：打分零 IO，只有最终进入结果集的文档才读盘生成摘要片段。
+	// 打分在锁内（取读锁，不阻塞并发查询），读盘一律在锁外。
 	idx.mu.RLock()
-	candidates := idx.query(queryLower)
+	scored := idx.scoreBM25(queryTokens, s.resultCap())
 	idx.mu.RUnlock()
 
-	// 精确 substring 匹配。候选集通常远小于全库，因此只有真正参与打分的文档
-	// 才会被读进内存；索引整体只常驻 tokenSet（见 cachedDoc 的内存模型说明）。
-	results := make([]*SearchResult, 0, len(candidates))
-	for _, doc := range candidates {
-		content, contentLower, err := doc.contentOnce(idx)
+	results := make([]*SearchResult, 0, len(scored))
+	for _, sd := range scored {
+		content, contentLower, err := sd.doc.contentOnce(idx)
 		if err != nil {
 			// 文档已被并发 refresh 重建/删除（errDocStale），或正文读取失败 → 跳过
 			continue
 		}
+
+		// 优先用整串出现次数（与用户直觉一致）；多词查询整串匹配不到时
+		// 回落到各 token 词频之和，避免显示「匹配 0 次」这种反直觉结果。
 		matchCount := strings.Count(contentLower, queryLower)
 		if matchCount == 0 {
-			continue
+			for _, qt := range queryTokens {
+				matchCount += sd.doc.tokenFreq[qt]
+			}
 		}
 
 		results = append(results, &SearchResult{
-			Path:       doc.relPath,
-			Title:      doc.title,
-			Snippet:    extractSnippet(content, query, 50),
+			Path:    sd.doc.relPath,
+			Title:   sd.doc.title,
+			Snippet: extractSnippet(content, queryTokens[0], 50),
+			// 用首个查询 token 定位片段：多词查询时整串（含空格）在正文里
+			// 几乎不可能连续出现，按整串定位会退化成「返回开头 100 字」。
 			MatchCount: matchCount,
+			ModTime:    sd.doc.modTime,
 		})
 	}
 
 	// 本次查询按需加载了一批正文，若因此超出预算则在此淘汰（锁外执行）。
 	// 不放在 contentOnce 内部是为了保持 idx.mu → doc.contentMu 的锁序。
 	idx.enforceContentBudget()
-
-	// 按匹配次数降序排序
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].MatchCount > results[j].MatchCount
-	})
-
-	// 截断到最大结果数
-	if limit := s.resultCap(); len(results) > limit {
-		results = results[:limit]
-	}
 
 	return results, nil
 }

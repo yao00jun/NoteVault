@@ -11,6 +11,7 @@ vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
   },
   SearchService: {
     Search: vi.fn(),
+    GetIndexStats: vi.fn(),
   },
 }))
 
@@ -20,6 +21,12 @@ import { WorkspaceService, SearchService } from '@bindings/github.com/notevault/
 
 const mockedGetCurrentWorkspace = vi.mocked(WorkspaceService.GetCurrentWorkspace)
 const mockedSearch = vi.mocked(SearchService.Search)
+const mockedGetIndexStats = vi.mocked(SearchService.GetIndexStats)
+
+/** 造一条搜索结果。modTime 缺省给个固定值，避免每个用例重复写。 */
+function result(path: string, title: string, modTime: string, matchCount = 1) {
+  return { path, title, snippet: '', matchCount, modTime }
+}
 
 enableAutoUnmount(afterEach)
 
@@ -50,6 +57,13 @@ describe('SearchView', () => {
     vi.useFakeTimers()
     mockedGetCurrentWorkspace.mockReset()
     mockedSearch.mockReset()
+    mockedGetIndexStats.mockReset()
+    mockedGetIndexStats.mockResolvedValue({
+      docCount: 0,
+      tokenCount: 0,
+      scanComplete: true,
+      skippedCount: 0,
+    })
   })
 
   afterEach(() => {
@@ -65,12 +79,7 @@ describe('SearchView', () => {
       lastOpenedAt: '',
     })
     mockedSearch.mockResolvedValue([
-      {
-        path: 'notes/demo.md',
-        title: 'Demo',
-        snippet: 'knowledge',
-        matchCount: 1,
-      },
+      result('notes/demo.md', 'Demo', '2026-08-30T10:00:00Z'),
     ])
     const { wrapper, workspaceStore } = mountSearch()
     await flushPromises()
@@ -138,12 +147,91 @@ describe('SearchView', () => {
     await wrapper.find('[data-testid="search-input"]').setValue('新查询')
     await vi.advanceTimersByTimeAsync(300)
 
-    resolveFirst([{ path: 'old.md', title: '旧结果', snippet: '', matchCount: 1 }])
+    resolveFirst([result('old.md', '旧结果', '2026-08-01T00:00:00Z')])
     await flushPromises()
     expect(wrapper.find('[data-testid="search-result"]').exists()).toBe(false)
 
-    resolveSecond([{ path: 'new.md', title: '新结果', snippet: '', matchCount: 1 }])
+    resolveSecond([result('new.md', '新结果', '2026-08-31T00:00:00Z')])
     await flushPromises()
     expect(wrapper.find('[data-testid="search-result"]').text()).toContain('新结果')
+  })
+
+  // --- P0-4 排序切换 ---
+
+  it('默认按相关性排序，切到「按最近修改」后改按时间倒序', async () => {
+    const { wrapper, workspaceStore } = mountSearch()
+    workspaceStore.setCurrentWorkspace({
+      id: 'ws_1', name: '测试库', path: '/tmp/vault', createdAt: '', lastOpenedAt: '',
+    })
+    // 相关性高但很旧 vs 相关性低但很新
+    mockedSearch.mockResolvedValue([
+      result('a.md', '高相关但很旧', '2026-01-01T00:00:00Z', 9),
+      result('b.md', '低相关但很新', '2026-08-31T00:00:00Z', 1),
+    ])
+    await wrapper.find('[data-testid="search-input"]').setValue('关键词')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+
+    const titles = () => wrapper.findAll('[data-testid="search-result"]').map(r => r.text())
+    expect(titles()[0]).toContain('高相关但很旧')
+
+    await wrapper.find('[data-testid="sort-recent"]').trigger('click')
+    await flushPromises()
+
+    expect(titles()[0]).toContain('低相关但很新')
+    expect(mockedSearch).toHaveBeenCalledTimes(1) // 排序在前端做，不应重新请求
+  })
+
+  it('切回「按相关性」恢复后端给定的顺序', async () => {
+    const { wrapper, workspaceStore } = mountSearch()
+    workspaceStore.setCurrentWorkspace({
+      id: 'ws_1', name: '测试库', path: '/tmp/vault', createdAt: '', lastOpenedAt: '',
+    })
+    mockedSearch.mockResolvedValue([
+      result('a.md', '高相关但很旧', '2026-01-01T00:00:00Z', 9),
+      result('b.md', '低相关但很新', '2026-08-31T00:00:00Z', 1),
+    ])
+    await wrapper.find('[data-testid="search-input"]').setValue('关键词')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+
+    await wrapper.find('[data-testid="sort-recent"]').trigger('click')
+    await wrapper.find('[data-testid="sort-relevance"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-testid="search-result"]')[0].text()).toContain('高相关但很旧')
+  })
+
+  // --- P0-5 索引覆盖提示 ---
+
+  it('有文件因体积过大未被索引时给出提示', async () => {
+    mockedGetIndexStats.mockResolvedValue({
+      docCount: 5, tokenCount: 100, scanComplete: true, skippedCount: 3,
+    })
+    const { wrapper, workspaceStore } = mountSearch()
+    workspaceStore.setCurrentWorkspace({
+      id: 'ws_1', name: '测试库', path: '/tmp/vault', createdAt: '', lastOpenedAt: '',
+    })
+    mockedSearch.mockResolvedValue([result('a.md', 'A', '2026-08-01T00:00:00Z')])
+    await wrapper.find('[data-testid="search-input"]').setValue('关键词')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+
+    const warn = wrapper.find('[data-testid="index-warning"]')
+    expect(warn.exists()).toBe(true)
+    expect(warn.text()).toContain('3')
+  })
+
+  it('索引完整覆盖时不显示提示', async () => {
+    const { wrapper, workspaceStore } = mountSearch()
+    workspaceStore.setCurrentWorkspace({
+      id: 'ws_1', name: '测试库', path: '/tmp/vault', createdAt: '', lastOpenedAt: '',
+    })
+    mockedSearch.mockResolvedValue([result('a.md', 'A', '2026-08-01T00:00:00Z')])
+    await wrapper.find('[data-testid="search-input"]').setValue('关键词')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="index-warning"]').exists()).toBe(false)
   })
 })

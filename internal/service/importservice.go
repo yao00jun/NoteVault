@@ -2,12 +2,15 @@ package service
 
 import (
 	"archive/zip"
-	"github.com/notevault/notevault/internal/core"
+	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/notevault/notevault/internal/core"
 )
 
 // ImportResult 导入结果统计
@@ -39,18 +42,77 @@ type ImportOptions struct {
 }
 
 // ImportService 负责从外部来源导入笔记数据
-type ImportService struct{}
+type ImportService struct {
+	// tasks 异步任务框架（E-5）。nil 时异步导入不可用，
+	// 但同步导入照常工作——不能让任务框架变成导入功能的硬依赖。
+	tasks *TaskService
+}
 
-// NewImportService 创建导入服务
+// NewImportService 创建导入服务（不接异步任务框架）
 func NewImportService() *ImportService {
 	return &ImportService{}
+}
+
+// NewImportServiceWithTasks 创建导入服务并接入异步任务框架。
+//
+// 大库导入动辄几千个文件，同步执行会把 UI 卡死几十秒且无法中断。
+// 接入后前端可以用返回的 taskID 查进度、随时取消。
+func NewImportServiceWithTasks(tasks *TaskService) *ImportService {
+	return &ImportService{tasks: tasks}
 }
 
 // ImportMarkdownFolder 将文件夹中的 Markdown 文件导入到工作区
 // srcDir: 源文件夹绝对路径
 // workspacePath: 目标工作区根目录绝对路径
 // opts: 导入选项（空值使用默认）
+//
+// 这是同步版本，行为与历史完全一致，供脚本化调用与测试使用。
+// 前端的大库导入应改用 ImportMarkdownFolderAsync。
 func (s *ImportService) ImportMarkdownFolder(srcDir, workspacePath string, opts ImportOptions) (*ImportResult, error) {
+	return s.importFolder(context.Background(), srcDir, workspacePath, opts, nil)
+}
+
+// ImportMarkdownFolderAsync 异步导入文件夹，立即返回任务 ID。
+//
+// 返回的是任务 ID 而不是结果：结果通过 task:finished 事件推送，
+// 前端也可以随时用 TaskService.GetTask 查询。
+//
+// 导入期间前端 UI 不被阻塞，用户可以取消（TaskService.Cancel）。
+// 取消后已写入的文件会保留——导入是逐文件落盘的，中途停下会让工作区处于
+// "部分导入"状态，这一点前端必须如实告知用户，而不是假装什么都没发生。
+func (s *ImportService) ImportMarkdownFolderAsync(srcDir, workspacePath string, opts ImportOptions) (string, error) {
+	if s.tasks == nil {
+		return "", core.NewError(core.ErrInternal, "异步任务框架未初始化")
+	}
+	// 参数校验在这里同步做掉：用户选错目录应当立刻得到反馈，
+	// 而不是等一个"启动后马上失败"的任务。
+	if srcDir == "" {
+		return "", core.NewError(core.ErrInvalidInput, "源文件夹不能为空")
+	}
+	if workspacePath == "" {
+		return "", core.NewError(core.ErrInvalidInput, "目标工作区不能为空")
+	}
+
+	handle := s.tasks.submit(context.Background(), "导入 Markdown 文件夹", func(ctx context.Context, rep TaskReporter) error {
+		rep.Message("正在扫描文件…")
+		result, err := s.importFolder(ctx, srcDir, workspacePath, opts, func(done, total int, current string) {
+			rep.ReportMessage(done, total, "正在导入 "+filepath.Base(current))
+		})
+		if err != nil {
+			return err
+		}
+		rep.Message(fmt.Sprintf("导入完成：新增 %d，跳过 %d，失败 %d",
+			result.Imported, result.Skipped, len(result.Errors)))
+		return nil
+	})
+	return handle.ID(), nil
+}
+
+// importFolder 是文件夹导入的实际实现。
+//
+// onProgress 为 nil 时表示不做进度回报（同步调用路径）。
+// ctx 用于取消：遍历的每个文件都是检查点，取消后不会开始下一个文件。
+func (s *ImportService) importFolder(ctx context.Context, srcDir, workspacePath string, opts ImportOptions, onProgress func(done, total int, current string)) (*ImportResult, error) {
 	if srcDir == "" {
 		return nil, core.NewError(core.ErrInvalidInput, "源文件夹不能为空")
 	}
@@ -71,10 +133,22 @@ func (s *ImportService) ImportMarkdownFolder(srcDir, workspacePath string, opts 
 	strategy := normalizeStrategy(opts.ConflictStrategy)
 	includeSubdirs := opts.IncludeSubdirs
 
+	// 先数一遍：没有总数就算不出百分比，进度条会退化成"一直在转"。
+	// 多一次遍历的代价（只读目录项，不读文件内容）远小于进度可见的收益。
+	total := 0
+	if onProgress != nil {
+		total = countMarkdownFiles(srcDir)
+	}
+
 	result := &ImportResult{}
 	visited := make(map[string]bool)
+	done := 0
 
 	walkErr := filepath.WalkDir(srcDir, func(path string, d os.DirEntry, err error) error {
+		// 取消检查点：每个条目进来都看一眼，用户点取消后最多再多处理一个文件。
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err != nil {
 			result.Errors = append(result.Errors, "读取失败: "+path)
 			return nil // 跳过无法读取的条目，继续遍历
@@ -94,15 +168,43 @@ func (s *ImportService) ImportMarkdownFolder(srcDir, workspacePath string, opts 
 		if !includeSubdirs {
 			targetRel = filepath.Base(rel)
 		}
+		if onProgress != nil {
+			onProgress(done, total, path)
+		}
 		if err := s.importOneFile(path, workspacePath, targetRel, strategy, visited, result); err != nil {
 			result.Errors = append(result.Errors, err.Error())
 		}
+		done++
+		if onProgress != nil {
+			onProgress(done, total, path)
+		}
 		return nil
 	})
+
+	// 取消导致的中断：如实返回，让任务框架归类为 cancelled 而不是 failed。
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
 	if walkErr != nil {
 		return nil, core.OsToNVError(walkErr, "遍历源文件夹失败")
 	}
 	return result, nil
+}
+
+// countMarkdownFiles 统计目录树里的 Markdown 文件数量（用于进度总量）。
+// 遍历出错时返回目前已数到的数量——总量只影响进度显示，不值得因此失败。
+func countMarkdownFiles(root string) int {
+	n := 0
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if isMarkdownFile(d.Name()) {
+			n++
+		}
+		return nil
+	})
+	return n
 }
 
 // ImportZip 将 zip 压缩包中的 Markdown 文件导入到工作区

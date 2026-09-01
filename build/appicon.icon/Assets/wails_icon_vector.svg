@@ -1,9 +1,22 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-<svg width="100%" height="100%" viewBox="0 0 583 533" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
-    <g transform="matrix(1,0,0,1,-246,-251)">
-        <g id="Ebene1">
-            <path d="M246,251L265,784L401,784L506,450L507,450L505,784L641,784L829,251L682,251L596,567L595,567L596,251L478,251L378,568L391,251L246,251Z"/>
-        </g>
-    </g>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tileGradient" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1E9FFF"/>
+      <stop offset="0.5" stop-color="#0078D4"/>
+      <stop offset="1" stop-color="#0050A8"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" rx="200" ry="200" fill="url(#tileGradient)"/>
+  <g transform="translate(212 212)">
+    <path d="M90 185 C170 150 240 150 300 210 C360 150 430 150 510 185 L510 415 C430 380 360 380 300 375 C240 380 170 380 90 415 Z" fill="#FFFFFF"/>
+    <path d="M293 208 H307 V378 H293 Z" fill="#0050A8"/>
+    <path d="M130 252 H250 V265 H130 Z" fill="#0A6BC4"/>
+    <path d="M130 292 H280 V305 H130 Z" fill="#0A6BC4"/>
+    <path d="M130 332 H225 V345 H130 Z" fill="#0A6BC4"/>
+    <path d="M350 252 H470 V265 H350 Z" fill="#0A6BC4"/>
+    <path d="M320 292 H470 V305 H320 Z" fill="#0A6BC4"/>
+    <path d="M375 332 H470 V345 H375 Z" fill="#0A6BC4"/>
+    <path d="M283 150 L317 150 L317 230 L300 208 L283 230 Z" fill="#FFC53D"/>
+  </g>
 </svg>

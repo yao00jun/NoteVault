@@ -56,13 +56,24 @@ export function escapeRegex(text: string): string {
 /**
  * 在文本中高亮所有出现的关键词（不区分大小写）
  * 返回原始转义后的 HTML，关键词包裹在 <mark> 中
+ *
+ * 多词查询按空格拆分后逐个高亮。
+ * 原先直接用整个查询串构造正则，于是搜「缓存 过期策略」时要匹配
+ * 「缓存 过期策略」这个带空格的连续串——正文里几乎不可能出现，
+ * 结果一个字都高亮不出来。这与后端 P0-1 修复的多词检索是同一个坑。
  */
 export function highlightText(text: string, query: string): string {
   if (!text) return ''
   const escaped = escapeHtml(text)
-  const q = query.trim()
-  if (!q) return escaped
-  const regex = new RegExp(`(${escapeRegex(q)})`, 'gi')
+  const terms = query.trim().split(/\s+/).filter(Boolean)
+  if (terms.length === 0) return escaped
+  // 按词长降序排列，避免短词先匹配把长词切碎（如先匹配「缓存」会破坏「缓存失效」）
+  const pattern = terms
+    .slice()
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegex)
+    .join('|')
+  const regex = new RegExp(`(${pattern})`, 'gi')
   return escaped.replace(regex, '<mark class="search-highlight">$1</mark>')
 }
 

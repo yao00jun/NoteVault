@@ -12,7 +12,20 @@ interface SearchResult {
   title: string
   snippet: string
   matchCount: number
+  modTime: string
 }
+
+interface IndexStats {
+  docCount: number
+  tokenCount: number
+  scanComplete: boolean
+  skippedCount: number
+}
+
+// 排序模式（P0-4）。
+// relevance 是后端 BM25 算出来的顺序，前端不做任何重排；
+// recent 才需要在前端按 modTime 重排。
+type SortMode = 'relevance' | 'recent'
 
 const router = useRouter()
 const { t, tm } = useI18n()
@@ -23,9 +36,51 @@ const results = ref<SearchResult[]>([])
 const isSearching = ref(false)
 const errorMsg = ref('')
 const recentSearches = ref<string[]>([...(tm('search.recentExamples') as string[])])
+const sortMode = ref<SortMode>('relevance')
+const indexStats = ref<IndexStats | null>(null)
 
 const hasResults = computed(() => results.value.length > 0)
 const currentWorkspace = computed(() => workspaceStore.currentWorkspace)
+
+// 后端已按 BM25 相关性排好序，只在「最近修改」模式下才重排
+const sortedResults = computed(() => {
+  if (sortMode.value === 'recent') {
+    return [...results.value].sort(
+      (a, b) => new Date(b.modTime).getTime() - new Date(a.modTime).getTime()
+    )
+  }
+  return results.value
+})
+
+// 索引覆盖提示（P0-5）：扫描有文件数与单文件体积两道上限，
+// 超限部分不会进索引。不提示的话用户会以为「搜不到就是没有」。
+const indexWarning = computed(() => {
+  const s = indexStats.value
+  if (!s) return ''
+  if (s.skippedCount > 0 && !s.scanComplete) {
+    return t('search.indexPartialBoth', { skipped: s.skippedCount })
+  }
+  if (s.skippedCount > 0) {
+    return t('search.indexSkipped', { skipped: s.skippedCount })
+  }
+  if (!s.scanComplete) {
+    return t('search.indexTruncated')
+  }
+  return ''
+})
+
+function setSortMode(mode: SortMode) {
+  sortMode.value = mode
+}
+
+// 拉取索引覆盖统计。不阻塞搜索渲染，失败就当没有提示。
+async function loadIndexStats(workspacePath: string) {
+  try {
+    indexStats.value = (await SearchService.GetIndexStats(workspacePath)) as IndexStats
+  } catch {
+    indexStats.value = null
+  }
+}
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 let searchGeneration = 0
@@ -62,6 +117,8 @@ async function doSearch() {
     const data = await SearchService.Search(currentWorkspace.value.path, query)
     if (generation !== searchGeneration) return
     results.value = Array.isArray(data) ? data as SearchResult[] : []
+    // 顺带刷新索引覆盖统计（不 await，避免拖慢搜索结果呈现）
+    void loadIndexStats(currentWorkspace.value.path)
   } catch (e) {
     if (generation !== searchGeneration) return
     console.error('Search failed:', e)
@@ -218,10 +275,42 @@ function getFolder(path: string): string {
       >
         <div class="results-header">
           <span>{{ t('search.matchCount', { count: results.length }) }}</span>
+          <div
+            class="sort-switch"
+            role="group"
+            :aria-label="t('search.sortBy')"
+          >
+            <button
+              type="button"
+              class="sort-btn"
+              :class="{ active: sortMode === 'relevance' }"
+              data-testid="sort-relevance"
+              @click="setSortMode('relevance')"
+            >
+              {{ t('search.sortRelevance') }}
+            </button>
+            <button
+              type="button"
+              class="sort-btn"
+              :class="{ active: sortMode === 'recent' }"
+              data-testid="sort-recent"
+              @click="setSortMode('recent')"
+            >
+              {{ t('search.sortRecent') }}
+            </button>
+          </div>
+        </div>
+        <div
+          v-if="indexWarning"
+          class="index-warning"
+          data-testid="index-warning"
+        >
+          <AlertCircle :size="14" />
+          <span>{{ indexWarning }}</span>
         </div>
         <div class="results-list">
           <div
-            v-for="result in results"
+            v-for="result in sortedResults"
             :key="result.path"
             class="result-item"
             data-testid="search-result"
@@ -440,9 +529,58 @@ function getFolder(path: string): string {
 }
 
 .results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
   font-size: var(--text-sm);
   color: var(--text-muted);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.sort-switch {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+
+.sort-btn {
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.sort-btn:hover {
+  color: var(--text-primary);
+}
+
+.sort-btn.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.index-warning {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--warning-border, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--warning-bg, var(--bg-secondary));
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.5;
 }
 
 .results-list {

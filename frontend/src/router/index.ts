@@ -32,6 +32,11 @@ const routes = [
     component: () => import('@/views/GraphView.vue'),
   },
   {
+    path: '/bases',
+    name: 'bases',
+    component: () => import('@/views/BasesView.vue'),
+  },
+  {
     path: '/qna',
     name: 'qna',
     component: () => import('@/views/QnAView.vue'),
@@ -60,6 +65,11 @@ const routes = [
     path: '/archive',
     name: 'archive',
     component: () => import('@/views/ArchiveView.vue'),
+  },
+  {
+    path: '/history',
+    name: 'history',
+    component: () => import('@/views/HistoryView.vue'),
   },
   {
     path: '/trash',

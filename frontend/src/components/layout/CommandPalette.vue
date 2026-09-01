@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
-import { Search, FileText, Folder, Palette, Settings, Save, X, Columns, ChevronRight, MessageCircle, Upload, Puzzle } from 'lucide-vue-next'
+import { Search, FileText, Folder, Palette, Settings, Save, X, Columns, ChevronRight, MessageCircle, Upload, Puzzle, History } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
@@ -82,6 +82,13 @@ const allCommands = computed<Command[]>(() => [
     description: t('palette.commands.reminders.desc'),
     icon: Settings,
     action: () => { router.push('/reminders'); close() },
+  },
+  {
+    id: 'history',
+    label: t('palette.commands.history.label'),
+    description: t('palette.commands.history.desc'),
+    icon: History,
+    action: () => { router.push('/history'); close() },
   },
   {
     id: 'archive',

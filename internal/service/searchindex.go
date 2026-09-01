@@ -3,8 +3,8 @@ package service
 import (
 	"crypto/sha1"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,6 +15,7 @@ import (
 	"unicode"
 
 	"github.com/notevault/notevault/internal/core"
+	"github.com/notevault/notevault/internal/infra/schema"
 )
 
 // ---------------------------------------------------------------------------
@@ -22,32 +23,60 @@ import (
 // ---------------------------------------------------------------------------
 
 // tokenize 将文本拆分为小写 token。
-// 拉丁文/数字/下划线连续串作为一个 token；
-// CJK 汉字每个字符单独作为一个 token；
-// 其他字符（空格、标点、连字符等）作为分隔符。
-// 这种策略使得搜索 "wiki" 能命中含 "wiki-link" 的文档（倒排表筛出候选，
-// 再由 strings.Count 精确匹配确认）。
+//
+// 分词策略（2026-08-31 由「CJK 单字」改为「CJK 二元切分」）：
+//   - 拉丁文/数字/下划线连续串作为一个 token；
+//   - CJK 连续段长度 >= 2 时产出全部 bigram（滑动窗口），长度 == 1 时产出该单字；
+//   - 其他字符（空格、标点、连字符等）作为分隔符。
+//
+// 为什么改成 bigram：
+//  1. 单字区分度太低。搜「缓存失效」切成 缓/存/失/效 四个单字后，
+//     含「存储」「失败」「失望」的文档都会命中，倒排表几乎失去筛选能力；
+//  2. bigram（缓存/存失/失效）保留相邻关系，是中文检索的标准做法；
+//  3. 顺带支持多词查询——查询与文档用同一套切分，词间空格不再是障碍；
+//  4. token 数量几乎不变：n 个连续汉字的单字 token 是 n 个，bigram 是 n-1 个，
+//     因此倒排表与索引摘要的体积不受影响。
+//
+// 例：「缓存失效」→ [缓存, 存失, 失效]；「Hello 世界」→ [hello, 世界]
 func tokenize(s string) []string {
 	s = strings.ToLower(s)
 	tokens := make([]string, 0, len(s)/4)
-	var b strings.Builder
-	flush := func() {
-		if b.Len() > 0 {
-			tokens = append(tokens, b.String())
-			b.Reset()
+
+	var latin strings.Builder // 拉丁/数字/下划线缓冲
+	var han []rune            // 连续 CJK 缓冲
+
+	flushLatin := func() {
+		if latin.Len() > 0 {
+			tokens = append(tokens, latin.String())
+			latin.Reset()
 		}
 	}
+	flushHan := func() {
+		if len(han) == 1 {
+			// 孤立单字：没有相邻字可组 bigram，只能自己作为一个 token
+			tokens = append(tokens, string(han[0]))
+		}
+		for i := 0; i+1 < len(han); i++ {
+			tokens = append(tokens, string(han[i:i+2]))
+		}
+		han = han[:0]
+	}
+
 	for _, r := range s {
-		if unicode.Is(unicode.Han, r) {
-			flush()
-			tokens = append(tokens, string(r))
-		} else if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
-			b.WriteRune(r)
-		} else {
-			flush()
+		switch {
+		case unicode.Is(unicode.Han, r):
+			flushLatin()
+			han = append(han, r)
+		case unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_':
+			flushHan()
+			latin.WriteRune(r)
+		default:
+			flushLatin()
+			flushHan()
 		}
 	}
-	flush()
+	flushLatin()
+	flushHan()
 	return tokens
 }
 
@@ -58,7 +87,8 @@ func tokenize(s string) []string {
 // cachedDoc 缓存单个 Markdown 文件的索引元数据，正文按需加载。
 //
 // 内存模型（2026-08-29 重构）：
-//   - 常驻：relPath / modTime / title / tokenSet。反向索引与候选筛选只依赖它们，
+//   - 常驻：relPath / modTime / title / tokenFreq / docLen。
+//     反向索引、候选筛选与 BM25 打分只依赖它们，
 //     摘要持久化与冷启动恢复也只恢复这些字段；
 //   - 按需：content / contentLower。仅在文档真正成为查询候选（或进入问答上下文）时
 //     才 ReadFile，并受所属索引的内容预算约束（见 enforceContentBudget）。
@@ -72,9 +102,25 @@ type cachedDoc struct {
 	modTime time.Time // 文件最后修改时间
 	title   string    // 文档标题（首个 "# " 行或文件名）
 
-	// tokenSet 去重后的 token 集合（用于增量删除）。
+	// tokenFreq token → 出现次数。
+	//
+	// 原为 map[string]bool（仅集合），P0-1 升级为词频以支持 BM25 打分。
+	// 没有保留两个 map：二者 key 集合完全相同，同存一份会让索引内存翻倍，
+	// 而增量删除、倒排表维护都只需要遍历 key。
+	//
 	// 构建完成后不再修改，可在持有 idx.mu 读锁时安全读取。
-	tokenSet map[string]bool
+	tokenFreq map[string]int
+
+	// docLen 文档 token 总数（BM25 的长度归一用）。
+	// 旧实现没有这个字段，因此排序无法区分「关键词密度高」与「文档本身长」，
+	// 长文档仅凭篇幅就能在 matchCount 排序里霸榜。
+	docLen int
+
+	// titleFreq 标题的词频（P0-3 字段加权用）。
+	//
+	// 刻意不写进索引摘要：标题很短，从 doc.title 现算 tokenize 的成本可以忽略，
+	// 而写进摘要会让格式再升一个版本、旧摘要全部失效。
+	titleFreq map[string]int
 
 	// contentMu 保护下面与正文相关的全部字段。
 	// 锁序约定：idx.mu → doc.contentMu；反向取锁必然死锁，切勿违反。
@@ -170,6 +216,22 @@ type searchIndex struct {
 	// 二者共同保证「正文内存可预期」，而不是随知识库体积线性增长。
 	contentBytes  atomic.Int64
 	contentBudget int64
+
+	// BM25 统计（P0-1）
+	//
+	// totalDocLen = 全部文档 docLen 之和，用于算平均文档长度。
+	// 另外两个统计量刻意不落字段，避免与源头失同步：
+	//   - 文档总数 N       → len(idx.docs)
+	//   - 某 token 的 df   → len(idx.inverted[token])
+	totalDocLen int64
+
+	// 索引覆盖范围（P0-5）。
+	//
+	// 旧实现里这两件事都是静默发生的：文件超过 maxSearchFileSize 被跳过、
+	// 扫描触及 maxScanFiles 提前中断，用户完全不知情，
+	// 会以为「搜不到就是没有」。现在记录下来，由状态栏显式提示。
+	scanComplete    bool // 上次扫描是否完整（false = 触及 maxScanFiles 上限）
+	skippedOversize int  // 因体积超过 maxSearchFileSize 被跳过的文件数
 }
 
 // defaultContentBudgetBytes 单个工作区索引的正文缓存预算。
@@ -228,43 +290,13 @@ func newSearchIndex() *searchIndex {
 	}
 }
 
-// searchIndexCache 全局缓存：workspacePath → *searchIndex
-var searchIndexCache sync.Map
-
-// getSearchIndex 按 workspacePath 获取或创建索引
-func getSearchIndex(workspacePath string) *searchIndex {
-	v, _ := searchIndexCache.LoadOrStore(workspacePath, newSearchIndex())
-	return v.(*searchIndex)
-}
-
-// ClearSearchIndex 清除指定工作区的搜索索引
-func ClearSearchIndex(workspacePath string) {
-	searchIndexCache.Delete(workspacePath)
-}
-
-// ClearAllSearchIndexes 清除所有搜索索引（用于测试）
-func ClearAllSearchIndexes() {
-	searchIndexCache.Range(func(key, _ interface{}) bool {
-		searchIndexCache.Delete(key)
-		return true
-	})
-}
-
-// FlushSearchIndex 强制把指定工作区的索引摘要落盘。
-// 常规搜索走节流保存（maybeSaveSummary），不会每次都写盘；
-// 这个方法供「应用退出 / 切换工作区」等需要确保落盘的时机调用。
-func FlushSearchIndex(workspacePath string) error {
-	v, ok := searchIndexCache.Load(workspacePath)
-	if !ok {
-		return nil
-	}
-	idx := v.(*searchIndex)
-	idx.mu.Lock()
-	idx.dirty = false
-	idx.lastSave = time.Now()
-	idx.mu.Unlock()
-	return idx.SaveSummary(workspacePath)
-}
+// 索引的存取与生命周期管理已移到 indexregistry.go（E-4）。
+//
+// 原先这里的包级 sync.Map 没有释放路径：切走工作区后索引仍常驻内存，
+// 而正文缓存预算是按「单个工作区」计的，开的库越多总占用越不可控。
+// 现在由 SearchIndexRegistry 统一持有，WorkspaceService 负责在切换 / 删除时释放。
+// 兼容入口（getSearchIndex / ClearSearchIndex / ClearAllSearchIndexes /
+// FlushSearchIndex）保留为转发到包级默认注册表，既有测试无需改动。
 
 // ---------------------------------------------------------------------------
 // 增量更新
@@ -287,6 +319,9 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 	}
 	current := make(map[string]scanned)
 	scanComplete = true
+	// 跳过统计（P0-5）：这些数字会在阶段 4 随索引状态一起写回，
+	// 让用户知道自己的库有多少内容没被索引，而不是以为「搜不到就是没有」。
+	var skippedOversize int
 
 	walkErr := filepath.Walk(workspacePath, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
@@ -301,9 +336,11 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 		ext := strings.ToLower(filepath.Ext(path))
 		if ext == ".md" || ext == ".markdown" {
 			if info.Size() > maxSearchFileSize {
+				skippedOversize++
 				return nil
 			}
 			if len(current) >= maxScanFiles {
+				// 触及扫描上限，scanComplete=false 即代表「还有文件没扫到」
 				scanComplete = false
 				return filepath.SkipDir
 			}
@@ -377,10 +414,7 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 
 		// 分词并构建 token 集合
 		tokens := tokenize(contentStr)
-		tokenSet := make(map[string]bool, len(tokens))
-		for _, t := range tokens {
-			tokenSet[t] = true
-		}
+		tokenFreq := freqOf(tokens)
 
 		built = append(built, builtDoc{rel: rel, doc: &cachedDoc{
 			relPath: rel,
@@ -391,7 +425,9 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 			content:       contentStr,
 			contentLower:  strings.ToLower(contentStr),
 			contentLoaded: true,
-			tokenSet:      tokenSet,
+			tokenFreq:     tokenFreq,
+			titleFreq:     freqOf(tokenize(title)),
+			docLen:        len(tokens),
 			lastUsed:      time.Now().UnixNano(),
 		}})
 	}
@@ -405,17 +441,18 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 		idx.dirty = true
 	}
 	for _, b := range built {
-		// 重新索引前先删除旧 token
+		// 重新索引前先删除旧 token（顺带归还该文档的 totalDocLen）
 		if old, ok := idx.docs[b.rel]; ok {
 			idx.removeDocLocked(old)
 		}
-		for token := range b.doc.tokenSet {
+		for token := range b.doc.tokenFreq {
 			if idx.inverted[token] == nil {
 				idx.inverted[token] = make(map[string]bool)
 			}
 			idx.inverted[token][b.rel] = true
 		}
 		idx.docs[b.rel] = b.doc
+		idx.totalDocLen += int64(b.doc.docLen)
 		// 文档尚未发布到 idx.docs 之外，此处记账无需 contentMu
 		idx.accountContentBytes(int64(len(b.doc.content)) * 2)
 		idx.dirty = true
@@ -427,6 +464,12 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 			doc.contentMu.Unlock()
 		}
 	}
+	idx.mu.Unlock()
+
+	// 覆盖范围随索引状态一起写回（P0-5）
+	idx.mu.Lock()
+	idx.scanComplete = scanComplete
+	idx.skippedOversize = skippedOversize
 	idx.mu.Unlock()
 
 	// 正文预算在锁外执行：内部需要取读锁做快照，持写锁调用会自锁
@@ -441,7 +484,7 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 // 标记是必要的：并发查询可能仍持有该文档的指针（候选集在锁外才取正文），
 // 有了 removed 标记，contentOnce 就能识别出「这份旧正文已失效」而不是拿它去算结果。
 func (idx *searchIndex) removeDocLocked(doc *cachedDoc) {
-	for token := range doc.tokenSet {
+	for token := range doc.tokenFreq {
 		if postings, ok := idx.inverted[token]; ok {
 			delete(postings, doc.relPath)
 			if len(postings) == 0 {
@@ -450,6 +493,7 @@ func (idx *searchIndex) removeDocLocked(doc *cachedDoc) {
 		}
 	}
 	delete(idx.docs, doc.relPath)
+	idx.totalDocLen -= int64(doc.docLen)
 	doc.contentMu.Lock()
 	doc.removed = true
 	doc.releaseContentLocked(idx)
@@ -487,6 +531,122 @@ func (idx *searchIndex) query(queryLower string) []*cachedDoc {
 	return candidates
 }
 
+// ---------------------------------------------------------------------------
+// BM25 打分（P0-1）
+// ---------------------------------------------------------------------------
+
+const (
+	// bm25K1 词频饱和参数。越大则词频越接近线性，越小则越早饱和。
+	// 1.2 是 BM25 的经典取值：一篇文档里某词出现 10 次不应当比出现 3 次重要 3 倍。
+	bm25K1 = 1.2
+	// bm25B 长度归一强度。0 = 完全不管长度，1 = 完全按平均长度归一。
+	// 0.75 是经典取值，足以压制「又长又杂的整理稿」仅凭篇幅霸榜。
+	bm25B = 0.75
+	// bm25TitleBoost 标题字段的加权系数（P0-3）。
+	//
+	// 标题里的词比正文里的词更能说明文档主题。取 3.0 的经验依据：
+	// 足以让主题文档压过「正文里偶然提到一次」的长文档，
+	// 又不至于让只改了标题的空壳文档霸榜。
+	//
+	// 这替换了旧实现里「标题命中额外 +2 分」的魔法常数——
+	// 那个常数与词频、文档长度都不成比例，在不同规模的库上表现不一致。
+	bm25TitleBoost = 3.0
+)
+
+// freqOf 把 token 序列统计成词频表
+func freqOf(tokens []string) map[string]int {
+	if len(tokens) == 0 {
+		return nil
+	}
+	freq := make(map[string]int, len(tokens))
+	for _, t := range tokens {
+		freq[t]++
+	}
+	return freq
+}
+
+// scoredDoc 打分中间结构
+type scoredDoc struct {
+	doc   *cachedDoc
+	score float64
+}
+
+// scoreBM25 用 BM25 给候选文档打分，返回按分数降序的列表。
+//
+// 调用者须持有 idx.mu 读锁——本方法只读 docs / inverted / totalDocLen，
+// 不碰正文、不做 IO。这是相对旧实现最大的改变：
+// 旧实现要对每个候选文档 ReadFile 再 strings.Count，IO 随候选集线性增长
+// （实测 1000 文档库单次查询 p95 约 100ms）；BM25 打分全程在内存里完成，
+// 只有最终进入结果集的少量文档才需要读正文生成摘要片段。
+//
+// limit <= 0 表示不截断。
+func (idx *searchIndex) scoreBM25(queryTokens []string, limit int) []*scoredDoc {
+	if len(queryTokens) == 0 || len(idx.docs) == 0 {
+		return nil
+	}
+
+	n := float64(len(idx.docs))
+	avgdl := float64(idx.totalDocLen) / n
+	if avgdl < 1 {
+		avgdl = 1
+	}
+
+	// 候选集 = 含任意查询 token 的文档并集（与旧实现的筛选口径一致）
+	candidates := make(map[*cachedDoc]struct{}, 64)
+	for _, qt := range queryTokens {
+		for rel := range idx.inverted[qt] {
+			if doc, ok := idx.docs[rel]; ok {
+				candidates[doc] = struct{}{}
+			}
+		}
+	}
+
+	scored := make([]*scoredDoc, 0, len(candidates))
+	for doc := range candidates {
+		dl := float64(doc.docLen)
+		if dl < 1 {
+			dl = 1
+		}
+		var score float64
+		for _, qt := range queryTokens {
+			tfAll := float64(doc.tokenFreq[qt])
+			if tfAll == 0 {
+				continue
+			}
+			// 字段加权（P0-3）：tokenFreq 统计的是全文，标题行也在其中。
+			// 先把标题部分剥离出来单独加权，否则标题词会被重复计入正文权重。
+			tfTitle := float64(doc.titleFreq[qt])
+			tfBody := tfAll - tfTitle
+			if tfBody < 0 {
+				// 标题来自文件名时它不在正文里，相减会得到负数
+				tfBody = 0
+			}
+			tf := tfBody + tfTitle*bm25TitleBoost
+
+			df := float64(len(idx.inverted[qt]))
+			// BM25 的 IDF（带平滑项，避免 df=0 或 df=N 时发散）
+			idf := math.Log(1 + (n-df+0.5)/(df+0.5))
+			score += idf * (tf * (bm25K1 + 1)) / (tf + bm25K1*(1-bm25B+bm25B*dl/avgdl))
+		}
+		if score > 0 {
+			scored = append(scored, &scoredDoc{doc: doc, score: score})
+		}
+	}
+
+	// 分数相同时按路径排序，保证结果稳定（否则 map 遍历顺序会让输出抖动）
+	sort.Slice(scored, func(i, j int) bool {
+		if scored[i].score != scored[j].score {
+			return scored[i].score > scored[j].score
+		}
+		return scored[i].doc.relPath < scored[j].doc.relPath
+	})
+
+	if limit > 0 && len(scored) > limit {
+		scored = scored[:limit]
+	}
+	return scored
+}
+
 // stats 返回索引统计信息
 func (idx *searchIndex) stats() (docCount, tokenCount int) {
 	idx.mu.RLock()
@@ -511,18 +671,37 @@ func (idx *searchIndex) stats() (docCount, tokenCount int) {
 // 文件大小：约 8MB / 5000 文档（仅 tokenSet，不含 content/contentLower）
 // ---------------------------------------------------------------------------
 
-// indexSummary 摘要中每条记录的形态
+// 摘要格式版本登记在 schema.SearchSummary（E-7 统一版本信封）：
+//
+// v1：仅 token 集合（indexSummaryEntry.TokenSet）
+// v2：token 词频 + 文档长度（P0-1，BM25 打分需要这两项）
+// v3：迁到统一版本信封（schemaVersion/kind/updatedAt/data）
+//
+// 版本不匹配的摘要一律丢弃重建，而不是尝试兼容——
+// 摘要只是冷启动加速的缓存，重建的代价（一次全量扫描）远小于
+// 为兼容旧格式在数据层引入分支的复杂度。
+// 这也是本项目里唯一对 CompatLegacy / CompatOlder 也直接丢弃的落盘文件：
+// 别处那些都是用户数据，丢了不可再生。
+
+// indexSummary 摘要中每条记录的形态。
+//
+// Tokens 与 Freqs 是平行数组（而非 map[string]int），
+// 目的是压缩序列化体积：5000 文档的摘要约 8MB，
+// map 形态会把 key 重复写一遍，平行数组能省下接近一半。
 type indexSummaryEntry struct {
-	RelPath  string    `json:"relPath"`
-	Title    string    `json:"title"`
-	ModTime  time.Time `json:"modTime"`
-	TokenSet []string  `json:"tokenSet"`
+	RelPath string    `json:"relPath"`
+	Title   string    `json:"title"`
+	ModTime time.Time `json:"modTime"`
+	Tokens  []string  `json:"tokens"`
+	Freqs   []int     `json:"freqs"`
+	DocLen  int       `json:"docLen"`
 }
 
-// indexSummaryFile 摘要文件结构
-type indexSummaryFile struct {
+// indexSummaryPayload 摘要文件的载荷（信封的 data 字段）。
+//
+// schemaVersion / kind / updatedAt 由 schema.Envelope 统一承载，这里不再重复。
+type indexSummaryPayload struct {
 	WorkspacePath string              `json:"workspacePath"`
-	UpdatedAt     time.Time           `json:"updatedAt"`
 	Entries       []indexSummaryEntry `json:"entries"`
 }
 
@@ -549,25 +728,27 @@ func (idx *searchIndex) SaveSummary(workspacePath string) error {
 	idx.mu.RLock()
 	entries := make([]indexSummaryEntry, 0, len(idx.docs))
 	for rel, doc := range idx.docs {
-		tokens := make([]string, 0, len(doc.tokenSet))
-		for t := range doc.tokenSet {
+		tokens := make([]string, 0, len(doc.tokenFreq))
+		freqs := make([]int, 0, len(doc.tokenFreq))
+		for t, f := range doc.tokenFreq {
 			tokens = append(tokens, t)
+			freqs = append(freqs, f)
 		}
 		entries = append(entries, indexSummaryEntry{
-			RelPath:  rel,
-			Title:    doc.title,
-			ModTime:  doc.modTime,
-			TokenSet: tokens,
+			RelPath: rel,
+			Title:   doc.title,
+			ModTime: doc.modTime,
+			Tokens:  tokens,
+			Freqs:   freqs,
+			DocLen:  doc.docLen,
 		})
 	}
 	idx.mu.RUnlock()
 
-	summary := indexSummaryFile{
+	data, err := schema.MarshalAs(schema.SearchSummary, indexSummaryPayload{
 		WorkspacePath: filepath.ToSlash(filepath.Clean(workspacePath)),
-		UpdatedAt:     time.Now(),
 		Entries:       entries,
-	}
-	data, err := json.MarshalIndent(summary, "", "  ")
+	})
 	if err != nil {
 		return core.WrapError(core.ErrInternal, "序列化索引摘要失败", err)
 	}
@@ -601,7 +782,7 @@ func (idx *searchIndex) maybeSaveSummary(workspacePath string) {
 }
 
 // LoadSummary 从磁盘加载摘要到当前索引
-// 仅恢复 tokenSet / title / modTime；absPath 与 content 留空
+// 仅恢复 tokenFreq / docLen / title / modTime；absPath 与 content 留空
 // （absPath 由 refresh 补挂，content 在查询命中时按需读取）
 // 必须在调用 refresh 之前调用；调用者负责后续 refresh 时按 modtime 比对
 // 幂等：多次调用只加载一次（基于 summaryLoaded 标志）
@@ -623,9 +804,14 @@ func (idx *searchIndex) LoadSummary(workspacePath string) error {
 		}
 		return core.OsToNVError(err, "读取摘要失败: "+path)
 	}
-	var summary indexSummaryFile
-	if err := json.Unmarshal(data, &summary); err != nil {
+	summary, res, err := schema.UnmarshalAs[indexSummaryPayload](data, schema.SearchSummary)
+	if err != nil {
 		// 损坏的摘要不应阻塞搜索，返回 nil 让上层重新扫描
+		return nil
+	}
+	// 版本不完全一致（v1/v2 旧摘要、裸格式、更高版本）一律丢弃：重建代价远小于兼容分支。
+	// 这里不能静默沿用旧结构——v1 没有词频与文档长度，BM25 会拿着残缺数据算出错误分数。
+	if res.Compat != schema.CompatExact {
 		return nil
 	}
 	// 校验 workspacePath 一致（避免哈希碰撞误读其他工作区的摘要）
@@ -634,22 +820,31 @@ func (idx *searchIndex) LoadSummary(workspacePath string) error {
 		return nil
 	}
 	for _, e := range summary.Entries {
-		tokenSet := make(map[string]bool, len(e.TokenSet))
-		for _, t := range e.TokenSet {
-			tokenSet[t] = true
+		tokenFreq := make(map[string]int, len(e.Tokens))
+		for i, t := range e.Tokens {
+			f := 1
+			if i < len(e.Freqs) {
+				f = e.Freqs[i]
+			}
+			tokenFreq[t] = f
 			if idx.inverted[t] == nil {
 				idx.inverted[t] = make(map[string]bool)
 			}
 			idx.inverted[t][e.RelPath] = true
 		}
 		idx.docs[e.RelPath] = &cachedDoc{
-			relPath:  e.RelPath,
-			modTime:  e.ModTime,
-			title:    e.Title,
-			tokenSet: tokenSet,
+			relPath: e.RelPath,
+			modTime: e.ModTime,
+			title:   e.Title,
 			// absPath 留空：摘要只记录相对路径，绝对路径由后续 refresh 的 toRelink 补挂。
 			// content / contentLower 也留空（contentLoaded=false），查询命中时才 ReadFile。
+			tokenFreq: tokenFreq,
+			// titleFreq 不落盘，从 title 现算——标题很短，重算成本可忽略，
+			// 换来的是摘要格式不必再升版本。
+			titleFreq: freqOf(tokenize(e.Title)),
+			docLen:    e.DocLen,
 		}
+		idx.totalDocLen += int64(e.DocLen)
 	}
 	return nil
 }

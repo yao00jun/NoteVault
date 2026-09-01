@@ -5,6 +5,7 @@ import TitleBar from '@/components/layout/TitleBar.vue'
 import SideBar from '@/components/layout/SideBar.vue'
 import StatusBar from '@/components/layout/StatusBar.vue'
 import CommandPalette from '@/components/layout/CommandPalette.vue'
+import ToastHost from '@/components/layout/ToastHost.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { usePluginRuntimeStore } from '@/stores/pluginRuntime'
 import { useReminderNotifications } from '@/composables/useReminderNotifications'
@@ -133,6 +134,7 @@ function handleNewFileFromPalette() {
       @close="closeCommandPalette"
       @new-file="handleNewFileFromPalette"
     />
+    <ToastHost />
     <div class="plugin-notification-stack">
       <div
         v-for="notification in pluginRuntimeStore.notifications"

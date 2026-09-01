@@ -208,6 +208,109 @@
       </button>
     </section>
 
+    <!-- Git 版本管理（P2-4） -->
+    <section
+      v-if="currentWorkspace"
+      class="iv-card"
+    >
+      <div class="iv-card-title">
+        <GitBranch :size="14" />
+        <span>{{ t('git.title') }}</span>
+      </div>
+      <p class="iv-git-desc">
+        {{ t('git.desc') }}
+      </p>
+
+      <!-- git 未安装 -->
+      <div
+        v-if="gitStatus && !gitStatus.installed"
+        class="iv-git-warn"
+      >
+        {{ t('git.notInstalled') }}
+      </div>
+
+      <!-- 非仓库：初始化入口 -->
+      <template v-else-if="gitStatus && !gitStatus.isRepo">
+        <div class="iv-git-status-line">
+          {{ t('git.notRepo') }}
+        </div>
+        <button
+          class="iv-btn iv-btn-primary"
+          :disabled="gitBusy"
+          @click="doGitInit"
+        >
+          <Loader2
+            v-if="gitBusy"
+            :size="14"
+            class="spin"
+          />
+          <GitBranch
+            v-else
+            :size="14"
+          />
+          <span>{{ t('git.initBtn') }}</span>
+        </button>
+      </template>
+
+      <!-- 已是仓库：状态 + 一键提交 -->
+      <template v-else-if="gitStatus">
+        <div class="iv-git-stats">
+          <div class="iv-git-stat">
+            <span class="iv-git-stat-label">{{ t('git.branch') }}</span>
+            <span class="iv-git-stat-value">{{ gitStatus.branch || '—' }}</span>
+          </div>
+          <div class="iv-git-stat">
+            <span class="iv-git-stat-label">{{ t('git.changed') }}</span>
+            <span class="iv-git-stat-value">{{ gitStatus.changed }}</span>
+          </div>
+          <div class="iv-git-stat">
+            <span class="iv-git-stat-label">{{ t('git.untracked') }}</span>
+            <span class="iv-git-stat-value">{{ gitStatus.untracked }}</span>
+          </div>
+        </div>
+        <div class="iv-git-commit-row">
+          <input
+            v-model="gitCommitMsg"
+            type="text"
+            class="iv-git-input"
+            :placeholder="t('git.commitPlaceholder')"
+            :disabled="gitBusy"
+            @keyup.enter="doGitCommit"
+          >
+          <button
+            class="iv-btn iv-btn-primary"
+            :disabled="gitBusy"
+            @click="doGitCommit"
+          >
+            <Loader2
+              v-if="gitBusy"
+              :size="14"
+              class="spin"
+            />
+            <CheckCircle2
+              v-else
+              :size="14"
+            />
+            <span>{{ gitBusy ? t('git.committing') : t('git.commitBtn') }}</span>
+          </button>
+        </div>
+      </template>
+
+      <div
+        v-if="gitInfoMsg"
+        class="iv-git-info"
+      >
+        {{ gitInfoMsg }}
+      </div>
+      <div
+        v-if="gitErrorMsg"
+        class="iv-error-banner"
+      >
+        <AlertCircle :size="14" />
+        <span>{{ gitErrorMsg }}</span>
+      </div>
+    </section>
+
     <!-- 错误提示 -->
     <div
       v-if="errorMsg"
@@ -220,7 +323,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
@@ -232,10 +335,11 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  GitBranch,
 } from 'lucide-vue-next'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { AppService, ImportService } from '@bindings/github.com/notevault/notevault/index.js'
-import type { ImportResult } from '@bindings/github.com/notevault/notevault/models.js'
+import { AppService, GitService, ImportService } from '@bindings/github.com/notevault/notevault/index.js'
+import type { ImportResult, GitStatus } from '@bindings/github.com/notevault/notevault/models.js'
 
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
@@ -313,6 +417,80 @@ async function doImport() {
     errorMsg.value = t('import.importFailed', { msg: (e as Error).message })
   } finally {
     isImporting.value = false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Git 版本管理（P2-4）
+// ---------------------------------------------------------------------------
+
+const gitStatus = ref<GitStatus | null>(null)
+const gitCommitMsg = ref('')
+const gitBusy = ref(false)
+const gitInfoMsg = ref('')
+const gitErrorMsg = ref('')
+
+async function loadGitStatus(): Promise<void> {
+  if (!currentWorkspace.value) {
+    gitStatus.value = null
+    return
+  }
+  try {
+    gitStatus.value = await GitService.Status(currentWorkspace.value.path)
+  } catch {
+    // Status 本身已把失败降级为「能力缺失」，这里兜底网络层异常
+    gitStatus.value = null
+  }
+}
+
+// 切换工作区时重新探测；进入页面时立即探测一次
+watch(
+  currentWorkspace,
+  () => {
+    gitInfoMsg.value = ''
+    gitErrorMsg.value = ''
+    void loadGitStatus()
+  },
+  { immediate: true },
+)
+
+async function doGitInit(): Promise<void> {
+  if (!currentWorkspace.value || gitBusy.value) return
+  gitBusy.value = true
+  gitInfoMsg.value = ''
+  gitErrorMsg.value = ''
+  try {
+    await GitService.InitRepo(currentWorkspace.value.path)
+    gitInfoMsg.value = t('git.initDone')
+    await loadGitStatus()
+  } catch (e) {
+    gitErrorMsg.value = t('git.failed', { msg: (e as Error).message })
+  } finally {
+    gitBusy.value = false
+  }
+}
+
+// 后端返回面向用户的中文文案，映射回 i18n key，避免英文界面混中文
+function mapCommitMessage(raw: string): string {
+  if (raw.includes('没有可提交')) return t('git.clean')
+  if (raw.includes('提交成功')) return t('git.commitDone')
+  return raw
+}
+
+async function doGitCommit(): Promise<void> {
+  if (!currentWorkspace.value || gitBusy.value) return
+  gitBusy.value = true
+  gitInfoMsg.value = ''
+  gitErrorMsg.value = ''
+  try {
+    const raw = await GitService.CommitAll(currentWorkspace.value.path, gitCommitMsg.value.trim())
+    gitInfoMsg.value = mapCommitMessage(raw)
+    gitCommitMsg.value = ''
+    await loadGitStatus()
+  } catch (e) {
+    gitErrorMsg.value = t('git.failed', { msg: (e as Error).message })
+  } finally {
+    gitBusy.value = false
   }
 }
 </script>
@@ -592,6 +770,76 @@ async function doImport() {
   border-radius: var(--radius-sm);
   color: #ef4444;
   font-size: var(--text-sm);
+}
+
+.iv-git-desc {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+.iv-git-warn {
+  font-size: var(--text-sm);
+  color: #f59e0b;
+  padding: var(--space-2) var(--space-3);
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: var(--radius-sm);
+}
+.iv-git-status-line {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.iv-git-stats {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.iv-git-stat {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-window);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.iv-git-stat-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.iv-git-stat-value {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.iv-git-commit-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.iv-git-input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  outline: none;
+}
+.iv-git-input:focus {
+  border-color: var(--accent);
+}
+.iv-git-info {
+  font-size: var(--text-sm);
+  color: #10b981;
+  padding: var(--space-2) var(--space-3);
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: var(--radius-sm);
 }
 
 @media (max-width: 720px) {

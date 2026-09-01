@@ -25,12 +25,54 @@ type FileNode struct {
 	ModTime  string      `json:"modTime,omitempty"`
 }
 
-// FileService 管理文件的读取、创建、保存和删除
-type FileService struct{}
+// snapshotCapturer 是 FileService 在破坏性写入前留存旧版本的钩子（P1-2）。
+//
+// 为什么用接口而不是直接持有 *SnapshotService：
+//  1. 测试里可注入假实现，断言「保存前确实留了快照」而不碰真实磁盘；
+//  2. 方法故意保持非导出——它只在 service 包内部使用，
+//     若导出会被 Wails 反射绑定成前端 API，并触发 ports 契约测试报漂移。
+type snapshotCapturer interface {
+	captureBeforeWrite(workspacePath, relativePath string) (*Snapshot, error)
+	captureBeforeDelete(workspacePath, relativePath string) (*Snapshot, error)
+}
 
-// NewFileService 创建文件服务实例
+// FileService 管理文件的读取、创建、保存和删除
+type FileService struct {
+	// history 为 nil 时完全不留历史，功能不残废（红线：依赖必须可选可降级）
+	history snapshotCapturer
+}
+
+// NewFileService 创建文件服务实例（不留版本历史）
 func NewFileService() *FileService {
 	return &FileService{}
+}
+
+// NewFileServiceWithHistory 创建带版本历史的文件服务实例。
+//
+// 用构造器注入而非 setter：setter 是导出方法，会被 Wails 绑定成
+// 一个参数为 Go 接口的前端 API（生成的 TS 毫无意义），且违反 ports 契约。
+func NewFileServiceWithHistory(history snapshotCapturer) *FileService {
+	return &FileService{history: history}
+}
+
+// captureHistory 尽力留存一份旧版本。
+//
+// 关键约定：**历史留存失败绝不阻断用户的保存/删除**。
+// 快照是保险，不是主链路；因为写不进 .notevault 就拒绝用户保存笔记，
+// 是本末倒置的失败模式。
+func (s *FileService) captureHistory(workspacePath, relativePath string, deleting bool) {
+	if s.history == nil {
+		return
+	}
+	var err error
+	if deleting {
+		_, err = s.history.captureBeforeDelete(workspacePath, relativePath)
+	} else {
+		_, err = s.history.captureBeforeWrite(workspacePath, relativePath)
+	}
+	if err != nil {
+		log.Printf("[snapshot] 留存历史版本失败 path=%s deleting=%v: %v", relativePath, deleting, err)
+	}
 }
 
 // confineToWorkspace 校验相对路径并拼接出工作区内的绝对路径。
@@ -197,6 +239,10 @@ func (s *FileService) SaveFile(workspacePath string, relativePath string, conten
 		return core.OsToNVError(err, "创建父目录失败: "+dir)
 	}
 
+	// 覆盖前留存旧版本：SaveFile 是所有笔记写入的唯一收口，
+	// 挂在这里才能保证没有一条写路径绕过版本历史。
+	s.captureHistory(workspacePath, relativePath, false)
+
 	if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
 		return core.OsToNVError(err, "保存文件失败: "+relativePath)
 	}
@@ -211,6 +257,9 @@ func (s *FileService) DeleteFile(workspacePath string, relativePath string) erro
 	if err != nil {
 		return err
 	}
+	// 这是"不进回收站"的硬删除路径，正是最需要版本历史兜底的地方
+	s.captureHistory(workspacePath, relativePath, true)
+
 	if err := os.Remove(fullPath); err != nil {
 		return core.OsToNVError(err, "删除文件失败: "+relativePath)
 	}

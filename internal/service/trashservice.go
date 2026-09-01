@@ -1,12 +1,14 @@
 package service
 
 import (
-	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/notevault/notevault/internal/infra/schema"
 )
 
 // TrashedFile 表示回收站中的文件
@@ -55,9 +57,19 @@ func (s *TrashService) loadTrashIndex(workspacePath string) ([]*TrashedFile, err
 		return nil, err
 	}
 
-	var files []*TrashedFile
-	if err := json.Unmarshal(data, &files); err != nil {
+	// 统一版本信封（E-7）。回收站索引是用户数据：读不出来会留下孤儿文件
+	// （物理文件躺在 .trash/ 里，界面上却看不到、也恢复不了），
+	// 因此旧的裸数组格式必须继续能读，高版本文件也尽力解析而不是丢弃。
+	files, res, err := schema.UnmarshalAs[[]*TrashedFile](data, schema.TrashIndex)
+	if err != nil {
 		return nil, err
+	}
+	if res.Compat == schema.CompatNewer {
+		log.Printf("[trash] 索引 schemaVersion=%d 高于当前支持的 %d，按当前结构尽力解析",
+			res.FileVersion, schema.TrashIndex.Version)
+	}
+	if files == nil {
+		files = []*TrashedFile{}
 	}
 
 	return files, nil
@@ -72,7 +84,10 @@ func (s *TrashService) saveTrashIndex(workspacePath string, files []*TrashedFile
 		return err
 	}
 
-	data, err := json.MarshalIndent(files, "", "  ")
+	if files == nil {
+		files = []*TrashedFile{}
+	}
+	data, err := schema.MarshalAs(schema.TrashIndex, files)
 	if err != nil {
 		return err
 	}

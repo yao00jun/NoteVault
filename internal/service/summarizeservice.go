@@ -52,15 +52,16 @@ type chatResponse struct {
 //
 // 返回 Markdown 格式的摘要文本。
 func (s *SummarizeService) Summarize(apiKey, baseURL, model, content string) (string, error) {
-	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	if baseURL == "" {
-		baseURL = "https://api.openai.com/v1"
-	}
+	rawBaseURL := baseURL
+	baseURL = normalizeBaseURL(baseURL)
 	if model == "" {
 		model = "gpt-4o-mini"
 	}
-	if strings.TrimSpace(apiKey) == "" {
-		return "", fmt.Errorf("请先在「设置 → AI 总结」中填写 API Key")
+	// 本机端点（Ollama / LM Studio）不需要 Key，requireCredential 会放行；
+	// 云端端点仍然强制要求。
+	credential, err := requireCredential(rawBaseURL, apiKey)
+	if err != nil {
+		return "", err
 	}
 	if strings.TrimSpace(content) == "" {
 		return "", fmt.Errorf("没有可总结的内容")
@@ -95,7 +96,7 @@ func (s *SummarizeService) Summarize(apiKey, baseURL, model, content string) (st
 		return "", fmt.Errorf("构造请求失败：%w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	applyAuth(req, credential)
 
 	resp, err := s.client.Do(req)
 	if err != nil {

@@ -57,9 +57,9 @@ go test ./...
 
 # 前端单测 + 类型检查
 cd frontend
-pnpm test          # vitest
-pnpm type-check    # vue-tsc
-pnpm lint          # eslint
+pnpm test        # vitest
+pnpm typecheck   # vue-tsc（脚本名是 typecheck，中间没有连字符）
+pnpm lint        # eslint
 ```
 
 ---

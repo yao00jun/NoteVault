@@ -15,6 +15,11 @@ vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
   TodoService: { GetAllTodos: vi.fn(), ToggleTodo: vi.fn() },
   TagService: { GetAllTags: vi.fn() },
   ExportService: { ExportWorkspaceMarkdown: vi.fn() },
+  TemplateService: {
+    ListTemplates: vi.fn(async () => []),
+    GetTemplateContent: vi.fn(async () => ''),
+    CreateFromTemplate: vi.fn(async () => null),
+  },
 }))
 
 import KnowledgeView from './KnowledgeView.vue'

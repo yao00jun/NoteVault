@@ -9,8 +9,10 @@ import {
   FileText,
   Tags,
   GitGraph,
+  Table2,
   CheckSquare,
   Clock,
+  History,
   Archive,
   Trash2,
   ChevronRight,
@@ -179,10 +181,11 @@ interface NavItem {
 // - library 知识库浏览（高频）：知识库、知识图谱
 // - tasks 任务管理（高频 GTD）：待办、提醒
 // - workspace 工作区浏览（高频）：文档、搜索、标签
-// - manage 工具与数据管理（低频）：AI 问答、插件、数据导入、归档、回收站
+// - manage 工具与数据管理（低频）：AI 问答、插件、数据导入、版本历史、归档、回收站
 const navItems = computed<NavItem[]>(() => [
   { id: 'knowledge', label: t('sidebar.nav.knowledge'), icon: Library, route: '/knowledge', group: 'library' },
   { id: 'graph', label: t('sidebar.nav.graph'), icon: GitGraph, route: '/graph', group: 'library' },
+  { id: 'bases', label: t('sidebar.nav.bases'), icon: Table2, route: '/bases', group: 'library' },
   { id: 'todos', label: t('sidebar.nav.todos'), icon: CheckSquare, route: '/todos', group: 'tasks' },
   { id: 'reminders', label: t('sidebar.nav.reminders'), icon: Clock, route: '/reminders', group: 'tasks' },
   { id: 'files', label: t('sidebar.nav.files'), icon: FolderOpen, route: '/editor', group: 'workspace' },
@@ -191,6 +194,7 @@ const navItems = computed<NavItem[]>(() => [
   { id: 'qna', label: t('sidebar.nav.qna'), icon: MessageCircle, route: '/qna', group: 'manage' },
   { id: 'plugins', label: t('sidebar.nav.plugins'), icon: Puzzle, route: '/plugins', group: 'manage' },
   { id: 'import', label: t('sidebar.nav.import'), icon: Upload, route: '/import', group: 'manage' },
+  { id: 'history', label: t('sidebar.nav.history'), icon: History, route: '/history', group: 'manage' },
   { id: 'archive', label: t('sidebar.nav.archive'), icon: Archive, route: '/archive', group: 'manage' },
   { id: 'trash', label: t('sidebar.nav.trash'), icon: Trash2, route: '/trash', group: 'manage' },
 ])

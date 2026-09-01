@@ -75,3 +75,38 @@ export const TEXT_TOOLS: TextToolItem[] = [
   { id: 'listToTable', i18nKey: 'toolbar.tools.listToTable' },
   { id: 'tableToList', i18nKey: 'toolbar.tools.tableToList' },
 ]
+
+/** “更多”下拉内的 Callout 快捷插入（常用类型）。type 会经 `callout` 事件传给父组件 */
+export interface CalloutTypeItem {
+  type: string
+  icon: string
+  i18nKey: string
+}
+export const CALLOUT_TYPES: CalloutTypeItem[] = [
+  { type: 'note', icon: '📝', i18nKey: 'editor.calloutTitle.note' },
+  { type: 'info', icon: 'ℹ️', i18nKey: 'editor.calloutTitle.info' },
+  { type: 'tip', icon: '💡', i18nKey: 'editor.calloutTitle.tip' },
+  { type: 'success', icon: '✅', i18nKey: 'editor.calloutTitle.success' },
+  { type: 'question', icon: '❓', i18nKey: 'editor.calloutTitle.question' },
+  { type: 'warning', icon: '⚠️', i18nKey: 'editor.calloutTitle.warning' },
+  { type: 'danger', icon: '🔥', i18nKey: 'editor.calloutTitle.danger' },
+  { type: 'bug', icon: '🐛', i18nKey: 'editor.calloutTitle.bug' },
+  { type: 'example', icon: '📖', i18nKey: 'editor.calloutTitle.example' },
+  { type: 'quote', icon: '💬', i18nKey: 'editor.calloutTitle.quote' },
+]
+
+/** “更多”下拉内的表格编辑命令（经 `command` 通道走 applyFormat） */
+export interface TableToolItem {
+  id: string
+  i18nKey: string
+}
+export const TABLE_TOOLS: TableToolItem[] = [
+  { id: 'table-insert', i18nKey: 'toolbar.table.insert' },
+  { id: 'table-add-row', i18nKey: 'toolbar.table.addRow' },
+  { id: 'table-del-row', i18nKey: 'toolbar.table.delRow' },
+  { id: 'table-add-col', i18nKey: 'toolbar.table.addCol' },
+  { id: 'table-del-col', i18nKey: 'toolbar.table.delCol' },
+  { id: 'table-align-left', i18nKey: 'toolbar.table.alignLeft' },
+  { id: 'table-align-center', i18nKey: 'toolbar.table.alignCenter' },
+  { id: 'table-align-right', i18nKey: 'toolbar.table.alignRight' },
+]

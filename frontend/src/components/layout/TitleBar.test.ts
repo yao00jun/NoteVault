@@ -38,14 +38,12 @@ describe('TitleBar', () => {
     mockedQuit.mockReset()
     mockedWindowClose.mockReset()
     mockedForceQuit.mockReset()
-    vi.stubGlobal('confirm', vi.fn(() => true))
   })
 
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  it('确认退出后直接走后端 ForceQuit（绕开会死锁的 Wails Quit）', async () => {
+  // 挂载 TitleBar。退出确认已改成自定义弹框（不再用 window.confirm——
+  // WebView2 会把它转成 native dialog 弹到窗口右上角），因此 mount 后
+  // 需要「点关闭 → 点确认」两步才会真正触发退出。
+  function mountTitleBar() {
     const pinia = createPinia()
     setActivePinia(pinia)
     const router = createRouter({
@@ -56,11 +54,28 @@ describe('TitleBar', () => {
         { path: '/settings', component: { template: '<div />' } },
       ],
     })
-    const wrapper = mount(TitleBar, {
+    return mount(TitleBar, {
       global: { plugins: [pinia, router, i18n] },
     })
+  }
+
+  it('点关闭只弹确认框，此时不能退出', async () => {
+    const wrapper = mountTitleBar()
 
     await wrapper.find('.win-btn.close').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.exit-confirm').exists()).toBe(true)
+    expect(mockedForceQuit).not.toHaveBeenCalled()
+    expect(mockedQuit).not.toHaveBeenCalled()
+  })
+
+  it('确认退出后走后端 ForceQuit（绕开会死锁的 Wails Quit）', async () => {
+    const wrapper = mountTitleBar()
+
+    await wrapper.find('.win-btn.close').trigger('click')
+    await flushPromises()
+    await wrapper.find('.exit-btn.confirm').trigger('click')
     await flushPromises()
 
     expect(mockedForceQuit).toHaveBeenCalledOnce()
@@ -69,22 +84,29 @@ describe('TitleBar', () => {
     expect(mockedWindowClose).not.toHaveBeenCalled()
   })
 
-  it('取消确认时不退出', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => false))
-    const pinia = createPinia()
-    setActivePinia(pinia)
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes: [{ path: '/', component: { template: '<div />' } }],
-    })
-    const wrapper = mount(TitleBar, {
-      global: { plugins: [pinia, router, i18n] },
-    })
+  it('点取消按钮不退出', async () => {
+    const wrapper = mountTitleBar()
 
     await wrapper.find('.win-btn.close').trigger('click')
+    await flushPromises()
+    await wrapper.find('.exit-btn.cancel').trigger('click')
     await flushPromises()
 
     expect(mockedForceQuit).not.toHaveBeenCalled()
     expect(mockedQuit).not.toHaveBeenCalled()
+    // 确认框应当收起
+    expect(wrapper.find('.exit-confirm').exists()).toBe(false)
+  })
+
+  it('点遮罩空白处不退出', async () => {
+    const wrapper = mountTitleBar()
+
+    await wrapper.find('.win-btn.close').trigger('click')
+    await flushPromises()
+    await wrapper.find('.exit-confirm-mask').trigger('click')
+    await flushPromises()
+
+    expect(mockedForceQuit).not.toHaveBeenCalled()
+    expect(wrapper.find('.exit-confirm').exists()).toBe(false)
   })
 })

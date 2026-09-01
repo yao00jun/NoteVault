@@ -14,8 +14,6 @@ import {
   Library,
   FileText,
   Search,
-  Tags as TagsIcon,
-  CheckSquare,
   Clock,
   Calendar,
   Star,
@@ -25,14 +23,16 @@ import {
   Folder,
   FolderPlus,
   FolderOpen,
-  Hash,
-  ArrowUpRight,
   Sparkles,
   FilePlus,
   Edit3,
   Download,
   Loader2,
 } from 'lucide-vue-next'
+import KnowledgeStats from '@/components/knowledge/KnowledgeStats.vue'
+import KnowledgeTodoPanel from '@/components/knowledge/KnowledgeTodoPanel.vue'
+import KnowledgeTagCloud from '@/components/knowledge/KnowledgeTagCloud.vue'
+import TemplateCreateDialog from '@/components/knowledge/TemplateCreateDialog.vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
@@ -42,6 +42,7 @@ import {
   TodoService,
   TagService,
   ExportService,
+  TemplateService,
 } from '@bindings/github.com/notevault/notevault/index.js'
 import type { TodoItem, TagInfo } from '@bindings/github.com/notevault/notevault/models.js'
 
@@ -396,6 +397,9 @@ async function createFolder() {
 
 // 导出整个工作区为 zip（Markdown 打包）
 const isExporting = ref(false)
+
+// P2-2：模板创建对话框
+const showTemplateDialog = ref(false)
 async function exportWorkspace() {
   if (!currentWorkspace.value) {
     alert(t('knowledge.selectWorkspaceFirst'))
@@ -429,7 +433,9 @@ async function exportWorkspace() {
   }
 }
 
-/** 创建今日日记（Obsidian 风格：文件名格式 "Daily/2026-08-26.md"） */
+/** 创建今日日记（Obsidian 风格：文件名格式 "Daily/2026-08-26.md"）。
+ * P2-2：若工作区提供 Templates/Daily.md 则优先用模板渲染（可使用 {{date}} 等占位符），
+ * 没有模板时回退到内置默认结构。 */
 async function createDailyNote() {
   if (!currentWorkspace.value) {
     router.push('/')
@@ -439,11 +445,22 @@ async function createDailyNote() {
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const fileName = `Daily/${dateStr}.md`
   try {
-    const node = await FileService.CreateFile(
-      currentWorkspace.value.path,
-      fileName,
-      `# ${dateStr}\n\n## 📅 今日计划\n\n- [ ] \n\n## 📝 笔记\n\n## 💭 想法\n\n`,
-    )
+    let node: unknown
+    try {
+      node = await TemplateService.CreateFromTemplate(
+        currentWorkspace.value.path,
+        'Daily',
+        fileName,
+        {},
+      )
+    } catch {
+      // 无 Daily 模板 → 内置默认结构
+      node = await FileService.CreateFile(
+        currentWorkspace.value.path,
+        fileName,
+        `# ${dateStr}\n\n## 📅 今日计划\n\n- [ ] \n\n## 📝 笔记\n\n## 💭 想法\n\n`,
+      )
+    }
     if (node) {
       workspaceStore.incrementFileTreeVersion()
       workspaceStore.openFile((node as any).path)
@@ -459,6 +476,14 @@ async function createDailyNote() {
       alert(t('knowledge.dailyFailed', { msg: (e as Error).message }))
     }
   }
+}
+
+/** P2-2：模板创建成功后打开新笔记 */
+function onTemplateCreated(path: string) {
+  showTemplateDialog.value = false
+  workspaceStore.incrementFileTreeVersion()
+  workspaceStore.openFile(path)
+  router.push('/editor')
 }
 
 /** 切换待办完成状态 */
@@ -493,23 +518,6 @@ function formatRelativeTime(modTime?: string): string {
   if (hours < 24) return t('knowledge.time.hoursAgo', { count: hours })
   if (days < 7) return t('knowledge.time.daysAgo', { count: days })
   return date.toLocaleDateString(locale.value)
-}
-
-function isOverdue(todo: TodoItem): boolean {
-  return todo.priority === 'high' && !todo.completed
-}
-
-function isToday(_todo: TodoItem): boolean {
-  return false  // 当前 Todo 模型不含 dueDate
-}
-
-function selectTag(_tag: TagInfo) {
-  router.push('/tags')
-}
-
-/** 标签字体大小计算（基于使用次数） */
-function getTagFontSize(count: number): string {
-  return `${12 + Math.min(count, 20) * 0.5}px`
 }
 
 onMounted(() => {
@@ -570,6 +578,13 @@ watch(() => workspaceStore.fileTreeVersion, () => {
           <span>{{ t('knowledge.dailyNote') }}</span>
         </button>
         <button
+          class="kv-btn-secondary"
+          @click="showTemplateDialog = true"
+        >
+          <FileText :size="14" />
+          <span>{{ t('knowledge.newFromTemplate') }}</span>
+        </button>
+        <button
           class="kv-btn-ghost"
           :disabled="isExporting"
           @click="exportWorkspace"
@@ -599,92 +614,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
     </div>
 
     <!-- 统计卡片 -->
-    <section class="kv-stats">
-      <div class="kv-stat-card">
-        <div class="kv-stat-icon notes">
-          <FileText :size="18" />
-        </div>
-        <div class="kv-stat-body">
-          <div class="kv-stat-value">
-            {{ stats.notes }}
-          </div>
-          <div class="kv-stat-label">
-            {{ t('knowledge.stats.docs') }}
-          </div>
-        </div>
-      </div>
-      <div class="kv-stat-card">
-        <div class="kv-stat-icon starred">
-          <Star :size="18" />
-        </div>
-        <div class="kv-stat-body">
-          <div class="kv-stat-value">
-            {{ stats.starred }}
-          </div>
-          <div class="kv-stat-label">
-            {{ t('knowledge.stats.starred') }}
-          </div>
-        </div>
-      </div>
-      <div class="kv-stat-card">
-        <div class="kv-stat-icon tags">
-          <TagsIcon :size="18" />
-        </div>
-        <div class="kv-stat-body">
-          <div class="kv-stat-value">
-            {{ stats.tags }}
-          </div>
-          <div class="kv-stat-label">
-            {{ t('knowledge.stats.tags') }}
-          </div>
-        </div>
-      </div>
-      <div class="kv-stat-card">
-        <div class="kv-stat-icon todos">
-          <CheckSquare :size="18" />
-        </div>
-        <div class="kv-stat-body">
-          <div class="kv-stat-value">
-            {{ stats.todos }}
-          </div>
-          <div class="kv-stat-label">
-            {{ t('knowledge.stats.pendingTodos') }}
-          </div>
-        </div>
-      </div>
-      <div
-        v-if="stats.high > 0"
-        class="kv-stat-card"
-      >
-        <div class="kv-stat-icon danger">
-          <Sparkles :size="18" />
-        </div>
-        <div class="kv-stat-body">
-          <div class="kv-stat-value">
-            {{ stats.high }}
-          </div>
-          <div class="kv-stat-label">
-            {{ t('knowledge.stats.highPriority') }}
-          </div>
-        </div>
-      </div>
-      <div
-        v-if="stats.done > 0"
-        class="kv-stat-card"
-      >
-        <div class="kv-stat-icon warning">
-          <CheckSquare :size="18" />
-        </div>
-        <div class="kv-stat-body">
-          <div class="kv-stat-value">
-            {{ stats.done }}
-          </div>
-          <div class="kv-stat-label">
-            {{ t('knowledge.stats.completed') }}
-          </div>
-        </div>
-      </div>
-    </section>
+    <KnowledgeStats :stats="stats" />
 
     <!-- 双列内容区 -->
     <div class="kv-grid">
@@ -905,110 +835,14 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       <!-- 侧栏：待办 + 标签 -->
       <aside class="kv-section kv-section-side">
         <!-- 待办 -->
-        <div class="kv-card">
-          <div class="kv-card-header">
-            <h3>
-              <CheckSquare :size="14" />
-              <span>{{ t('knowledge.todosPanel') }}</span>
-            </h3>
-            <router-link
-              to="/todos"
-              class="kv-card-link"
-            >
-              {{ t('knowledge.viewAll') }} <ArrowUpRight :size="12" />
-            </router-link>
-          </div>
-          <div
-            v-if="urgentTodos.length === 0"
-            class="kv-card-empty"
-          >
-            {{ t('knowledge.noTodos') }}
-          </div>
-          <ul
-            v-else
-            class="kv-todo-list"
-          >
-            <li
-              v-for="todo in urgentTodos"
-              :key="todo.id"
-              class="kv-todo-item"
-              :class="{ overdue: isOverdue(todo), today: isToday(todo) }"
-            >
-              <button
-                class="kv-todo-check"
-                :title="todo.completed ? t('knowledge.markIncomplete') : t('knowledge.markComplete')"
-                @click.stop="toggleTodo(todo)"
-              >
-                <CheckSquare
-                  v-if="todo.completed"
-                  :size="14"
-                />
-                <span
-                  v-else
-                  class="kv-todo-checkbox"
-                />
-              </button>
-              <div
-                class="kv-todo-body"
-                @click="openTodoFile(todo)"
-              >
-                <div class="kv-todo-content">
-                  {{ todo.content }}
-                </div>
-                <div class="kv-todo-meta">
-                  <span class="kv-todo-doc">{{ todo.fileName.replace(/\.(md|markdown)$/, '') }}</span>
-                  <span
-                    v-if="todo.priority === 'high'"
-                    class="kv-todo-due"
-                  >{{ t('knowledge.highPriority') }}</span>
-                  <span
-                    v-else-if="todo.priority === 'low'"
-                    class="kv-todo-due"
-                  >{{ t('knowledge.lowPriority') }}</span>
-                </div>
-              </div>
-            </li>
-          </ul>
-        </div>
+        <KnowledgeTodoPanel
+          :todos="urgentTodos"
+          @toggle="toggleTodo"
+          @open="openTodoFile"
+        />
 
         <!-- 标签云 -->
-        <div class="kv-card">
-          <div class="kv-card-header">
-            <h3>
-              <TagsIcon :size="14" />
-              <span>{{ t('knowledge.tagsPanel') }}</span>
-            </h3>
-            <router-link
-              to="/tags"
-              class="kv-card-link"
-            >
-              {{ t('knowledge.viewAll') }} <ArrowUpRight :size="12" />
-            </router-link>
-          </div>
-          <div
-            v-if="tagCloud.length === 0"
-            class="kv-card-empty"
-          >
-            {{ t('knowledge.noTags') }}
-          </div>
-          <div
-            v-else
-            class="kv-tag-cloud"
-          >
-            <button
-              v-for="tag in tagCloud"
-              :key="tag.name"
-              class="kv-tag-chip"
-              :style="{ fontSize: getTagFontSize(tag.count) }"
-              :title="t('knowledge.docCount', { count: tag.count })"
-              @click="router.push('/tags')"
-            >
-              <Hash :size="10" />
-              {{ tag.name }}
-              <span class="kv-tag-count">{{ tag.count }}</span>
-            </button>
-          </div>
-        </div>
+        <KnowledgeTagCloud :tags="tagCloud" />
 
         <!-- 最近编辑 -->
         <div class="kv-card">
@@ -1082,6 +916,13 @@ watch(() => workspaceStore.fileTreeVersion, () => {
         </div>
       </aside>
     </div>
+
+    <!-- P2-2：从模板新建 -->
+    <TemplateCreateDialog
+      v-if="showTemplateDialog"
+      @close="showTemplateDialog = false"
+      @created="onTemplateCreated"
+    />
   </div>
 </template>
 
@@ -1230,74 +1071,6 @@ watch(() => workspaceStore.fileTreeVersion, () => {
 
 .kv-btn-secondary:hover {
   background: var(--bg-hover);
-}
-
-/* 统计卡片 */
-.kv-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-8);
-  background: var(--bg-window);
-  border-bottom: 1px solid var(--border);
-}
-
-.kv-stat-card {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-}
-
-.kv-stat-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-sm);
-  flex-shrink: 0;
-}
-
-.kv-stat-icon.notes {
-  background: rgba(59, 130, 246, 0.12);
-  color: #3b82f6;
-}
-.kv-stat-icon.starred {
-  background: rgba(234, 179, 8, 0.12);
-  color: #eab308;
-}
-.kv-stat-icon.tags {
-  background: rgba(34, 197, 94, 0.12);
-  color: #22c55e;
-}
-.kv-stat-icon.todos {
-  background: rgba(168, 85, 247, 0.12);
-  color: #a855f7;
-}
-.kv-stat-icon.danger {
-  background: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
-}
-.kv-stat-icon.warning {
-  background: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
-}
-
-.kv-stat-value {
-  font-size: var(--text-xl);
-  font-weight: 700;
-  color: var(--text-primary);
-  line-height: 1;
-}
-
-.kv-stat-label {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  margin-top: 2px;
 }
 
 /* 主内容双列网格 */
@@ -1778,143 +1551,6 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   text-align: center;
 }
 
-/* 待办列表 */
-.kv-todo-list {
-  list-style: none;
-  margin: 0;
-  padding: var(--space-2);
-}
-
-.kv-todo-item {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  transition: background var(--transition-fast);
-}
-
-.kv-todo-item:hover {
-  background: var(--bg-hover);
-}
-
-.kv-todo-item.overdue .kv-todo-content {
-  color: #ef4444;
-}
-
-.kv-todo-item.today .kv-todo-content {
-  font-weight: 600;
-}
-
-.kv-todo-check {
-  flex-shrink: 0;
-  margin-top: 2px;
-  color: var(--text-muted);
-  transition: color var(--transition-fast);
-}
-
-.kv-todo-check:hover {
-  color: var(--accent);
-}
-
-.kv-todo-checkbox {
-  display: block;
-  width: 14px;
-  height: 14px;
-  border: 1.5px solid var(--text-muted);
-  border-radius: 3px;
-}
-
-.kv-todo-body {
-  flex: 1;
-  min-width: 0;
-  cursor: pointer;
-}
-
-.kv-todo-content {
-  font-size: var(--text-sm);
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.kv-todo-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-.kv-todo-doc {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
-
-.kv-todo-due {
-  font-weight: 600;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.kv-todo-item.overdue .kv-todo-due {
-  color: #ef4444;
-}
-
-.kv-todo-item.today .kv-todo-due {
-  color: #3b82f6;
-}
-
-/* 标签云 */
-.kv-tag-cloud {
-  padding: var(--space-3) var(--space-4);
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  align-items: center;
-}
-
-.kv-tag-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.kv-tag-chip:hover {
-  background: var(--accent-alpha, rgba(0, 122, 255, 0.1));
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.kv-tag-count {
-  font-size: 10px;
-  background: var(--bg-sidebar);
-  padding: 0 6px;
-  border-radius: 8px;
-  color: var(--text-muted);
-  font-weight: 400;
-}
-
-.kv-tag-chip:hover .kv-tag-count {
-  background: var(--accent);
-  color: white;
-}
-
 /* 最近编辑 */
 .kv-recent-list {
   list-style: none;
@@ -1981,9 +1617,6 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   .kv-grid {
     grid-template-columns: 1fr;
   }
-  .kv-stats {
-    grid-template-columns: repeat(2, 1fr);
-  }
   .kv-banner-title {
     font-size: var(--text-xl);
     max-width: 240px;
@@ -2000,8 +1633,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
 
 @media (max-width: 640px) {
   .kv-banner,
-  .kv-grid,
-  .kv-stats {
+  .kv-grid {
     padding-left: var(--space-3);
     padding-right: var(--space-3);
   }

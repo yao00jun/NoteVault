@@ -22,12 +22,122 @@ func TestSearch_NoMatch(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "a.md"), "# 标题\n这是一些内容，没有关键词。")
 	s := NewSearchService(NewFileService())
-	got, err := s.Search(dir, "不存在的关键词xyz")
+	// 查询与文档不共享任何 bigram。
+	// 注意：不能用「不存在的关键词xyz」——它与文档共享「关键」「键词」两个
+	// bigram，BM25 下属于合理的部分匹配，会召回该文档（见下方 PartialMatch 测试）。
+	got, err := s.Search(dir, "zzzzqqqq")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(got) != 0 {
 		t.Fatalf("expected 0 results, got %d", len(got))
+	}
+}
+
+// TestSearch_PartialMatchIsAllowed 记录 P0-1 后的行为变更。
+//
+// 旧实现要求查询串在正文里**完整连续出现**，因此搜「不存在的关键词xyz」
+// 在含「关键词」的文档上返回 0 条。BM25 是部分匹配打分，共享 bigram 就会召回。
+// 这是刻意的：完全匹配才能召回的话，「Python 教程」这种多词查询就永远搜不到
+// 只有「Python」的文档（实测旧实现多词查询 20/20 全部零结果）。
+func TestSearch_PartialMatchIsAllowed(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "a.md"), "# 标题\n这是一些内容，没有关键词。")
+	s := NewSearchService(NewFileService())
+	got, err := s.Search(dir, "不存在的关键词xyz")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("partial match should still recall the doc, got %d", len(got))
+	}
+}
+
+// TestSearch_MultiWordQuery 多词查询（词间空格）必须能召回。
+// 旧实现把整个查询（含空格）当成一个子串去 strings.Count，必然匹配不到。
+func TestSearch_MultiWordQuery(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "a.md"), "# 缓存策略\n讨论缓存失效与过期策略的取舍。")
+	mustWrite(t, filepath.Join(dir, "b.md"), "# 无关\n今天天气不错。")
+	s := NewSearchService(NewFileService())
+
+	got, err := s.Search(dir, "缓存 过期策略")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].Path != "a.md" {
+		t.Fatalf("multi-word query failed, got %+v", got)
+	}
+}
+
+// TestSearch_GetIndexStats_ReportsSkipped 验证超限文件不再被静默跳过（P0-5）。
+//
+// 旧行为：超过 maxSearchFileSize 的文件直接 return nil，用户完全不知情，
+// 会以为「搜不到就是没有」。现在必须能在统计里查到跳过数量。
+func TestSearch_GetIndexStats_ReportsSkipped(t *testing.T) {
+	ClearAllSearchIndexes()
+	dir := t.TempDir()
+
+	mustWrite(t, filepath.Join(dir, "normal.md"), "# 正常\n这是普通大小的笔记。")
+	// 造一个超过 maxSearchFileSize（2MB）的文件
+	big := strings.Repeat("填充内容填充内容填充内容填充内容\n", 200000)
+	mustWrite(t, filepath.Join(dir, "huge.md"), "# 超大\n"+big)
+
+	s := NewSearchService(NewFileService())
+	stats, err := s.GetIndexStats(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stats.DocCount != 1 {
+		t.Errorf("expected 1 indexed doc, got %d", stats.DocCount)
+	}
+	if stats.SkippedCount != 1 {
+		t.Errorf("expected 1 skipped oversize file, got %d", stats.SkippedCount)
+	}
+	if !stats.ScanComplete {
+		t.Errorf("scan should be complete (limit not reached)")
+	}
+}
+
+// TestSearch_GetIndexStats_NoWorkspace 空工作区路径应报错而不是返回零值
+func TestSearch_GetIndexStats_NoWorkspace(t *testing.T) {
+	s := NewSearchService(NewFileService())
+	if _, err := s.GetIndexStats("  "); err == nil {
+		t.Fatalf("expected error for empty workspace")
+	}
+}
+
+// TestSearch_BM25PenalizesLongSpam 是 P0-1 的核心回归测试。
+//
+// 短文档关键词密度高、绝对词频低；长文档反过来。
+// 按 matchCount（词频）排序时长文档会霸榜，BM25 的长度归一要能压住它。
+func TestSearch_BM25PenalizesLongSpam(t *testing.T) {
+	ClearAllSearchIndexes()
+	dir := t.TempDir()
+
+	// 短而高度相关：关键词只出现 2 次，但全文才 40 字
+	mustWrite(t, filepath.Join(dir, "short.md"), "# 缓存\n缓存失效的处理。缓存失效很关键。")
+	// 长而低密度：关键词出现 6 次（比短文档多），但夹在 3000 字的填充里
+	var long strings.Builder
+	long.WriteString("# 杂记\n")
+	for i := 0; i < 300; i++ {
+		long.WriteString("这是一段与主题无关的填充内容，用于拉长文档篇幅。")
+	}
+	for i := 0; i < 6; i++ {
+		long.WriteString("另外也提到缓存失效这一点。")
+	}
+	mustWrite(t, filepath.Join(dir, "long.md"), long.String())
+
+	s := NewSearchService(NewFileService())
+	got, err := s.Search(dir, "缓存失效")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(got))
+	}
+	if got[0].Path != "short.md" {
+		t.Fatalf("BM25 should rank the dense short doc first, got %q first", got[0].Path)
 	}
 }
 

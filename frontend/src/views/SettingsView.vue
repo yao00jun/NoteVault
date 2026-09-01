@@ -4,6 +4,8 @@ import { Settings, Palette, Keyboard, Info, ArrowLeft, Sparkles, Eye, EyeOff, Al
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
+import { LLMConfigService } from '@bindings/github.com/notevault/notevault/index.js'
+import type { LLMEndpointPreset, LLMProbeResult } from '@bindings/github.com/notevault/notevault/models.js'
 import { TOOLBAR_ITEMS, VISIBLE_DEFAULT, TOOLBAR_ORDER_DEFAULT, type ToolbarItem } from '@/components/editor/toolbarButtons'
 import type { ThemeType } from '@/types'
 import type { Locale } from '@/i18n'
@@ -12,6 +14,61 @@ const { t } = useI18n()
 const settingsStore = useSettingsStore()
 const router = useRouter()
 const apiKeyVisible = ref(false)
+
+// --- P1-6 端点预设与连通性自检 ---
+// 本机端点（Ollama / LM Studio）不需要 API Key。后端 requireCredential 会放行，
+// 这里只负责让用户不必手记地址和端口。
+const presets = ref<LLMEndpointPreset[]>([])
+const probing = ref(false)
+const probeResult = ref<LLMProbeResult | null>(null)
+
+void (async () => {
+  try {
+    presets.value = (await LLMConfigService.Presets() ?? []) as LLMEndpointPreset[]
+  } catch {
+    // 预设拉取失败不影响手填地址，静默降级
+    presets.value = []
+  }
+})()
+
+function applyPreset(id: string) {
+  const p = presets.value.find((x) => x.id === id)
+  if (!p) return
+  settingsStore.settings.ai.baseURL = p.baseURL
+  settingsStore.settings.ai.model = p.model
+  if (!p.requiresKey) {
+    // 切到本机端点时清掉旧的云端 Key，避免误发到本机服务
+    settingsStore.settings.ai.apiKey = ''
+  }
+  probeResult.value = null
+}
+
+async function probeEndpoint() {
+  probing.value = true
+  probeResult.value = null
+  try {
+    probeResult.value = await LLMConfigService.Probe(
+      settingsStore.settings.ai.apiKey ?? '',
+      settingsStore.settings.ai.baseURL ?? '',
+    ) as LLMProbeResult
+  } catch (e) {
+    probeResult.value = {
+      ok: false,
+      endpoint: '',
+      isLocal: false,
+      models: [],
+      latencyMs: 0,
+      message: e instanceof Error ? e.message : String(e),
+    }
+  } finally {
+    probing.value = false
+  }
+}
+
+// 自检返回了模型列表时，一键把当前模型换成列表里的（本机模型名通常带 tag，手打易错）
+function useModel(name: string) {
+  settingsStore.settings.ai.model = name
+}
 
 function goBack() {
   if (window.history.length > 1) {
@@ -33,6 +90,8 @@ const sections = computed(() => [
   { id: 'appearance', label: t('settings.nav.appearance'), icon: Palette },
   { id: 'editor', label: t('settings.nav.editor'), icon: Settings },
   { id: 'ai', label: t('settings.nav.ai'), icon: Sparkles },
+  { id: 'embedding', label: t('settings.nav.embedding'), icon: Sparkles },
+  { id: 'rerank', label: t('settings.nav.rerank'), icon: Sparkles },
   { id: 'shortcuts', label: t('settings.nav.shortcuts'), icon: Keyboard },
   { id: 'errorReport', label: t('settings.nav.errorReport'), icon: AlertTriangle },
   { id: 'about', label: t('settings.nav.about'), icon: Info },
@@ -418,6 +477,31 @@ async function scrollToSection(id: string) {
         <p class="section-hint">
           {{ t('settings.ai.desc') }}
         </p>
+        <div
+          v-if="presets.length"
+          class="setting-item"
+        >
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.ai.preset') }}</span>
+            <span class="setting-desc">{{ t('settings.ai.presetDesc') }}</span>
+          </div>
+          <div class="preset-row">
+            <button
+              v-for="p in presets"
+              :key="p.id"
+              class="preset-btn"
+              :class="{ active: settingsStore.settings.ai.baseURL === p.baseURL }"
+              :title="p.hint || p.label"
+              @click="applyPreset(p.id)"
+            >
+              {{ p.label }}
+              <span
+                v-if="!p.requiresKey"
+                class="preset-badge"
+              >{{ t('settings.ai.noKeyNeeded') }}</span>
+            </button>
+          </div>
+        </div>
         <div class="setting-item">
           <div class="setting-info">
             <span class="setting-label">{{ t('settings.ai.baseURL') }}</span>
@@ -468,6 +552,205 @@ async function scrollToSection(id: string) {
             </button>
           </div>
         </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.ai.probe') }}</span>
+            <span class="setting-desc">{{ t('settings.ai.probeDesc') }}</span>
+          </div>
+          <button
+            class="probe-btn"
+            :disabled="probing"
+            data-testid="probe-btn"
+            @click="probeEndpoint"
+          >
+            <Sparkles :size="14" />
+            {{ probing ? t('settings.ai.probing') : t('settings.ai.probeAction') }}
+          </button>
+        </div>
+        <div
+          v-if="probeResult"
+          class="probe-result"
+          :class="probeResult.ok ? 'ok' : 'fail'"
+          data-testid="probe-result"
+        >
+          <div class="probe-head">
+            <strong>{{ probeResult.ok ? t('settings.ai.probeOk') : t('settings.ai.probeFail') }}</strong>
+            <span
+              v-if="probeResult.isLocal"
+              class="preset-badge"
+            >{{ t('settings.ai.localEndpoint') }}</span>
+            <span
+              v-if="probeResult.latencyMs > 0"
+              class="probe-latency"
+            >{{ probeResult.latencyMs }} ms</span>
+          </div>
+          <p
+            v-if="probeResult.message"
+            class="probe-msg"
+          >
+            {{ probeResult.message }}
+          </p>
+          <div
+            v-if="probeResult.models?.length"
+            class="probe-models"
+          >
+            <span class="probe-models-label">{{ t('settings.ai.availableModels') }}</span>
+            <button
+              v-for="m in probeResult.models"
+              :key="m"
+              class="model-chip"
+              :class="{ active: settingsStore.settings.ai.model === m }"
+              @click="useModel(m)"
+            >
+              {{ m }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3.1 语义检索（Embedding） -->
+      <div
+        id="settings-section-embedding"
+        class="settings-section"
+      >
+        <h3 class="section-title">
+          {{ t('settings.embedding.title') }}
+        </h3>
+        <p class="section-hint">
+          {{ t('settings.embedding.desc') }}
+        </p>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.embedding.baseURL') }}</span>
+            <span class="setting-desc">{{ t('settings.embedding.baseURLDesc') }}</span>
+          </div>
+          <input
+            v-model="settingsStore.settings.embedding.baseURL"
+            class="setting-input"
+            placeholder="http://localhost:11434/v1"
+          >
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.embedding.model') }}</span>
+            <span class="setting-desc">{{ t('settings.embedding.modelDesc') }}</span>
+          </div>
+          <input
+            v-model="settingsStore.settings.embedding.model"
+            class="setting-input"
+            placeholder="bge-m3"
+          >
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.embedding.apiKey') }}</span>
+            <span class="setting-desc">{{ t('settings.embedding.apiKeyDesc') }}</span>
+          </div>
+          <div class="input-with-action">
+            <input
+              v-model="settingsStore.settings.embedding.apiKey"
+              class="setting-input"
+              :type="apiKeyVisible ? 'text' : 'password'"
+              placeholder="sk-..."
+            >
+            <button
+              class="icon-toggle"
+              :title="apiKeyVisible ? t('settings.ai.hide') : t('settings.ai.show')"
+              @click="toggleApiKeyVisible"
+            >
+              <Eye
+                v-if="!apiKeyVisible"
+                :size="14"
+              />
+              <EyeOff
+                v-else
+                :size="14"
+              />
+            </button>
+          </div>
+        </div>
+        <p class="section-hint">
+          {{ t('settings.embedding.note') }}
+        </p>
+      </div>
+
+      <!-- 3.2 重排序（Rerank，P1-3b） -->
+      <div
+        id="settings-section-rerank"
+        class="settings-section"
+      >
+        <h3 class="section-title">
+          {{ t('settings.rerank.title') }}
+        </h3>
+        <p class="section-hint">
+          {{ t('settings.rerank.desc') }}
+        </p>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.rerank.provider') }}</span>
+            <span class="setting-desc">{{ t('settings.rerank.providerDesc') }}</span>
+          </div>
+          <select
+            v-model="settingsStore.settings.rerank.provider"
+            class="setting-select"
+          >
+            <option value="ollama">Ollama（本机 /api/rerank，免 Key）</option>
+            <option value="cohere">Cohere（/v1/rerank，需 Key）</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.rerank.baseURL') }}</span>
+            <span class="setting-desc">{{ t('settings.rerank.baseURLDesc') }}</span>
+          </div>
+          <input
+            v-model="settingsStore.settings.rerank.baseURL"
+            class="setting-input"
+            placeholder="http://localhost:11434"
+          >
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.rerank.model') }}</span>
+            <span class="setting-desc">{{ t('settings.rerank.modelDesc') }}</span>
+          </div>
+          <input
+            v-model="settingsStore.settings.rerank.model"
+            class="setting-input"
+            placeholder="bge-reranker-v2-m3"
+          >
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.rerank.apiKey') }}</span>
+            <span class="setting-desc">{{ t('settings.rerank.apiKeyDesc') }}</span>
+          </div>
+          <div class="input-with-action">
+            <input
+              v-model="settingsStore.settings.rerank.apiKey"
+              class="setting-input"
+              :type="apiKeyVisible ? 'text' : 'password'"
+              placeholder="sk-..."
+            >
+            <button
+              class="icon-toggle"
+              :title="apiKeyVisible ? t('settings.ai.hide') : t('settings.ai.show')"
+              @click="toggleApiKeyVisible"
+            >
+              <Eye
+                v-if="!apiKeyVisible"
+                :size="14"
+              />
+              <EyeOff
+                v-else
+                :size="14"
+              />
+            </button>
+          </div>
+        </div>
+        <p class="section-hint">
+          {{ t('settings.rerank.note') }}
+        </p>
       </div>
 
       <!-- 4. 快捷键 -->
@@ -784,6 +1067,142 @@ async function scrollToSection(id: string) {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* --- P1-6 端点预设与自检 --- */
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  max-width: 320px;
+}
+
+.preset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.preset-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.preset-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.preset-badge {
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft, rgba(99, 102, 241, 0.15));
+  color: var(--accent);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.probe-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.probe-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.probe-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.probe-result {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  font-size: var(--text-sm);
+}
+
+.probe-result.ok {
+  border-color: var(--success, #22c55e);
+}
+
+.probe-result.fail {
+  border-color: var(--danger, #ef4444);
+}
+
+.probe-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.probe-latency {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.probe-msg {
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  /* 后端会在换行里塞启动指引（如 ollama serve），必须保留换行 */
+  white-space: pre-wrap;
+}
+
+.probe-models {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.probe-models-label {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.model-chip {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono, monospace);
+  cursor: pointer;
+}
+
+.model-chip:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.model-chip.active {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .input-with-action .setting-input {

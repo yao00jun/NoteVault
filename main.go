@@ -13,11 +13,8 @@ import (
 
 	"github.com/notevault/notevault/internal/app"
 	"github.com/notevault/notevault/internal/core"
-	"github.com/notevault/notevault/internal/infra/monitor"
 	"github.com/notevault/notevault/internal/platform"
-	"github.com/notevault/notevault/internal/plugin"
 	"github.com/notevault/notevault/internal/security"
-	"github.com/notevault/notevault/internal/service"
 )
 
 //go:embed all:frontend/dist
@@ -95,13 +92,14 @@ func main() {
 	}
 	defer processRelease()
 
-	fileService := service.NewFileService()
-
-	// 错误监控：本地日志 + 可选 Sentry（无 DSN 时仅本地）
-	errorMonitor := monitor.NewErrorMonitor(errorLogDir(), core.ErrorMonitorConfig{
-		SentryDSN:      os.Getenv("NOTEVAULT_SENTRY_DSN"),
-		EnableLocalLog: true,
-		AppVersion:     core.AppVersion,
+	// 所有后端服务的装配收敛到 internal/app.NewContainer：
+	// 依赖顺序（Snapshot → File → Search）与 Wails 注册清单都由 container_test.go 锁住，
+	// main 只负责把进程级配置（日志目录、Sentry DSN、版本号）读出来传进去。
+	container := app.NewContainer(app.ContainerConfig{
+		ErrorLogDir:         errorLogDir(),
+		SentryDSN:           os.Getenv("NOTEVAULT_SENTRY_DSN"),
+		AppVersion:          core.AppVersion,
+		EnableLocalErrorLog: true,
 	})
 
 	// 主窗口引用：单实例锁回调里聚焦已有窗口
@@ -124,24 +122,7 @@ func main() {
 				}
 			},
 		},
-		Services: []application.Service{
-			application.NewService(&app.AppService{}),
-			application.NewService(service.NewWorkspaceService()),
-			application.NewService(fileService),
-			application.NewService(service.NewSearchService(fileService)),
-			application.NewService(service.NewTagService()),
-			application.NewService(service.NewTodoService()),
-			application.NewService(service.NewReminderService()),
-			application.NewService(service.NewArchiveService()),
-			application.NewService(service.NewTrashService()),
-			application.NewService(service.NewGraphService()),
-			application.NewService(service.NewExportService()),
-			application.NewService(service.NewSummarizeService()),
-			application.NewService(service.NewQnAService()),
-			application.NewService(service.NewImportService()),
-			application.NewService(errorMonitor),
-			application.NewService(plugin.NewPluginService("")),
-		},
+		Services: container.WailsServices(),
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 			// 注入 CSP：即使插件能执行任意 JS，也掐断它把笔记数据带出去的通道。

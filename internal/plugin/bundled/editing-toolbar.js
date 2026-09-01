@@ -55,6 +55,17 @@ const BUTTONS = [
   { id: 'codeblock', title: '代码块', icon: '```', transform: { prefix: '```\n', suffix: '\n```', placeholder: '代码' } },
   { id: 'table', title: '表格', icon: '表格', transform: { insert: '| 列 1 | 列 2 |\n| --- | --- |\n| 内容 | 内容 |\n' } },
   { id: 'hr', title: '分隔线', icon: '―', transform: { insert: '\n---\n' } },
+
+  // —— Callout（Obsidian 语法 `> [!type]`）：走 command 携带类型，
+  //    有选区时把选区作为 callout 内容，无选区插入占位模板。
+  { id: 'callout-note', title: '笔记 Callout', icon: '📝', command: 'editor:callout:note' },
+  { id: 'callout-info', title: '信息 Callout', icon: 'ℹ️', command: 'editor:callout:info' },
+  { id: 'callout-tip', title: '提示 Callout', icon: '💡', command: 'editor:callout:tip' },
+  { id: 'callout-success', title: '成功 Callout', icon: '✅', command: 'editor:callout:success' },
+  { id: 'callout-question', title: '疑问 Callout', icon: '❓', command: 'editor:callout:question' },
+  { id: 'callout-warning', title: '警告 Callout', icon: '⚠️', command: 'editor:callout:warning' },
+  { id: 'callout-danger', title: '危险 Callout', icon: '🔥', command: 'editor:callout:danger' },
+  { id: 'callout-bug', title: '缺陷 Callout', icon: '🐛', command: 'editor:callout:bug' },
 ]
 
 for (const button of BUTTONS) {

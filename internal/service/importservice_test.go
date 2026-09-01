@@ -2,11 +2,13 @@ package service
 
 import (
 	"archive/zip"
+	"fmt"
 	"github.com/notevault/notevault/internal/core"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newImportTestService(t *testing.T) *ImportService {
@@ -353,4 +355,136 @@ func isCaseInsensitiveFS() bool {
 	upper := filepath.Join(dir, "PROBE.md")
 	_, err = os.Stat(upper)
 	return err == nil // 大小写不敏感时 PROBE.md 命中 probe.md
+}
+
+// ---------------------------------------------------------------------------
+// E-5 异步导入
+// ---------------------------------------------------------------------------
+
+// TestImportAsync_ImportsFiles 异步导入的最终结果与同步版一致。
+// 这条锁住的是"异步只是调度方式变了，导入逻辑本身没变"。
+func TestImportAsync_ImportsFiles(t *testing.T) {
+	tasks := NewTaskService(nil)
+	s := NewImportServiceWithTasks(tasks)
+
+	src := t.TempDir()
+	ws := t.TempDir()
+	writeTestFile(t, src, "a.md", "# A")
+	writeTestFile(t, src, "sub/b.md", "# B")
+
+	id, err := s.ImportMarkdownFolderAsync(src, ws, ImportOptions{IncludeSubdirs: true})
+	if err != nil {
+		t.Fatalf("ImportMarkdownFolderAsync: %v", err)
+	}
+	if id == "" {
+		t.Fatal("expected a task ID")
+	}
+	tasks.Wait()
+
+	info := tasks.GetTask(id)
+	if info == nil || info.Status != TaskSucceeded {
+		t.Fatalf("expected task to succeed, got %+v", info)
+	}
+	for _, rel := range []string{"a.md", filepath.Join("sub", "b.md")} {
+		if _, err := os.Stat(filepath.Join(ws, rel)); err != nil {
+			t.Errorf("expected %s to be imported: %v", rel, err)
+		}
+	}
+}
+
+// TestImportAsync_ValidatesSynchronously 参数错误必须在提交任务前就返回。
+// 若等到任务里才发现，用户点完导入什么都没发生，几秒后才冒出一个错误弹窗。
+func TestImportAsync_ValidatesSynchronously(t *testing.T) {
+	s := NewImportServiceWithTasks(NewTaskService(nil))
+
+	if _, err := s.ImportMarkdownFolderAsync("", t.TempDir(), ImportOptions{}); err == nil {
+		t.Error("empty source dir should be rejected synchronously")
+	}
+	if _, err := s.ImportMarkdownFolderAsync(t.TempDir(), "", ImportOptions{}); err == nil {
+		t.Error("empty workspace should be rejected synchronously")
+	}
+}
+
+// TestImportAsync_RequiresTaskFramework 没接任务框架时，异步导入应当明确报错，
+// 而不是静默退化成同步执行（那会让调用方误以为已经异步了）。
+func TestImportAsync_RequiresTaskFramework(t *testing.T) {
+	s := NewImportService()
+	if _, err := s.ImportMarkdownFolderAsync(t.TempDir(), t.TempDir(), ImportOptions{}); err == nil {
+		t.Error("async import without a task service should fail")
+	}
+}
+
+// TestImportAsync_CancelStopsEarly 取消后不应把所有文件都导完。
+// 这是异步导入相对同步导入的核心收益：用户能中途叫停。
+func TestImportAsync_CancelStopsEarly(t *testing.T) {
+	tasks := NewTaskServiceWithOptions(nil, 1, 10)
+	s := NewImportServiceWithTasks(tasks)
+
+	src := t.TempDir()
+	ws := t.TempDir()
+	for i := 0; i < 300; i++ {
+		writeTestFile(t, src, fmt.Sprintf("note%03d.md", i), "# note")
+	}
+
+	id, err := s.ImportMarkdownFolderAsync(src, ws, ImportOptions{})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	// 给任务一点时间真正起步，演示「中途取消」而非「排队阶段取消」。
+	// 300 个文件的读写远超这个延时，所以必是局部导入。
+	time.Sleep(30 * time.Millisecond)
+	tasks.Cancel(id)
+	tasks.Wait()
+
+	info := tasks.GetTask(id)
+	if info.Status != TaskCancelled {
+		t.Fatalf("expected cancelled, got %s (err=%s)", info.Status, info.Error)
+	}
+
+	// 无论取消发生在排队阶段（0 个文件）还是中途（部分文件），
+	// 核心不变量都是：绝不可能把全部 300 个文件都导完。
+	imported := 0
+	_ = filepath.WalkDir(ws, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(d.Name(), ".md") {
+			imported++
+		}
+		return nil
+	})
+	if imported >= 300 {
+		t.Errorf("cancel did not take effect: all %d files imported anyway", imported)
+	}
+}
+
+// TestImportAsync_ReportsProgress 进度必须推进到 100%：
+// 前端进度条依赖这个数字，停在 50% 会让用户以为卡住了。
+func TestImportAsync_ReportsProgress(t *testing.T) {
+	em := &recordingEmitter{}
+	tasks := NewTaskService(em)
+	s := NewImportServiceWithTasks(tasks)
+
+	src := t.TempDir()
+	ws := t.TempDir()
+	for i := 0; i < 20; i++ {
+		writeTestFile(t, src, fmt.Sprintf("n%02d.md", i), "# n")
+	}
+
+	id, err := s.ImportMarkdownFolderAsync(src, ws, ImportOptions{})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	tasks.Wait()
+
+	finished := em.last(EventTaskFinished)
+	if finished == nil {
+		t.Fatal("no finished event")
+	}
+	if finished.Percent != 100 {
+		t.Errorf("finished task should report 100%%, got %d", finished.Percent)
+	}
+	if finished.Message == "" {
+		t.Error("finished task should carry a summary message for the user")
+	}
+	if tasks.GetTask(id).Status != TaskSucceeded {
+		t.Error("task should succeed")
+	}
 }

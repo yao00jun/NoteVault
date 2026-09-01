@@ -3,7 +3,6 @@ package service
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -11,8 +10,8 @@ import (
 func TestTokenize_LatinAndCJK(t *testing.T) {
 	tokens := tokenize("Hello 世界 apple-pie")
 	// Latin: "hello", "apple", "pie" (连字符分隔)
-	// CJK:  "世", "界"
-	expect := []string{"hello", "世", "界", "apple", "pie"}
+	// CJK:  "世界" 是长度为 2 的连续段 → 产出 1 个 bigram
+	expect := []string{"hello", "世界", "apple", "pie"}
 	if len(tokens) != len(expect) {
 		t.Fatalf("expected %d tokens, got %d: %v", len(expect), len(tokens), tokens)
 	}
@@ -114,35 +113,28 @@ func TestSearchIndex_IncrementalUpdate(t *testing.T) {
 	}
 }
 
-func TestSearchIndex_StaleCandidatesFilteredByExactMatch(t *testing.T) {
+// TestSearchIndex_BigramAvoidsFalseCandidates 验证 bigram 切分不会产生伪候选。
+//
+// 这是 P0-1 把 CJK 从「单字」改为「二元切分」的直接收益：
+// 单字切分下，文档「关 键 分开写了」会因为它含有关/键 两个单字而成为
+// 「关键词」的候选，只能靠后续的精确子串匹配兜底；
+// bigram 下查询切成 [关键, 键词]，与文档 token 无交集，从源头就不产生候选。
+func TestSearchIndex_BigramAvoidsFalseCandidates(t *testing.T) {
 	ClearAllSearchIndexes()
 	dir := t.TempDir()
 
-	// 文档包含 "关" 和 "键" 但不包含 "关键词" 子串
+	// 「关」与「键」被空格分开，不构成 bigram「关键」
 	mustWrite(t, filepath.Join(dir, "a.md"), "# Test\n关 键 分开写了")
 
 	idx := getSearchIndex(dir)
 	idx.refresh(dir)
 
-	// 查询 "关键词" — token: 关,键,词。文档有 关 和 键 token → 候选
 	idx.mu.RLock()
 	candidates := idx.query("关键词")
 	idx.mu.RUnlock()
 
-	if len(candidates) != 1 {
-		t.Fatalf("expected 1 candidate, got %d", len(candidates))
-	}
-
-	// 但精确 substring 匹配应返回 0。
-	// 正文是按需加载的，必须先经 contentOf 取出再计数（直接读字段会拿到空串，
-	// 那样这个断言就会「因为根本没内容」而通过，失去意义）。
-	_, contentLower, err := idx.contentOf(candidates[0])
-	if err != nil {
-		t.Fatalf("contentOf failed: %v", err)
-	}
-	matchCount := strings.Count(contentLower, strings.ToLower("关键词"))
-	if matchCount != 0 {
-		t.Fatalf("exact match should be 0 for non-adjacent CJK, got %d", matchCount)
+	if len(candidates) != 0 {
+		t.Fatalf("expected 0 candidates, got %d", len(candidates))
 	}
 }
 

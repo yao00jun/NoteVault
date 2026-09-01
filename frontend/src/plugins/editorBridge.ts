@@ -9,6 +9,7 @@ import {
 } from '@codemirror/view'
 import { EditorSelection, RangeSetBuilder, type Extension } from '@codemirror/state'
 import { indentLess, indentMore, redo, undo } from '@codemirror/commands'
+import { insertCallout } from '@/components/editor/editorCommands'
 import type {
   CompiledDecoration,
   CompiledWidget,
@@ -155,8 +156,17 @@ export function runBuiltinEditorCommand(command: string): boolean {
       applyAlign('justify')
       return true
     default:
-      return false
+      break
   }
+
+  // 带类型的命令：`editor:callout:<type>` 插入对应 Callout 块
+  if (command.startsWith('editor:callout:')) {
+    const type = command.slice('editor:callout:'.length) || 'note'
+    insertCallout(view, type)
+    return true
+  }
+
+  return false
 }
 
 /** 行级前缀：标题 #、引用 >、无序列表 -、有序列表 1. 等 */

@@ -48,6 +48,36 @@ export interface AISettings {
   apiKey: string
 }
 
+/**
+ * Embedding 端点配置（P1-3 语义检索）。
+ * 与 AISettings 分离：Chat/生成 与 Embedding 可能指向不同服务
+ * （例如生成走云端、embedding 走本机 Ollama）。
+ */
+export interface EmbeddingSettings {
+  /** OpenAI 兼容 embedding 接口地址，如 http://localhost:11434/v1（Ollama 本机） */
+  baseURL: string
+  /** embedding 模型名称，如 bge-m3 / nomic-embed-text */
+  model: string
+  /** API Key，本机端点（Ollama）可留空 */
+  apiKey: string
+}
+
+/**
+ * 重排序（Rerank）端点配置（P1-3b，可选）。
+ * 在 BM25 + 向量召回之后做一遍 cross-encoder 重排，进一步修正召回顺序。
+ * 未配置时检索融合退化为纯 RRF，行为与未开启语义检索一致。
+ */
+export interface RerankSettings {
+  /** 厂商：ollama（本机 /api/rerank，免鉴权）| cohere（/v1/rerank，需 Key） */
+  provider: 'ollama' | 'cohere'
+  /** rerank 接口地址：ollama 填根地址 http://localhost:11434；cohere 填 https://api.cohere.ai/v1 */
+  baseURL: string
+  /** rerank 模型名称，如 bge-reranker-v2-m3（Ollama）/ rerank-v3.5（Cohere） */
+  model: string
+  /** API Key：ollama 本机可留空；cohere 必填 */
+  apiKey: string
+}
+
 export interface EditorSettings {
   /** 编辑器行高 */
   lineHeight: number
@@ -89,6 +119,8 @@ export interface AppSettings {
   fontSize: number
   defaultWorkspace?: string
   ai: AISettings
+  embedding: EmbeddingSettings
+  rerank: RerankSettings
   editor: EditorSettings
   toolbar: ToolbarSettings
   reminder: {

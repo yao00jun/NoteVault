@@ -29,9 +29,15 @@ type FileOperator interface {
 // 搜索
 // ---------------------------------------------------------------------------
 
-// Searcher 定义全文搜索接口（基于内存反向索引）
+// Searcher 定义全文搜索接口（基于内存反向索引 + BM25 打分）
 type Searcher interface {
 	Search(workspacePath string, query string) ([]*SearchResult, error)
+	// GetIndexStats 返回索引的覆盖情况（P0-5）。
+	//
+	// 存在意义：索引扫描有两道硬上限（maxScanFiles / maxSearchFileSize），
+	// 超限部分会被跳过。不把它暴露出来，用户会以为「搜不到就是没有」，
+	// 实际上只是那部分文件根本没进索引。
+	GetIndexStats(workspacePath string) (*SearchIndexStats, error)
 }
 
 // ---------------------------------------------------------------------------
@@ -52,6 +58,7 @@ type Tagger interface {
 // Grapher 定义知识图谱构建接口
 type Grapher interface {
 	GetGraph(workspacePath string) (*GraphData, error)
+	GetLinkCandidates(workspacePath, query string) ([]*LinkCandidate, error)
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +112,29 @@ type TrashOperator interface {
 }
 
 // ---------------------------------------------------------------------------
+// 版本快照 / 时间机器
+// ---------------------------------------------------------------------------
+
+// SnapshotOperator 定义版本历史接口（内容寻址快照，存放于 .notevault/history/）。
+//
+// 注：自动留存钩子（captureBeforeWrite / captureBeforeDelete）故意不在端口里——
+// 它们由 FileService 在写入链路内部调用，不是前端 API。若导出，Wails 会把它们
+// 绑成前端方法，且本契约测试会正确报出漂移。
+type SnapshotOperator interface {
+	CreateManualSnapshot(workspacePath, relativePath string) (*Snapshot, error)
+	ListSnapshots(workspacePath, relativePath string) ([]*Snapshot, error)
+	ListSnapshotFiles(workspacePath string) ([]*SnapshotFileSummary, error)
+	GetSnapshotContent(workspacePath, id string) (string, error)
+	DiffWithCurrent(workspacePath, id string) (*SnapshotDiff, error)
+	DiffSnapshots(workspacePath, fromID, toID string) (*SnapshotDiff, error)
+	RestoreSnapshot(workspacePath, id string) (*SnapshotRestoreResult, error)
+	DeleteSnapshot(workspacePath, id string) error
+	ClearSnapshots(workspacePath, relativePath string) (int, error)
+	PruneSnapshots(workspacePath string) (*SnapshotStats, error)
+	GetSnapshotStats(workspacePath string) (*SnapshotStats, error)
+}
+
+// ---------------------------------------------------------------------------
 // 工作区
 // ---------------------------------------------------------------------------
 
@@ -138,13 +168,38 @@ type Summarizer interface {
 	Summarize(apiKey, baseURL, model, content string) (string, error)
 }
 
+// LLMConfigurator 定义 LLM 端点配置与自检接口。
+// 独立于 Summarizer / QnAProvider：端点配置服务于所有 AI 能力，
+// 若挂在其中任一功能接口上，另一个就得反向依赖它。
+type LLMConfigurator interface {
+	Presets() []LLMEndpointPreset
+	Probe(apiKey, baseURL string) *LLMProbeResult
+}
+
+// CredentialKeeper 定义系统级密钥存取接口（P2-5）。
+// key 是白名单内的逻辑名（如 ai.apiKey），平台实现负责落到
+// Windows 凭据管理器等系统存储。
+type CredentialKeeper interface {
+	SaveCredential(key, value string) error
+	GetCredential(key string) (string, error)
+	DeleteCredential(key string) error
+}
+
 // ---------------------------------------------------------------------------
 // RAG 知识库问答
 // ---------------------------------------------------------------------------
 
 // QnAProvider 定义知识库问答接口（检索增强生成）
 type QnAProvider interface {
-	Answer(apiKey, baseURL, model, workspacePath, question string) (*QnAResponse, error)
+	// Answer 提问并返回带引用的回答。
+	// embBaseURL/embModel/embAPIKey 为语义检索的 embedding 端点配置（与生成端点独立）；
+	// 三者为空时向量 leg 不启用，检索退化为纯 BM25，行为与 P0 结束态一致。
+	// rerankCfg 为可选重排序端点配置（P1-3b）；未配置时融合退化为纯 BM25 + 向量 RRF，
+	// 与 P1-3 结束态一致；重排服务不可用时静默回退，不阻断问答。
+	Answer(apiKey, baseURL, model, embBaseURL, embModel, embAPIKey string, rerankCfg RerankConfig, workspacePath, question string) (*QnAResponse, error)
+	// HybridSearch 文档级混合检索（BM25 + 向量 RRF 融合），供前端搜索增强。
+	// rerankCfg 同上，可选。
+	HybridSearch(workspacePath, query, embBaseURL, embModel, embAPIKey string, rerankCfg RerankConfig) ([]*SearchResult, error)
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +212,35 @@ type QnAProvider interface {
 type Importer interface {
 	ImportMarkdownFolder(srcDir, workspacePath string, opts ImportOptions) (*ImportResult, error)
 	ImportZip(zipPath, workspacePath string, opts ImportOptions) (*ImportResult, error)
+	// ImportMarkdownFolderAsync 异步导入（E-5），立即返回任务 ID。
+	//
+	// 大库导入会阻塞 UI 几十秒且无法中断，同步接口撑不住这个场景。
+	// 结果不在这里返回：查 TaskService.GetTask 或订阅 task:finished 事件。
+	ImportMarkdownFolderAsync(srcDir, workspacePath string, opts ImportOptions) (string, error)
+}
+
+// ---------------------------------------------------------------------------
+// 异步任务（E-5）
+// ---------------------------------------------------------------------------
+
+// TaskOperator 定义异步任务的查询与取消接口。
+//
+// 刻意不包含"启动任务"：任务体是 Go 函数（TaskFunc），无法跨语言传递，
+// 启动只能由包内其他 Service 调用非导出的 submit 发起。
+// 前端能做的是查看进度、取消，以及在切换工作区 / 退出前批量收尾。
+//
+// 状态变化经 Wails 事件推送（task:started / task:progress / task:finished），
+// 这里的查询接口是补充手段——事件可能因前端尚未订阅而丢失，
+// 查询保证任何时刻都能拿到当前状态。
+type TaskOperator interface {
+	ListTasks() []*TaskInfo
+	GetTask(taskID string) *TaskInfo
+	// Cancel 发出取消信号。返回 true 仅代表信号已发出，
+	// 任务体需要在自己的检查点响应 ctx.Done() 才会真正停下。
+	Cancel(taskID string) bool
+	CancelAll() int
+	// Wait 阻塞至所有任务结束，供优雅退出使用。
+	Wait()
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +288,8 @@ type PluginOperator interface {
 // ---------------------------------------------------------------------------
 
 var _ FileOperator = (*FileService)(nil)
+var _ LLMConfigurator = (*LLMConfigService)(nil)
+var _ CredentialKeeper = (*CredentialService)(nil)
 var _ Searcher = (*SearchService)(nil)
 var _ Tagger = (*TagService)(nil)
 var _ Grapher = (*GraphService)(nil)
@@ -211,11 +297,43 @@ var _ TodoOperator = (*TodoService)(nil)
 var _ ReminderOperator = (*ReminderService)(nil)
 var _ ArchiveOperator = (*ArchiveService)(nil)
 var _ TrashOperator = (*TrashService)(nil)
+var _ SnapshotOperator = (*SnapshotService)(nil)
 var _ WorkspaceOperator = (*WorkspaceService)(nil)
 var _ Exporter = (*ExportService)(nil)
 var _ Summarizer = (*SummarizeService)(nil)
 var _ QnAProvider = (*QnAService)(nil)
 var _ Importer = (*ImportService)(nil)
+var _ TaskOperator = (*TaskService)(nil)
+var _ Gitter = (*GitService)(nil)
+
+// ---------------------------------------------------------------------------
+// 模板系统（P2-2）
+// ---------------------------------------------------------------------------
+
+// Templater 定义模板列表与从模板创建笔记的接口。
+// 模板是 Templates/ 目录下的普通 .md 文件（Obsidian 同名约定），
+// {{title}}/{{date}}/{{time}}/{{datetime}} 为内置变量，其余 {{word}} 由用户填写。
+type Templater interface {
+	ListTemplates(workspacePath string) ([]*TemplateInfo, error)
+	GetTemplateContent(workspacePath string, name string) (string, error)
+	CreateFromTemplate(workspacePath string, templateName string, targetRelativePath string, variables map[string]string) (*FileNode, error)
+}
+
+var _ Templater = (*TemplateService)(nil)
+
+// ---------------------------------------------------------------------------
+// Git 友好（P2-4）
+// ---------------------------------------------------------------------------
+
+// Gitter 定义工作区 Git 接入的最小接口。
+// 战略边界：只做 init / .gitignore / 一键提交，**不做同步**——
+// 冲突合并、远端管理交给用户自己的 Git 工具链。
+type Gitter interface {
+	Status(workspacePath string) (*GitStatus, error)
+	InitRepo(workspacePath string) error
+	EnsureGitignore(workspacePath string) (bool, error)
+	CommitAll(workspacePath string, message string) (string, error)
+}
 
 // 注：以下两个端口的实现位于其他包，其编译时断言随实现下沉到各包内，
 // 避免 service 包反向依赖它们：

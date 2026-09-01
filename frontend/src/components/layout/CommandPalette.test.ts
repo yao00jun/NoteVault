@@ -47,8 +47,9 @@ describe('CommandPalette', () => {
     await flushPromises()
 
     const items = wrapper.findAll('.command-item')
-    expect(items).toHaveLength(18)
-    expect(items[17].text()).toContain('E2E Plugin Notify')
+    // 内置命令 18 条（含「版本历史」）+ 插件命令 1 条
+    expect(items).toHaveLength(19)
+    expect(items[items.length - 1].text()).toContain('E2E Plugin Notify')
     const pluginItems = wrapper.findAll('[data-testid="plugin-command"]')
     expect(pluginItems[0].attributes('data-plugin-id')).toBe('p1')
     expect(wrapper.find('[data-testid="plugin-runtime-failed"]').text()).toContain('Broken Plugin')

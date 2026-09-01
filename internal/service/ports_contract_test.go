@@ -66,11 +66,17 @@ func TestPortMethodSets(t *testing.T) {
 		{"ReminderService ↔ ReminderOperator", portType[ReminderOperator](), &ReminderService{}},
 		{"ArchiveService ↔ ArchiveOperator", portType[ArchiveOperator](), &ArchiveService{}},
 		{"TrashService ↔ TrashOperator", portType[TrashOperator](), &TrashService{}},
+		{"SnapshotService ↔ SnapshotOperator", portType[SnapshotOperator](), &SnapshotService{}},
+		{"LLMConfigService ↔ LLMConfigurator", portType[LLMConfigurator](), &LLMConfigService{}},
+		{"CredentialService ↔ CredentialKeeper", portType[CredentialKeeper](), &CredentialService{}},
 		{"WorkspaceService ↔ WorkspaceOperator", portType[WorkspaceOperator](), &WorkspaceService{}},
 		{"ExportService ↔ Exporter", portType[Exporter](), &ExportService{}},
 		{"SummarizeService ↔ Summarizer", portType[Summarizer](), &SummarizeService{}},
 		{"QnAService ↔ QnAProvider", portType[QnAProvider](), &QnAService{}},
 		{"ImportService ↔ Importer", portType[Importer](), &ImportService{}},
+		{"TaskService ↔ TaskOperator", portType[TaskOperator](), &TaskService{}},
+		{"GitService ↔ Gitter", portType[Gitter](), &GitService{}},
+		{"TemplateService ↔ Templater", portType[Templater](), &TemplateService{}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

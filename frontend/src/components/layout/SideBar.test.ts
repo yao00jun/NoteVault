@@ -87,7 +87,7 @@ describe('SideBar', () => {
     const { wrapper } = mountSideBar()
     await flushPromises()
     const navItems = wrapper.findAll('.nav-item')
-    expect(navItems.length).toBe(12)
+    expect(navItems.length).toBe(14)
   })
 
   it('应包含四个分组标题', async () => {
@@ -102,9 +102,9 @@ describe('SideBar', () => {
     await flushPromises()
     const navItems = wrapper.findAll('.nav-item')
 
-    // 新顺序：knowledge/graph/todos/reminders/files/search/tags/...
-    // index 5 = search
-    await navItems[5].trigger('click')
+    // 当前顺序：knowledge/graph/bases/todos/reminders/files/search/tags/...
+    // index 6 = search（bases 在 library 组插入，使 search 后移一位）
+    await navItems[6].trigger('click')
     await flushPromises()
     await nextTick()
     expect(router.currentRoute.value.path).toBe('/search')

@@ -1,6 +1,19 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useSettingsStore } from './settings'
+
+// P2-5：settings store 会把 apiKey 同步进系统凭据库（经 Wails 服务），
+// Node 环境下没有事件总线，mock 掉以便断言调用。
+const saveCredential = vi.fn(async (..._args: unknown[]) => undefined)
+const getCredential = vi.fn(async (..._args: unknown[]) => '')
+
+vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+  CredentialService: {
+    SaveCredential: (...args: unknown[]) => saveCredential(...args),
+    GetCredential: (...args: unknown[]) => getCredential(...args),
+    DeleteCredential: vi.fn(async () => undefined),
+  },
+}))
 
 // 在 Node 环境下模拟 localStorage
 class MemoryStorage {
@@ -37,6 +50,10 @@ beforeAll(() => {
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  saveCredential.mockClear()
+  getCredential.mockClear()
+  getCredential.mockImplementation(async () => '')
+  localStorage.clear()
 })
 
 describe('useSettingsStore', () => {
@@ -94,5 +111,42 @@ describe('useSettingsStore', () => {
     expect(store.settings.ai.baseURL).toContain('v1')
     expect(store.settings.reminder.defaultTime).toBe('09:00')
     expect(store.settings.reminder.doNotDisturb.start).toBe('22:00')
+  })
+
+  it('apiKey 应同步进系统凭据库且不落 localStorage (P2-5)', async () => {
+    const store = useSettingsStore()
+    store.settings.ai.apiKey = 'sk-secret-value'
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(saveCredential).toHaveBeenCalledWith('ai.apiKey', 'sk-secret-value')
+    const raw = localStorage.getItem('notevault-settings') ?? ''
+    expect(raw).not.toContain('sk-secret-value')
+  })
+
+  it('apiKey 清空应触发凭据库删除语义（空值 → Delete）', async () => {
+    const store = useSettingsStore()
+    store.settings.ai.apiKey = 'sk-to-be-cleared'
+    await new Promise((r) => setTimeout(r, 10))
+    store.settings.ai.apiKey = ''
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(saveCredential).toHaveBeenLastCalledWith('ai.apiKey', '')
+  })
+
+  it('旧版 localStorage 里的明文 apiKey 应迁移进凭据库并清除 (P2-5)', async () => {
+    localStorage.setItem('notevault-settings', JSON.stringify({
+      theme: 'macos',
+      ai: { apiKey: 'sk-legacy' },
+    }))
+
+    const store = useSettingsStore()
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(saveCredential).toHaveBeenCalledWith('ai.apiKey', 'sk-legacy')
+    // localStorage 里不再有明文
+    const raw = localStorage.getItem('notevault-settings') ?? ''
+    expect(raw).not.toContain('sk-legacy')
+    // 内存中也不恢复旧值（恢复走凭据库的 restoreApiKey 路径）
+    expect(store.settings.ai.apiKey).toBe('')
   })
 })

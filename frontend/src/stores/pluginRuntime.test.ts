@@ -44,6 +44,7 @@ vi.mock('@/plugins/runtime', () => ({
     getCommands = () => this.commands.filter(command => command.pluginId !== 'removed')
     getToolbarButtons = () => this.toolbarButtons
     getFailedPlugins = () => this.failedPlugins
+    emitWorkspaceEvent = vi.fn()
     async load(info: { id: string }) {
       void this.factory(info)
       this.loaded.push(info)
@@ -66,6 +67,15 @@ vi.mock('@/plugins/workerSource', () => ({
   createWorkerSource: vi.fn((id: string) => `// fixture worker:${id}`),
 }))
 
+// E-6：文件变更改由后端 fsnotify 推送，store 会订阅 Wails 事件总线。
+// 单测里没有事件总线，mock 掉并允许用例直接操纵回调。
+const eventsOnUnsubscribe = vi.fn()
+vi.mock('@wailsio/runtime', () => ({
+  Events: {
+    On: vi.fn(() => eventsOnUnsubscribe),
+  },
+}))
+
 vi.mock('@/plugins/editorBridge', () => ({
   setActiveEditor: vi.fn(),
   getActiveEditor: vi.fn(() => null),
@@ -73,6 +83,7 @@ vi.mock('@/plugins/editorBridge', () => ({
 }))
 
 import { FileService, PluginService } from '@bindings/github.com/notevault/notevault/index.js'
+import { Events } from '@wailsio/runtime'
 import { PluginRuntimeHost } from '@/plugins/runtime'
 import { createWorkerSource } from '@/plugins/workerSource'
 import { applyTransform } from '@/plugins/editorBridge'
@@ -116,6 +127,8 @@ beforeEach(() => {
   listPlugins.mockReset()
   readFile.mockReset()
   saveFile.mockReset()
+  vi.mocked(Events.On).mockClear()
+  eventsOnUnsubscribe.mockClear()
 })
 
 afterEach(() => {
@@ -193,5 +206,38 @@ describe('usePluginRuntimeStore', () => {
     const button = store.toolbarButtons[0]
     store.runToolbarButton(button.pluginId, button.id)
     expect(applyTransformMock).toHaveBeenCalledWith(button.transform)
+  })
+
+  it('subscribes to backend file-change events and forwards valid ones to plugins (E-6)', async () => {
+    const workspaceStore = useWorkspaceStore()
+    workspaceStore.setCurrentWorkspace({
+      createdAt: '', id: 'ws', lastOpenedAt: '', name: 'Vault', path: '/tmp/vault',
+    })
+    listPlugins.mockResolvedValue([])
+
+    const store = usePluginRuntimeStore()
+    await store.initialize()
+
+    // 初始化时订阅了 workspace:file-changed，且只订阅一次
+    const onMock = vi.mocked(Events.On)
+    expect(onMock).toHaveBeenCalledTimes(1)
+    expect(onMock).toHaveBeenCalledWith('workspace:file-changed', expect.any(Function))
+
+    const host = hostInstances[0] as unknown as {
+      emitWorkspaceEvent: (event: { path: string, type: string }) => void
+    }
+    const handler = onMock.mock.calls[0]![1] as (ev: { data: unknown } | undefined) => void
+
+    // 合法事件：直接转发给插件（path + type 同构透传）
+    handler({ data: { type: 'modify', path: 'notes/a.md' } })
+    expect(host.emitWorkspaceEvent).toHaveBeenCalledWith({ type: 'modify', path: 'notes/a.md' })
+
+    // 脏数据：缺 type / 非法 type / 缺 path 都不能转发
+    handler({ data: { path: 'x.md' } })
+    handler({ data: { type: 'chmod', path: 'x.md' } })
+    handler({ data: { type: 'create', path: '' } })
+    handler({ data: null })
+    handler(undefined)
+    expect(host.emitWorkspaceEvent).toHaveBeenCalledTimes(1)
   })
 })
