@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -23,7 +23,7 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<string>}
  */
 export function CommitAll(workspacePath, message) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.GitService.CommitAll", workspacePath, message);
+    return $Call.ByID(3304208110, workspacePath, message);
 }
 
 /**
@@ -33,7 +33,7 @@ export function CommitAll(workspacePath, message) {
  * @returns {$CancellablePromise<boolean>}
  */
 export function EnsureGitignore(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.GitService.EnsureGitignore", workspacePath);
+    return $Call.ByID(451875978, workspacePath);
 }
 
 /**
@@ -42,7 +42,7 @@ export function EnsureGitignore(workspacePath) {
  * @returns {$CancellablePromise<void>}
  */
 export function InitRepo(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.GitService.InitRepo", workspacePath);
+    return $Call.ByID(2844955264, workspacePath);
 }
 
 /**
@@ -52,5 +52,11 @@ export function InitRepo(workspacePath) {
  * @returns {$CancellablePromise<$models.GitStatus | null>}
  */
 export function Status(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.GitService.Status", workspacePath);
+    return $Call.ByID(4070547392, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
+
+// Private type creation functions
+const $$createType0 = $models.GitStatus.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);

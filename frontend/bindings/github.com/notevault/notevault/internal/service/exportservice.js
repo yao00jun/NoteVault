@@ -11,7 +11,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 /**
  * ExportNoteMarkdown 将单个笔记（按相对路径）复制导出到 destPath
@@ -21,7 +21,7 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
  * @returns {$CancellablePromise<void>}
  */
 export function ExportNoteMarkdown(workspacePath, relPath, destPath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.ExportService.ExportNoteMarkdown", workspacePath, relPath, destPath);
+    return $Call.ByID(2116433417, workspacePath, relPath, destPath);
 }
 
 /**
@@ -32,7 +32,7 @@ export function ExportNoteMarkdown(workspacePath, relPath, destPath) {
  * @returns {$CancellablePromise<void>}
  */
 export function ExportWorkspaceMarkdown(workspacePath, destPath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.ExportService.ExportWorkspaceMarkdown", workspacePath, destPath);
+    return $Call.ByID(3872025128, workspacePath, destPath);
 }
 
 /**
@@ -42,5 +42,5 @@ export function ExportWorkspaceMarkdown(workspacePath, destPath) {
  * @returns {$CancellablePromise<void>}
  */
 export function SaveText(destPath, content) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.ExportService.SaveText", destPath, content);
+    return $Call.ByID(507355236, destPath, content);
 }

@@ -564,18 +564,28 @@ func (s *QnAService) HybridSearch(workspacePath, query, embBaseURL, embModel, em
 	}
 	sort.Slice(fused, func(i, j int) bool { return fused[i].score > fused[j].score })
 
-	// docByRel 加速「relPath → 文档」查找，避免原实现每轮线性扫描 docScores。
-	docByRel := make(map[string]*cachedDoc, len(docScores))
-	for _, sd := range docScores {
-		docByRel[sd.doc.relPath] = sd.doc
+	// lookupDoc 按 relPath 取文档。
+	//
+	// 必须能取到「未被 BM25 命中的文档」：纯向量召回的结果与 query 词面零重叠
+	// （典型场景：英文 query 命中中文笔记），因此不在 docScores 里。
+	// 此前只从 docScores 建映射，这类结果会在结果映射阶段被 continue 丢弃，
+	// 混合检索实际退化成「只重排 BM25 命中集」——向量 leg 算了分却贡献不了任何
+	// 新召回，Recall@5 与纯 BM25 完全持平（P1-3 实测发现的缺陷）。
+	//
+	// 改为从索引全量 docs 惰性查找：单次查询最多查 defaultMaxSearchResults*2 次，
+	// 每次仅持读锁做一次 map 取值，开销可忽略，且不会把整份 docs 复制一遍。
+	lookupDoc := func(relPath string) *cachedDoc {
+		idx.mu.RLock()
+		defer idx.mu.RUnlock()
+		return idx.docs[relPath]
 	}
 
 	// P1-3b：配置 rerank 且可用时，对候选文档做一遍重排，重排后的顺序覆盖 RRF 顺序。
 	if s.reranker != nil {
 		texts := make([]string, 0, len(fused))
 		for _, f := range fused {
-			doc, ok := docByRel[f.relPath]
-			if !ok {
+			doc := lookupDoc(f.relPath)
+			if doc == nil {
 				texts = append(texts, "")
 				continue
 			}
@@ -608,8 +618,8 @@ func (s *QnAService) HybridSearch(workspacePath, query, embBaseURL, embModel, em
 	// 条即时生成，其余留空交前端按需取，避免给 Top-N 全部读正文拖慢首屏。
 	results := make([]*SearchResult, 0, len(fused))
 	for i, f := range fused {
-		doc, ok := docByRel[f.relPath]
-		if !ok {
+		doc := lookupDoc(f.relPath)
+		if doc == nil {
 			continue
 		}
 		var snippet string

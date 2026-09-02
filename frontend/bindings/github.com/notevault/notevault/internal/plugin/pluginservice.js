@@ -10,7 +10,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -22,7 +22,7 @@ import * as core$0 from "../core/models.js";
  * @returns {$CancellablePromise<void>}
  */
 export function DisablePlugin(id) {
-    return $Call.ByName("github.com/notevault/notevault/internal/plugin.PluginService.DisablePlugin", id);
+    return $Call.ByID(62913218, id);
 }
 
 /**
@@ -31,7 +31,7 @@ export function DisablePlugin(id) {
  * @returns {$CancellablePromise<void>}
  */
 export function EnablePlugin(id) {
-    return $Call.ByName("github.com/notevault/notevault/internal/plugin.PluginService.EnablePlugin", id);
+    return $Call.ByID(1755604279, id);
 }
 
 /**
@@ -40,7 +40,9 @@ export function EnablePlugin(id) {
  * @returns {$CancellablePromise<core$0.PluginInfo | null>}
  */
 export function GetPlugin(id) {
-    return $Call.ByName("github.com/notevault/notevault/internal/plugin.PluginService.GetPlugin", id);
+    return $Call.ByID(900523002, id).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
@@ -48,7 +50,7 @@ export function GetPlugin(id) {
  * @returns {$CancellablePromise<string>}
  */
 export function GetPluginsDir() {
-    return $Call.ByName("github.com/notevault/notevault/internal/plugin.PluginService.GetPluginsDir");
+    return $Call.ByID(965119690);
 }
 
 /**
@@ -60,7 +62,7 @@ export function GetPluginsDir() {
  * @returns {$CancellablePromise<void>}
  */
 export function GrantTrust(id) {
-    return $Call.ByName("github.com/notevault/notevault/internal/plugin.PluginService.GrantTrust", id);
+    return $Call.ByID(3642443879, id);
 }
 
 /**
@@ -69,10 +71,12 @@ export function GrantTrust(id) {
  * 历史签名是 ListPlugins(rescan bool)，但 rescan 是死参数——实现没有任何缓存，
  * 传 true/false 行为完全一致，只是在伪装"可跳过扫描"的语义。已移除该参数，
  * 让契约如实反映"每次调用都读盘"这一事实。
- * @returns {$CancellablePromise<core$0.PluginInfo[] | null>}
+ * @returns {$CancellablePromise<core$0.PluginInfo[]>}
  */
 export function ListPlugins() {
-    return $Call.ByName("github.com/notevault/notevault/internal/plugin.PluginService.ListPlugins");
+    return $Call.ByID(53705841).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType2($result);
+    }));
 }
 
 /**
@@ -82,7 +86,7 @@ export function ListPlugins() {
  * @returns {$CancellablePromise<string>}
  */
 export function LoadPluginData(id) {
-    return $Call.ByName("github.com/notevault/notevault/internal/plugin.PluginService.LoadPluginData", id);
+    return $Call.ByID(3219810568, id);
 }
 
 /**
@@ -91,7 +95,7 @@ export function LoadPluginData(id) {
  * @returns {$CancellablePromise<void>}
  */
 export function RevokeTrust(id) {
-    return $Call.ByName("github.com/notevault/notevault/internal/plugin.PluginService.RevokeTrust", id);
+    return $Call.ByID(203915009, id);
 }
 
 /**
@@ -101,5 +105,10 @@ export function RevokeTrust(id) {
  * @returns {$CancellablePromise<void>}
  */
 export function SavePluginData(id, data) {
-    return $Call.ByName("github.com/notevault/notevault/internal/plugin.PluginService.SavePluginData", id, data);
+    return $Call.ByID(579657233, id, data);
 }
+
+// Private type creation functions
+const $$createType0 = core$0.PluginInfo.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($$createType0);

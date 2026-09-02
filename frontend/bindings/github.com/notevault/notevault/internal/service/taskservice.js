@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -25,7 +25,7 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<boolean>}
  */
 export function Cancel(taskID) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TaskService.Cancel", taskID);
+    return $Call.ByID(659531159, taskID);
 }
 
 /**
@@ -36,7 +36,7 @@ export function Cancel(taskID) {
  * @returns {$CancellablePromise<number>}
  */
 export function CancelAll() {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TaskService.CancelAll");
+    return $Call.ByID(3938360850);
 }
 
 /**
@@ -45,15 +45,19 @@ export function CancelAll() {
  * @returns {$CancellablePromise<$models.TaskInfo | null>}
  */
 export function GetTask(taskID) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TaskService.GetTask", taskID);
+    return $Call.ByID(2132605098, taskID).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
  * ListTasks 返回全部任务快照，按提交顺序排列。
- * @returns {$CancellablePromise<($models.TaskInfo | null)[] | null>}
+ * @returns {$CancellablePromise<($models.TaskInfo | null)[]>}
  */
 export function ListTasks() {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TaskService.ListTasks");
+    return $Call.ByID(3661650125).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType2($result);
+    }));
 }
 
 /**
@@ -61,5 +65,10 @@ export function ListTasks() {
  * @returns {$CancellablePromise<void>}
  */
 export function Wait() {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TaskService.Wait");
+    return $Call.ByID(1532524308);
 }
+
+// Private type creation functions
+const $$createType0 = $models.TaskInfo.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($$createType1);

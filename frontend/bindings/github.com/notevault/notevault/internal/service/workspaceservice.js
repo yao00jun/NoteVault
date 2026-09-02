@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -25,7 +25,9 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<$models.Workspace | null>}
  */
 export function CreateWorkspace(name, path) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.WorkspaceService.CreateWorkspace", name, path);
+    return $Call.ByID(4272592192, name, path).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
@@ -34,7 +36,7 @@ export function CreateWorkspace(name, path) {
  * @returns {$CancellablePromise<void>}
  */
 export function DeleteWorkspace(workspaceID) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.WorkspaceService.DeleteWorkspace", workspaceID);
+    return $Call.ByID(955151957, workspaceID);
 }
 
 /**
@@ -42,7 +44,9 @@ export function DeleteWorkspace(workspaceID) {
  * @returns {$CancellablePromise<$models.Workspace | null>}
  */
 export function GetCurrentWorkspace() {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.WorkspaceService.GetCurrentWorkspace");
+    return $Call.ByID(3630187259).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
@@ -51,15 +55,19 @@ export function GetCurrentWorkspace() {
  * @returns {$CancellablePromise<$models.Workspace | null>}
  */
 export function GetWorkspaceByID(workspaceID) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.WorkspaceService.GetWorkspaceByID", workspaceID);
+    return $Call.ByID(3454076450, workspaceID).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
  * ListWorkspaces 获取所有工作区列表
- * @returns {$CancellablePromise<$models.Workspace[] | null>}
+ * @returns {$CancellablePromise<$models.Workspace[]>}
  */
 export function ListWorkspaces() {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.WorkspaceService.ListWorkspaces");
+    return $Call.ByID(2455890753).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType2($result);
+    }));
 }
 
 /**
@@ -68,5 +76,10 @@ export function ListWorkspaces() {
  * @returns {$CancellablePromise<void>}
  */
 export function SetCurrentWorkspace(workspaceID) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.WorkspaceService.SetCurrentWorkspace", workspaceID);
+    return $Call.ByID(3178077255, workspaceID);
 }
+
+// Private type creation functions
+const $$createType0 = $models.Workspace.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($$createType0);

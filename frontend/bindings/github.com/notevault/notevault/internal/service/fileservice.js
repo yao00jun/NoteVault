@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -26,7 +26,9 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<$models.FileNode | null>}
  */
 export function CreateFile(workspacePath, relativePath, content) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.FileService.CreateFile", workspacePath, relativePath, content);
+    return $Call.ByID(1245368216, workspacePath, relativePath, content).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
@@ -38,7 +40,9 @@ export function CreateFile(workspacePath, relativePath, content) {
  * @returns {$CancellablePromise<$models.FileNode | null>}
  */
 export function CreateFolder(workspacePath, relativePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.FileService.CreateFolder", workspacePath, relativePath);
+    return $Call.ByID(2979400270, workspacePath, relativePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
@@ -50,7 +54,7 @@ export function CreateFolder(workspacePath, relativePath) {
  * @returns {$CancellablePromise<void>}
  */
 export function DeleteFile(workspacePath, relativePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.FileService.DeleteFile", workspacePath, relativePath);
+    return $Call.ByID(3299417171, workspacePath, relativePath);
 }
 
 /**
@@ -58,10 +62,12 @@ export function DeleteFile(workspacePath, relativePath) {
  * workspacePath: 工作区根目录绝对路径
  * 返回文件树的根节点列表
  * @param {string} workspacePath
- * @returns {$CancellablePromise<($models.FileNode | null)[] | null>}
+ * @returns {$CancellablePromise<($models.FileNode | null)[]>}
  */
 export function GetFileTree(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.FileService.GetFileTree", workspacePath);
+    return $Call.ByID(1624253032, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType2($result);
+    }));
 }
 
 /**
@@ -73,7 +79,7 @@ export function GetFileTree(workspacePath) {
  * @returns {$CancellablePromise<string>}
  */
 export function ReadFile(workspacePath, relativePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.FileService.ReadFile", workspacePath, relativePath);
+    return $Call.ByID(2670409300, workspacePath, relativePath);
 }
 
 /**
@@ -87,7 +93,9 @@ export function ReadFile(workspacePath, relativePath) {
  * @returns {$CancellablePromise<$models.FileNode | null>}
  */
 export function RenameFile(workspacePath, oldRelativePath, newName) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.FileService.RenameFile", workspacePath, oldRelativePath, newName);
+    return $Call.ByID(4230314210, workspacePath, oldRelativePath, newName).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
@@ -101,7 +109,7 @@ export function RenameFile(workspacePath, oldRelativePath, newName) {
  * @returns {$CancellablePromise<void>}
  */
 export function SaveFile(workspacePath, relativePath, content) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.FileService.SaveFile", workspacePath, relativePath, content);
+    return $Call.ByID(3517889961, workspacePath, relativePath, content);
 }
 
 /**
@@ -112,9 +120,14 @@ export function SaveFile(workspacePath, relativePath, content) {
  * 返回图片相对于工作区的路径
  * @param {string} workspacePath
  * @param {string} fileName
- * @param {string | null} data
+ * @param {string} data
  * @returns {$CancellablePromise<string>}
  */
 export function SaveImage(workspacePath, fileName, data) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.FileService.SaveImage", workspacePath, fileName, data);
+    return $Call.ByID(2940518572, workspacePath, fileName, data);
 }
+
+// Private type creation functions
+const $$createType0 = $models.FileNode.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($$createType1);

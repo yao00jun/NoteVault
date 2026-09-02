@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -26,7 +26,9 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<$models.CompileAllResult | null>}
  */
 export function CompileAll(workspacePath, apiKey, baseURL, model) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.CompileService.CompileAll", workspacePath, apiKey, baseURL, model);
+    return $Call.ByID(3324600155, workspacePath, apiKey, baseURL, model).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
@@ -40,15 +42,26 @@ export function CompileAll(workspacePath, apiKey, baseURL, model) {
  * @returns {$CancellablePromise<$models.CompileResult | null>}
  */
 export function CompileNote(workspacePath, relativePath, apiKey, baseURL, model) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.CompileService.CompileNote", workspacePath, relativePath, apiKey, baseURL, model);
+    return $Call.ByID(2607667828, workspacePath, relativePath, apiKey, baseURL, model).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType3($result);
+    }));
 }
 
 /**
  * ListInbox 列出 Inbox 目录下的全部 Markdown 笔记（相对路径，含 Inbox 前缀）。
  * 目录不存在时返回空切片而非错误。
  * @param {string} workspacePath
- * @returns {$CancellablePromise<string[] | null>}
+ * @returns {$CancellablePromise<string[]>}
  */
 export function ListInbox(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.CompileService.ListInbox", workspacePath);
+    return $Call.ByID(4125408681, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType4($result);
+    }));
 }
+
+// Private type creation functions
+const $$createType0 = $models.CompileAllResult.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $models.CompileResult.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = $Create.Array($Create.Any);

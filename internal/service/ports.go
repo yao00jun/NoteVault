@@ -180,6 +180,7 @@ type Summarizer interface {
 type LLMConfigurator interface {
 	Presets() []LLMEndpointPreset
 	Probe(apiKey, baseURL string) *LLMProbeResult
+	ProbeRerank(cfg RerankConfig) *RerankProbeResult
 }
 
 // CredentialKeeper 定义系统级密钥存取接口（P2-5）。

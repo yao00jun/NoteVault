@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -22,11 +22,13 @@ import * as $models from "./models.js";
  * @param {string} workspacePath
  * @param {string} templateName
  * @param {string} targetRelativePath
- * @param {{ [_ in string]?: string } | null} variables
+ * @param {{ [_ in string]?: string }} variables
  * @returns {$CancellablePromise<$models.FileNode | null>}
  */
 export function CreateFromTemplate(workspacePath, templateName, targetRelativePath, variables) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TemplateService.CreateFromTemplate", workspacePath, templateName, targetRelativePath, variables);
+    return $Call.ByID(3251336328, workspacePath, templateName, targetRelativePath, variables).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
@@ -36,15 +38,24 @@ export function CreateFromTemplate(workspacePath, templateName, targetRelativePa
  * @returns {$CancellablePromise<string>}
  */
 export function GetTemplateContent(workspacePath, name) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TemplateService.GetTemplateContent", workspacePath, name);
+    return $Call.ByID(373653985, workspacePath, name);
 }
 
 /**
  * ListTemplates 列出工作区全部模板（按名称排序）。
  * Templates/ 目录不存在时返回空列表——这是全新工作区的正常状态，不是错误。
  * @param {string} workspacePath
- * @returns {$CancellablePromise<($models.TemplateInfo | null)[] | null>}
+ * @returns {$CancellablePromise<($models.TemplateInfo | null)[]>}
  */
 export function ListTemplates(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TemplateService.ListTemplates", workspacePath);
+    return $Call.ByID(1046028789, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType4($result);
+    }));
 }
+
+// Private type creation functions
+const $$createType0 = $models.FileNode.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $models.TemplateInfo.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = $Create.Array($$createType3);

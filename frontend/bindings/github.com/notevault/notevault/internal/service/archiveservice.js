@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -22,16 +22,20 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<$models.ArchivedFile | null>}
  */
 export function ArchiveFile(workspacePath, relativePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.ArchiveService.ArchiveFile", workspacePath, relativePath);
+    return $Call.ByID(4280765932, workspacePath, relativePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
  * GetArchivedFiles 获取所有归档文件
  * @param {string} workspacePath
- * @returns {$CancellablePromise<($models.ArchivedFile | null)[] | null>}
+ * @returns {$CancellablePromise<($models.ArchivedFile | null)[]>}
  */
 export function GetArchivedFiles(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.ArchiveService.GetArchivedFiles", workspacePath);
+    return $Call.ByID(3231169153, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType2($result);
+    }));
 }
 
 /**
@@ -41,7 +45,7 @@ export function GetArchivedFiles(workspacePath) {
  * @returns {$CancellablePromise<boolean>}
  */
 export function IsArchived(workspacePath, relativePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.ArchiveService.IsArchived", workspacePath, relativePath);
+    return $Call.ByID(1490294866, workspacePath, relativePath);
 }
 
 /**
@@ -51,5 +55,10 @@ export function IsArchived(workspacePath, relativePath) {
  * @returns {$CancellablePromise<void>}
  */
 export function UnarchiveFile(workspacePath, relativePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.ArchiveService.UnarchiveFile", workspacePath, relativePath);
+    return $Call.ByID(1116013497, workspacePath, relativePath);
 }
+
+// Private type creation functions
+const $$createType0 = $models.ArchivedFile.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($$createType1);

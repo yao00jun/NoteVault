@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -18,19 +18,23 @@ import * as $models from "./models.js";
 /**
  * GetAllTodos 获取工作区中所有待办事项
  * @param {string} workspacePath
- * @returns {$CancellablePromise<($models.TodoItem | null)[] | null>}
+ * @returns {$CancellablePromise<($models.TodoItem | null)[]>}
  */
 export function GetAllTodos(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TodoService.GetAllTodos", workspacePath);
+    return $Call.ByID(1793329040, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType2($result);
+    }));
 }
 
 /**
  * GetTodoStats 获取待办事项统计
  * @param {string} workspacePath
- * @returns {$CancellablePromise<{ [_ in string]?: number } | null>}
+ * @returns {$CancellablePromise<{ [_ in string]?: number }>}
  */
 export function GetTodoStats(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TodoService.GetTodoStats", workspacePath);
+    return $Call.ByID(4055560155, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType3($result);
+    }));
 }
 
 /**
@@ -41,5 +45,11 @@ export function GetTodoStats(workspacePath) {
  * @returns {$CancellablePromise<void>}
  */
 export function ToggleTodo(workspacePath, filePath, lineIndex) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TodoService.ToggleTodo", workspacePath, filePath, lineIndex);
+    return $Call.ByID(2297586376, workspacePath, filePath, lineIndex);
 }
+
+// Private type creation functions
+const $$createType0 = $models.TodoItem.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = $Create.Map($Create.Any, $Create.Any);

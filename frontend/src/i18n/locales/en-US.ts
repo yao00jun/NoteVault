@@ -393,6 +393,7 @@ export default {
     emptyDesc: 'Type keywords above to search document content',
     semantic: 'Semantic Search',
     semanticHint: 'Semantic search has no embedding endpoint configured; falling back to keyword search. Enable it in Settings → Semantic Search',
+    rerankOllamaHint: 'Rerank is currently set to Ollama, but Ollama does not natively support rerank — search silently degrades to pure RRF. Go to Settings → Rerank and switch to Cohere or turn rerank off.',
   },
   tags: {
     title: 'Tag Manager',
@@ -497,8 +498,9 @@ export default {
     rerank: {
       title: 'Rerank',
       desc: 'After BM25 + vector recall, a cross-encoder re-ranks the candidate chunks to further refine order (optional enhancement). When unconfigured it degrades to pure RRF fusion, identical to search without semantic retrieval.',
+      none: 'Rerank off (default)',
       provider: 'Provider',
-      providerDesc: 'Ollama runs bge-reranker-v2-m3 locally (no key); Cohere is a cloud API (requires key)',
+      providerDesc: 'Ollama runs bge-reranker-v2-m3 locally (no key, but Ollama does not natively support rerank — selecting it silently degrades); Cohere is a cloud API (requires key)',
       baseURL: 'Rerank Base URL',
       baseURLDesc: 'Ollama: root address (e.g. http://localhost:11434); Cohere: https://api.cohere.ai/v1',
       model: 'Rerank model',
@@ -506,6 +508,12 @@ export default {
       apiKey: 'API Key',
       apiKeyDesc: 'Stored in the local system credential store, never uploaded; can be blank for local Ollama, required for Cohere',
       note: 'When the rerank service is unavailable (unconfigured / wrong address / model not pulled) it automatically falls back to RRF fusion without breaking Q&A.',
+      testConnection: 'Test connection',
+      testing: 'Connecting…',
+      ollamaWarning: 'Note: Ollama does not natively support rerank (no /api/rerank endpoint upstream). Selecting Ollama silently degrades search to pure RRF with no error shown. Prefer Cohere, or keep "Rerank off".',
+      probeOk: 'Rerank endpoint is available',
+      probeFail: 'Rerank endpoint is unavailable',
+      probeLocalFail: 'Cannot reach local rerank service',
     },
     shortcuts: {
       title: 'Shortcuts',
@@ -800,6 +808,7 @@ export default {
     noWorkspace: 'Select a workspace first',
     askFailed: 'Q&A failed: {msg}',
     clear: 'Clear conversation',
+    rerankOllamaHint: 'Rerank is currently set to Ollama, but Ollama does not natively support rerank — Q&A retrieval silently degrades to pure RRF. Go to Settings → Rerank and switch to Cohere or turn rerank off.',
   },
   import: {
     title: 'Import Data',

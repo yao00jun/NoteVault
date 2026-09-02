@@ -12,7 +12,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -20,10 +20,12 @@ import * as $models from "./models.js";
 
 /**
  * Presets 返回内置端点预设列表。
- * @returns {$CancellablePromise<$models.LLMEndpointPreset[] | null>}
+ * @returns {$CancellablePromise<$models.LLMEndpointPreset[]>}
  */
 export function Presets() {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.LLMConfigService.Presets");
+    return $Call.ByID(2377601481).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
@@ -35,5 +37,32 @@ export function Presets() {
  * @returns {$CancellablePromise<$models.LLMProbeResult | null>}
  */
 export function Probe(apiKey, baseURL) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.LLMConfigService.Probe", apiKey, baseURL);
+    return $Call.ByID(2979814067, apiKey, baseURL).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType3($result);
+    }));
 }
+
+/**
+ * ProbeRerank 对 rerank 端点做连通性自检。
+ * 
+ * 关键约束：必须探测与实际重排请求**完全一致**的地址与协议（见 rerankEndpointURL 的注释）。
+ * 否则会出现「设置页显示可用、实际 404 被静默降级」的漂移——这正是 P1-3b 的静默失效根因：
+ * Ollama 原生不提供 /api/rerank（上游 PR 从未合并），此前该 404 会被降级逻辑静默吞掉，
+ * 用户只觉得「开了 rerank 没区别」。这里把它明确识别为「不可用」并给出可操作提示，
+ * 与项目「不静默」红线对齐。
+ * @param {$models.RerankConfig} cfg
+ * @returns {$CancellablePromise<$models.RerankProbeResult | null>}
+ */
+export function ProbeRerank(cfg) {
+    return $Call.ByID(2112848692, cfg).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType5($result);
+    }));
+}
+
+// Private type creation functions
+const $$createType0 = $models.LLMEndpointPreset.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = $models.LLMProbeResult.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = $models.RerankProbeResult.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);

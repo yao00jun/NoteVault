@@ -20,7 +20,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -53,7 +53,9 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<$models.QnAResponse | null>}
  */
 export function Answer(apiKey, baseURL, model, embBaseURL, embModel, embAPIKey, rerankCfg, workspacePath, question) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.QnAService.Answer", apiKey, baseURL, model, embBaseURL, embModel, embAPIKey, rerankCfg, workspacePath, question);
+    return $Call.ByID(2870637438, apiKey, baseURL, model, embBaseURL, embModel, embAPIKey, rerankCfg, workspacePath, question).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
@@ -71,8 +73,17 @@ export function Answer(apiKey, baseURL, model, embBaseURL, embModel, embAPIKey, 
  * @param {string} embModel
  * @param {string} embAPIKey
  * @param {$models.RerankConfig} rerankCfg
- * @returns {$CancellablePromise<($models.SearchResult | null)[] | null>}
+ * @returns {$CancellablePromise<($models.SearchResult | null)[]>}
  */
 export function HybridSearch(workspacePath, query, embBaseURL, embModel, embAPIKey, rerankCfg) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.QnAService.HybridSearch", workspacePath, query, embBaseURL, embModel, embAPIKey, rerankCfg);
+    return $Call.ByID(216060362, workspacePath, query, embBaseURL, embModel, embAPIKey, rerankCfg).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType4($result);
+    }));
 }
+
+// Private type creation functions
+const $$createType0 = $models.QnAResponse.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $models.SearchResult.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = $Create.Array($$createType3);

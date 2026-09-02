@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
-import { Search, FileText, X, Clock, ArrowRight, AlertCircle, Sparkles } from 'lucide-vue-next'
+import { Search, FileText, X, Clock, ArrowRight, AlertCircle, AlertTriangle, Sparkles } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
@@ -40,6 +40,12 @@ const semanticConfigured = computed(
   () =>
     !!settingsStore.settings.embedding.baseURL.trim() &&
     !!settingsStore.settings.embedding.model.trim(),
+)
+
+// rerank 选了 Ollama 时显式提示（P1-3b 不静默）：Ollama 原生不支持 /api/rerank，
+// 选它会让语义检索静默降级为纯 RRF，用户无感。前端无法直接探测，但这是确定事实。
+const rerankOllamaSelected = computed(
+  () => settingsStore.settings.rerank.provider === 'ollama',
 )
 
 const searchQuery = ref('')
@@ -356,6 +362,15 @@ onBeforeUnmount(() => {
       >
         <Sparkles :size="14" />
         <span>{{ t('search.semanticHint') }}</span>
+      </div>
+      <!-- rerank 选了 Ollama：Ollama 原生不支持重排，会静默降级为纯 RRF，明确提示（P1-3b 不静默） -->
+      <div
+        v-else-if="semanticMode && rerankOllamaSelected"
+        class="semantic-hint"
+        data-testid="rerank-hint"
+      >
+        <AlertTriangle :size="14" />
+        <span>{{ t('search.rerankOllamaHint') }}</span>
       </div>
       <!-- 搜索中 -->
       <div

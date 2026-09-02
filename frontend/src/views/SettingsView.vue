@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { LLMConfigService } from '@bindings/github.com/notevault/notevault/index.js'
-import type { LLMEndpointPreset, LLMProbeResult } from '@bindings/github.com/notevault/notevault/models.js'
+import type { LLMEndpointPreset, LLMProbeResult, RerankProbeResult } from '@bindings/github.com/notevault/notevault/models.js'
 import { TOOLBAR_ITEMS, VISIBLE_DEFAULT, TOOLBAR_ORDER_DEFAULT, type ToolbarItem } from '@/components/editor/toolbarButtons'
 import type { ThemeType } from '@/types'
 import type { Locale } from '@/i18n'
@@ -21,6 +21,10 @@ const apiKeyVisible = ref(false)
 const presets = ref<LLMEndpointPreset[]>([])
 const probing = ref(false)
 const probeResult = ref<LLMProbeResult | null>(null)
+
+// --- P1-3b rerank 自检（与 AI 端点自检同源）---
+const rerankProbing = ref(false)
+const rerankProbeResult = ref<RerankProbeResult | null>(null)
 
 void (async () => {
   try {
@@ -62,6 +66,33 @@ async function probeEndpoint() {
     }
   } finally {
     probing.value = false
+  }
+}
+
+// 重排端点自检：复用后端 LLMConfigService.ProbeRerank，
+// 探测的地址与实际重排请求完全一致（见 rerankEndpointURL），
+// 因此能明确暴露「Ollama 无 /api/rerank」这类原本会被静默降级的情况。
+async function probeRerankEndpoint() {
+  rerankProbing.value = true
+  rerankProbeResult.value = null
+  const r = settingsStore.settings.rerank
+  try {
+    rerankProbeResult.value = (await LLMConfigService.ProbeRerank({
+      provider: r.provider,
+      baseURL: r.baseURL ?? '',
+      model: r.model ?? '',
+      apiKey: r.apiKey ?? '',
+    })) as RerankProbeResult
+  } catch (e) {
+    rerankProbeResult.value = {
+      ok: false,
+      endpoint: '',
+      isLocal: false,
+      latencyMs: 0,
+      message: e instanceof Error ? e.message : String(e),
+    }
+  } finally {
+    rerankProbing.value = false
   }
 }
 
@@ -694,10 +725,18 @@ async function scrollToSection(id: string) {
             v-model="settingsStore.settings.rerank.provider"
             class="setting-select"
           >
+            <option value="">{{ t('settings.rerank.none') }}</option>
             <option value="ollama">Ollama（本机 /api/rerank，免 Key）</option>
             <option value="cohere">Cohere（/v1/rerank，需 Key）</option>
           </select>
         </div>
+        <p
+          v-if="settingsStore.settings.rerank.provider === 'ollama'"
+          class="section-warning"
+        >
+          <AlertTriangle :size="14" />
+          {{ t('settings.rerank.ollamaWarning') }}
+        </p>
         <div class="setting-item">
           <div class="setting-info">
             <span class="setting-label">{{ t('settings.rerank.baseURL') }}</span>
@@ -747,6 +786,45 @@ async function scrollToSection(id: string) {
               />
             </button>
           </div>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.rerank.testConnection') }}</span>
+            <span class="setting-desc">{{ t('settings.rerank.providerDesc') }}</span>
+          </div>
+          <button
+            class="probe-btn"
+            :disabled="rerankProbing"
+            data-testid="rerank-probe-btn"
+            @click="probeRerankEndpoint"
+          >
+            <Sparkles :size="14" />
+            {{ rerankProbing ? t('settings.rerank.testing') : t('settings.rerank.testConnection') }}
+          </button>
+        </div>
+        <div
+          v-if="rerankProbeResult"
+          class="probe-result"
+          :class="rerankProbeResult.ok ? 'ok' : 'fail'"
+          data-testid="rerank-probe-result"
+        >
+          <div class="probe-head">
+            <strong>{{ rerankProbeResult.ok ? t('settings.rerank.probeOk') : t('settings.rerank.probeFail') }}</strong>
+            <span
+              v-if="rerankProbeResult.isLocal"
+              class="preset-badge"
+            >{{ t('settings.ai.localEndpoint') }}</span>
+            <span
+              v-if="rerankProbeResult.latencyMs > 0"
+              class="probe-latency"
+            >{{ rerankProbeResult.latencyMs }} ms</span>
+          </div>
+          <p
+            v-if="rerankProbeResult.message"
+            class="probe-msg"
+          >
+            {{ rerankProbeResult.message }}
+          </p>
         </div>
         <p class="section-hint">
           {{ t('settings.rerank.note') }}
@@ -1045,6 +1123,26 @@ async function scrollToSection(id: string) {
   color: var(--text-muted);
   line-height: 1.6;
   margin: 0 0 var(--space-4);
+}
+
+.section-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--warning, #f59e0b);
+  background: color-mix(in srgb, var(--warning, #f59e0b) 12%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.section-warning :deep(svg) {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--warning, #f59e0b);
 }
 
 .setting-input {

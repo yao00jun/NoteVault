@@ -18,7 +18,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -31,7 +31,7 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<void>}
  */
 export function DeleteBase(workspacePath, name) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.BaseService.DeleteBase", workspacePath, name);
+    return $Call.ByID(3332327047, workspacePath, name);
 }
 
 /**
@@ -43,16 +43,18 @@ export function DeleteBase(workspacePath, name) {
  * @returns {$CancellablePromise<void>}
  */
 export function InvalidateCache(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.BaseService.InvalidateCache", workspacePath);
+    return $Call.ByID(1707934602, workspacePath);
 }
 
 /**
  * ListBases 列出工作区里所有已保存的视图定义。
  * @param {string} workspacePath
- * @returns {$CancellablePromise<($models.BaseSummary | null)[] | null>}
+ * @returns {$CancellablePromise<($models.BaseSummary | null)[]>}
  */
 export function ListBases(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.BaseService.ListBases", workspacePath);
+    return $Call.ByID(522850925, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType2($result);
+    }));
 }
 
 /**
@@ -60,19 +62,23 @@ export function ListBases(workspacePath) {
  * 
  * 从后端返回而不是前端硬编码：运算符集合是查询语义的一部分，
  * 加一个运算符时只该改一处。
- * @returns {$CancellablePromise<string[] | null>}
+ * @returns {$CancellablePromise<string[]>}
  */
 export function ListOperators() {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.BaseService.ListOperators");
+    return $Call.ByID(3424881998).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType3($result);
+    }));
 }
 
 /**
  * ListProperties 返回工作区里所有可用属性及统计信息，供前端属性选择器使用。
  * @param {string} workspacePath
- * @returns {$CancellablePromise<($models.PropertyMeta | null)[] | null>}
+ * @returns {$CancellablePromise<($models.PropertyMeta | null)[]>}
  */
 export function ListProperties(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.BaseService.ListProperties", workspacePath);
+    return $Call.ByID(3231124264, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType6($result);
+    }));
 }
 
 /**
@@ -80,18 +86,22 @@ export function ListProperties(workspacePath) {
  * 
  * 模板不是装饰：Bases 这类功能的核心难点是"我不知道能用它干什么"，
  * 给出几个立刻能跑的例子比写一页文档有效。
- * @returns {$CancellablePromise<($models.BuiltinTemplate | null)[] | null>}
+ * @returns {$CancellablePromise<($models.BuiltinTemplate | null)[]>}
  */
 export function ListTemplates() {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.BaseService.ListTemplates");
+    return $Call.ByID(1459865180).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType9($result);
+    }));
 }
 
 /**
  * ListViewTypes 返回全部视图类型。
- * @returns {$CancellablePromise<string[] | null>}
+ * @returns {$CancellablePromise<string[]>}
  */
 export function ListViewTypes() {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.BaseService.ListViewTypes");
+    return $Call.ByID(2186695621).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType3($result);
+    }));
 }
 
 /**
@@ -101,7 +111,9 @@ export function ListViewTypes() {
  * @returns {$CancellablePromise<$models.BaseDef | null>}
  */
 export function LoadBase(workspacePath, name) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.BaseService.LoadBase", workspacePath, name);
+    return $Call.ByID(3567648148, workspacePath, name).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType11($result);
+    }));
 }
 
 /**
@@ -113,7 +125,9 @@ export function LoadBase(workspacePath, name) {
  * @returns {$CancellablePromise<$models.BaseDef | null>}
  */
 export function NewBaseTemplate(name) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.BaseService.NewBaseTemplate", name);
+    return $Call.ByID(1859222534, name).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType11($result);
+    }));
 }
 
 /**
@@ -124,7 +138,7 @@ export function NewBaseTemplate(name) {
  * @returns {$CancellablePromise<void>}
  */
 export function RenameBase(workspacePath, oldName, newName) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.BaseService.RenameBase", workspacePath, oldName, newName);
+    return $Call.ByID(3227276734, workspacePath, oldName, newName);
 }
 
 /**
@@ -138,7 +152,9 @@ export function RenameBase(workspacePath, oldName, newName) {
  * @returns {$CancellablePromise<$models.BaseResult | null>}
  */
 export function RunBase(workspacePath, def, viewID) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.BaseService.RunBase", workspacePath, def, viewID);
+    return $Call.ByID(1281680391, workspacePath, def, viewID).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType13($result);
+    }));
 }
 
 /**
@@ -149,7 +165,9 @@ export function RunBase(workspacePath, def, viewID) {
  * @returns {$CancellablePromise<$models.BaseResult | null>}
  */
 export function RunSavedBase(workspacePath, name, viewID) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.BaseService.RunSavedBase", workspacePath, name, viewID);
+    return $Call.ByID(2109836756, workspacePath, name, viewID).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType13($result);
+    }));
 }
 
 /**
@@ -159,5 +177,21 @@ export function RunSavedBase(workspacePath, name, viewID) {
  * @returns {$CancellablePromise<void>}
  */
 export function SaveBase(workspacePath, def) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.BaseService.SaveBase", workspacePath, def);
+    return $Call.ByID(1608654573, workspacePath, def);
 }
+
+// Private type creation functions
+const $$createType0 = $models.BaseSummary.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = $Create.Array($Create.Any);
+const $$createType4 = $models.PropertyMeta.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = $Create.Array($$createType5);
+const $$createType7 = $models.BuiltinTemplate.createFrom;
+const $$createType8 = $Create.Nullable($$createType7);
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = $models.BaseDef.createFrom;
+const $$createType11 = $Create.Nullable($$createType10);
+const $$createType12 = $models.BaseResult.createFrom;
+const $$createType13 = $Create.Nullable($$createType12);

@@ -13,7 +13,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 /**
  * DeleteCredential 删除密钥。不存在时幂等成功。
@@ -21,7 +21,7 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
  * @returns {$CancellablePromise<void>}
  */
 export function DeleteCredential(key) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.CredentialService.DeleteCredential", key);
+    return $Call.ByID(2029538075, key);
 }
 
 /**
@@ -30,7 +30,7 @@ export function DeleteCredential(key) {
  * @returns {$CancellablePromise<string>}
  */
 export function GetCredential(key) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.CredentialService.GetCredential", key);
+    return $Call.ByID(594298274, key);
 }
 
 /**
@@ -41,5 +41,5 @@ export function GetCredential(key) {
  * @returns {$CancellablePromise<void>}
  */
 export function SaveCredential(key, value) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.CredentialService.SaveCredential", key, value);
+    return $Call.ByID(1307486093, key, value);
 }

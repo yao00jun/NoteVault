@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -22,7 +22,9 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<$models.GraphData | null>}
  */
 export function GetGraph(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.GraphService.GetGraph", workspacePath);
+    return $Call.ByID(1403840634, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
@@ -37,8 +39,17 @@ export function GetGraph(workspacePath) {
  * 与 GetGraph 同口径：大小写不敏感、跳过隐藏目录。
  * @param {string} workspacePath
  * @param {string} query
- * @returns {$CancellablePromise<($models.LinkCandidate | null)[] | null>}
+ * @returns {$CancellablePromise<($models.LinkCandidate | null)[]>}
  */
 export function GetLinkCandidates(workspacePath, query) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.GraphService.GetLinkCandidates", workspacePath, query);
+    return $Call.ByID(1535785272, workspacePath, query).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType4($result);
+    }));
 }
+
+// Private type creation functions
+const $$createType0 = $models.GraphData.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $models.LinkCandidate.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = $Create.Array($$createType3);

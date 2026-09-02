@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -24,7 +24,9 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<$models.Reminder | null>}
  */
 export function AddReminder(workspacePath, filePath, content, remindAt) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.ReminderService.AddReminder", workspacePath, filePath, content, remindAt);
+    return $Call.ByID(3720334263, workspacePath, filePath, content, remindAt).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
@@ -34,25 +36,29 @@ export function AddReminder(workspacePath, filePath, content, remindAt) {
  * @returns {$CancellablePromise<void>}
  */
 export function DeleteReminder(workspacePath, id) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.ReminderService.DeleteReminder", workspacePath, id);
+    return $Call.ByID(1642753243, workspacePath, id);
 }
 
 /**
  * GetAllReminders 获取所有提醒
  * @param {string} workspacePath
- * @returns {$CancellablePromise<($models.Reminder | null)[] | null>}
+ * @returns {$CancellablePromise<($models.Reminder | null)[]>}
  */
 export function GetAllReminders(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.ReminderService.GetAllReminders", workspacePath);
+    return $Call.ByID(2411839232, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType2($result);
+    }));
 }
 
 /**
  * GetUpcomingReminders 获取即将到来的提醒（未来 24 小时内）
  * @param {string} workspacePath
- * @returns {$CancellablePromise<($models.Reminder | null)[] | null>}
+ * @returns {$CancellablePromise<($models.Reminder | null)[]>}
  */
 export function GetUpcomingReminders(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.ReminderService.GetUpcomingReminders", workspacePath);
+    return $Call.ByID(3222954267, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType2($result);
+    }));
 }
 
 /**
@@ -62,5 +68,12 @@ export function GetUpcomingReminders(workspacePath) {
  * @returns {$CancellablePromise<$models.Reminder | null>}
  */
 export function ToggleReminder(workspacePath, id) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.ReminderService.ToggleReminder", workspacePath, id);
+    return $Call.ByID(2592481672, workspacePath, id).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
+
+// Private type creation functions
+const $$createType0 = $models.Reminder.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($$createType1);

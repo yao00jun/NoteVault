@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -21,25 +21,29 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<void>}
  */
 export function EmptyTrash(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TrashService.EmptyTrash", workspacePath);
+    return $Call.ByID(371602385, workspacePath);
 }
 
 /**
  * GetTrashStats 获取回收站统计
  * @param {string} workspacePath
- * @returns {$CancellablePromise<{ [_ in string]?: number } | null>}
+ * @returns {$CancellablePromise<{ [_ in string]?: number }>}
  */
 export function GetTrashStats(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TrashService.GetTrashStats", workspacePath);
+    return $Call.ByID(1208299981, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType0($result);
+    }));
 }
 
 /**
  * GetTrashedFiles 获取回收站中的所有文件
  * @param {string} workspacePath
- * @returns {$CancellablePromise<($models.TrashedFile | null)[] | null>}
+ * @returns {$CancellablePromise<($models.TrashedFile | null)[]>}
  */
 export function GetTrashedFiles(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TrashService.GetTrashedFiles", workspacePath);
+    return $Call.ByID(4284665486, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType3($result);
+    }));
 }
 
 /**
@@ -49,7 +53,9 @@ export function GetTrashedFiles(workspacePath) {
  * @returns {$CancellablePromise<$models.TrashedFile | null>}
  */
 export function MoveToTrash(workspacePath, relativePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TrashService.MoveToTrash", workspacePath, relativePath);
+    return $Call.ByID(236188982, workspacePath, relativePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType2($result);
+    }));
 }
 
 /**
@@ -59,7 +65,7 @@ export function MoveToTrash(workspacePath, relativePath) {
  * @returns {$CancellablePromise<void>}
  */
 export function PermanentlyDelete(workspacePath, id) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TrashService.PermanentlyDelete", workspacePath, id);
+    return $Call.ByID(815748930, workspacePath, id);
 }
 
 /**
@@ -69,5 +75,11 @@ export function PermanentlyDelete(workspacePath, id) {
  * @returns {$CancellablePromise<void>}
  */
 export function RestoreFromTrash(workspacePath, id) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TrashService.RestoreFromTrash", workspacePath, id);
+    return $Call.ByID(1270173196, workspacePath, id);
 }
+
+// Private type creation functions
+const $$createType0 = $Create.Map($Create.Any, $Create.Any);
+const $$createType1 = $models.TrashedFile.createFrom;
+const $$createType2 = $Create.Nullable($$createType1);
+const $$createType3 = $Create.Array($$createType2);

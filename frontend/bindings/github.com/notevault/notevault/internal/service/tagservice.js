@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -18,20 +18,24 @@ import * as $models from "./models.js";
 /**
  * GetAllTags 获取工作区中所有标签及其使用次数
  * @param {string} workspacePath
- * @returns {$CancellablePromise<($models.TagInfo | null)[] | null>}
+ * @returns {$CancellablePromise<($models.TagInfo | null)[]>}
  */
 export function GetAllTags(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TagService.GetAllTags", workspacePath);
+    return $Call.ByID(2436693900, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType2($result);
+    }));
 }
 
 /**
  * GetFilesByTag 获取包含指定标签的所有文件
  * @param {string} workspacePath
  * @param {string} tag
- * @returns {$CancellablePromise<($models.TagFileInfo | null)[] | null>}
+ * @returns {$CancellablePromise<($models.TagFileInfo | null)[]>}
  */
 export function GetFilesByTag(workspacePath, tag) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TagService.GetFilesByTag", workspacePath, tag);
+    return $Call.ByID(2137385908, workspacePath, tag).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType5($result);
+    }));
 }
 
 /**
@@ -40,5 +44,13 @@ export function GetFilesByTag(workspacePath, tag) {
  * @returns {$CancellablePromise<void>}
  */
 export function InvalidateCache(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.TagService.InvalidateCache", workspacePath);
+    return $Call.ByID(2321456627, workspacePath);
 }
+
+// Private type creation functions
+const $$createType0 = $models.TagInfo.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $Create.Array($$createType1);
+const $$createType3 = $models.TagFileInfo.createFrom;
+const $$createType4 = $Create.Nullable($$createType3);
+const $$createType5 = $Create.Array($$createType4);

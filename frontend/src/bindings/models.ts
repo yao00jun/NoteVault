@@ -54,6 +54,8 @@ export type {
   PropertyMeta,
   QnACitation,
   QnAResponse,
+  RerankConfig,
+  RerankProbeResult,
   Reminder,
   SearchIndexStats,
   SearchResult,

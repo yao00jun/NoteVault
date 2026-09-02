@@ -378,17 +378,27 @@ func TestQnAService_RetrieveChunksHybrid_DegradesToBM25(t *testing.T) {
 // TestQnAService_SemanticRecall_RequiresOllama 是集成测试，验证真实 bge-m3 下
 // 语义召回（跨语言同义）相对纯 BM25 的提升。默认跳过，需本地 Ollama + bge-m3：
 //   NV_OLLAMA_TEST=1 go test ./internal/service/ -run SemanticRecall
+//
+// 2026-09-02 修正两处使本用例形同虚设的问题：
+//  1. embBaseURL 原传空串，normalizeBaseURL 会把它补成 https://api.openai.com/v1，
+//     即便本机跑着 Ollama，请求也会打到 OpenAI 并因缺少 API Key 而失败；
+//  2. 语料原用 newQnATestWorkspace，其中根本没有「缓存」相关文档，
+//     断言永远不可能成立。改用评测语料 newEvalWorkspace（含 cache-invalidation.md）。
+//
+// 完整口径（Recall@5 / MRR@5）见 TestRetrievalEval_Ollama_BGEM3。
 func TestQnAService_SemanticRecall_RequiresOllama(t *testing.T) {
 	if os.Getenv("NV_OLLAMA_TEST") == "" {
 		t.Skip("set NV_OLLAMA_TEST=1 with Ollama + bge-m3 running to exercise real semantic recall")
 	}
 	ClearAllSearchIndexes()
-	ws := newQnATestWorkspace(t)
+	ws := newEvalWorkspace(t)
 	fs := NewFileServiceWithHistory(NewSnapshotService())
 	svc := NewQnAServiceWithRegistry(fs, nil, NewOllamaEmbeddingClient(), nil)
 
 	// 中文笔记里写「缓存失效」，用英文同义 query 应被向量 leg 召回
-	res, err := svc.HybridSearch(ws, "how to invalidate cache", "", "bge-m3", "", RerankConfig{})
+	res, err := svc.HybridSearch(ws, "how to invalidate cache",
+		envOrDefault("NV_EVAL_EMBED_BASE", "http://127.0.0.1:11434/v1"),
+		envOrDefault("NV_EVAL_EMBED_MODEL", "bge-m3"), "", RerankConfig{})
 	if err != nil {
 		t.Fatalf("HybridSearch failed: %v", err)
 	}

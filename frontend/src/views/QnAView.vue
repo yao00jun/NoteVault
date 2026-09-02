@@ -2,7 +2,7 @@
 import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { MessageCircle, Send, Trash2, FileText, Loader2, Sparkles } from 'lucide-vue-next'
+import { MessageCircle, Send, Trash2, FileText, Loader2, AlertTriangle, Sparkles } from 'lucide-vue-next'
 import { marked } from 'marked'
 import { QnAService } from '@bindings/github.com/notevault/notevault/index.js'
 import type { QnACitation } from '@bindings/github.com/notevault/notevault/models.js'
@@ -13,6 +13,12 @@ const { t } = useI18n()
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
 const settingsStore = useSettingsStore()
+
+// rerank 选了 Ollama 时显式提示（P1-3b 不静默）：Ollama 原生不支持 /api/rerank，
+// 选它会让问答检索静默降级为纯 RRF，用户无感。这是确定事实，无需实时探测。
+const rerankOllamaSelected = computed(
+  () => settingsStore.settings.rerank.provider === 'ollama',
+)
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -135,6 +141,15 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
         <Trash2 :size="14" />
         <span>{{ t('qna.clear') }}</span>
       </button>
+    </div>
+
+    <div
+      v-if="rerankOllamaSelected"
+      class="qna-rerank-hint"
+      data-testid="rerank-hint"
+    >
+      <AlertTriangle :size="14" />
+      <span>{{ t('qna.rerankOllamaHint') }}</span>
     </div>
 
     <div
@@ -295,6 +310,25 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.qna-rerank-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 24px;
+  padding: 8px 12px;
+  border: 1px solid var(--warning-border, var(--warning, #f59e0b));
+  border-radius: var(--radius-sm, 6px);
+  background: color-mix(in srgb, var(--warning, #f59e0b) 12%, transparent);
+  color: var(--text-secondary, #c8c8c8);
+  font-size: var(--text-sm, 13px);
+  line-height: 1.5;
+}
+
+.qna-rerank-hint :deep(svg) {
+  flex-shrink: 0;
+  color: var(--warning, #f59e0b);
 }
 
 .qna-empty {

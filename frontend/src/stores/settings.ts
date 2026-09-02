@@ -33,11 +33,13 @@ const defaultSettings: AppSettings = {
     model: 'bge-m3',
     apiKey: '',
   },
-  // P1-3b：重排序端点，默认本机 Ollama + bge-reranker-v2-m3（免鉴权）。cohere 需填 Key。
+  // P1-3b：重排序端点。默认**关闭**（provider 留空）——因为本机 Ollama 原生不支持
+  // /api/rerank（上游 PR 从未合并），默认开 Ollama 会静默 404 降级为纯 RRF，用户完全无感。
+  // 需显式选 Cohere（真实支持重排）或将来接入支持重排的端点才生效。
   rerank: {
-    provider: 'ollama',
+    provider: '',
     baseURL: 'http://localhost:11434',
-    model: 'bge-reranker-v2-m3',
+    model: '',
     apiKey: '',
   },
   editor: {

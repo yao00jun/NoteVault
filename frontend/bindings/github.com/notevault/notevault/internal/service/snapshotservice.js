@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -22,7 +22,7 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<number>}
  */
 export function ClearSnapshots(workspacePath, relativePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.SnapshotService.ClearSnapshots", workspacePath, relativePath);
+    return $Call.ByID(1511651734, workspacePath, relativePath);
 }
 
 /**
@@ -32,7 +32,9 @@ export function ClearSnapshots(workspacePath, relativePath) {
  * @returns {$CancellablePromise<$models.Snapshot | null>}
  */
 export function CreateManualSnapshot(workspacePath, relativePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.SnapshotService.CreateManualSnapshot", workspacePath, relativePath);
+    return $Call.ByID(2855385562, workspacePath, relativePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
@@ -42,7 +44,7 @@ export function CreateManualSnapshot(workspacePath, relativePath) {
  * @returns {$CancellablePromise<void>}
  */
 export function DeleteSnapshot(workspacePath, id) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.SnapshotService.DeleteSnapshot", workspacePath, id);
+    return $Call.ByID(2424429311, workspacePath, id);
 }
 
 /**
@@ -53,7 +55,9 @@ export function DeleteSnapshot(workspacePath, id) {
  * @returns {$CancellablePromise<$models.SnapshotDiff | null>}
  */
 export function DiffSnapshots(workspacePath, fromID, toID) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.SnapshotService.DiffSnapshots", workspacePath, fromID, toID);
+    return $Call.ByID(1935523112, workspacePath, fromID, toID).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType3($result);
+    }));
 }
 
 /**
@@ -63,7 +67,9 @@ export function DiffSnapshots(workspacePath, fromID, toID) {
  * @returns {$CancellablePromise<$models.SnapshotDiff | null>}
  */
 export function DiffWithCurrent(workspacePath, id) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.SnapshotService.DiffWithCurrent", workspacePath, id);
+    return $Call.ByID(4050287372, workspacePath, id).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType3($result);
+    }));
 }
 
 /**
@@ -73,7 +79,7 @@ export function DiffWithCurrent(workspacePath, id) {
  * @returns {$CancellablePromise<string>}
  */
 export function GetSnapshotContent(workspacePath, id) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.SnapshotService.GetSnapshotContent", workspacePath, id);
+    return $Call.ByID(1328117865, workspacePath, id);
 }
 
 /**
@@ -82,26 +88,32 @@ export function GetSnapshotContent(workspacePath, id) {
  * @returns {$CancellablePromise<$models.SnapshotStats | null>}
  */
 export function GetSnapshotStats(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.SnapshotService.GetSnapshotStats", workspacePath);
+    return $Call.ByID(3682403127, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType5($result);
+    }));
 }
 
 /**
  * ListSnapshotFiles 按文件聚合快照概览，时间机器面板用它渲染左侧列表
  * @param {string} workspacePath
- * @returns {$CancellablePromise<($models.SnapshotFileSummary | null)[] | null>}
+ * @returns {$CancellablePromise<($models.SnapshotFileSummary | null)[]>}
  */
 export function ListSnapshotFiles(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.SnapshotService.ListSnapshotFiles", workspacePath);
+    return $Call.ByID(2028824319, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType8($result);
+    }));
 }
 
 /**
  * ListSnapshots 列出快照，按时间倒序。relativePath 为空则返回全工作区。
  * @param {string} workspacePath
  * @param {string} relativePath
- * @returns {$CancellablePromise<($models.Snapshot | null)[] | null>}
+ * @returns {$CancellablePromise<($models.Snapshot | null)[]>}
  */
 export function ListSnapshots(workspacePath, relativePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.SnapshotService.ListSnapshots", workspacePath, relativePath);
+    return $Call.ByID(3312553385, workspacePath, relativePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType9($result);
+    }));
 }
 
 /**
@@ -110,7 +122,9 @@ export function ListSnapshots(workspacePath, relativePath) {
  * @returns {$CancellablePromise<$models.SnapshotStats | null>}
  */
 export function PruneSnapshots(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.SnapshotService.PruneSnapshots", workspacePath);
+    return $Call.ByID(3802242001, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType5($result);
+    }));
 }
 
 /**
@@ -121,5 +135,21 @@ export function PruneSnapshots(workspacePath) {
  * @returns {$CancellablePromise<$models.SnapshotRestoreResult | null>}
  */
 export function RestoreSnapshot(workspacePath, id) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.SnapshotService.RestoreSnapshot", workspacePath, id);
+    return $Call.ByID(468125674, workspacePath, id).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType11($result);
+    }));
 }
+
+// Private type creation functions
+const $$createType0 = $models.Snapshot.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $models.SnapshotDiff.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = $models.SnapshotStats.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = $models.SnapshotFileSummary.createFrom;
+const $$createType7 = $Create.Nullable($$createType6);
+const $$createType8 = $Create.Array($$createType7);
+const $$createType9 = $Create.Array($$createType1);
+const $$createType10 = $models.SnapshotRestoreResult.createFrom;
+const $$createType11 = $Create.Nullable($$createType10);

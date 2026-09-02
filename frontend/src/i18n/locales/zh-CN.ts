@@ -393,6 +393,7 @@ export default {
     emptyDesc: '在上方输入关键词搜索文档内容',
     semantic: '语义检索',
     semanticHint: '语义检索未配置 embedding 端点，当前按关键词检索。前往「设置 → 语义检索」开启',
+    rerankOllamaHint: '重排（Rerank）当前选择了 Ollama，但 Ollama 原生不支持重排，检索会静默降级为纯 RRF。建议前往「设置 → 重排序」改用 Cohere 或关闭重排。',
   },
   tags: {
     title: '标签管理',
@@ -497,8 +498,9 @@ export default {
     rerank: {
       title: '重排序 (Rerank)',
       desc: '在 BM25 + 向量召回之后，用 cross-encoder 对候选块再做一遍重排，进一步修正召回顺序（可选增强）。未配置时检索退化为纯 RRF 融合，行为与未开启语义检索一致。',
+      none: '关闭重排（默认）',
       provider: '服务厂商',
-      providerDesc: 'Ollama 本机运行 bge-reranker-v2-m3（免 Key）；Cohere 为云端 API（需 Key）',
+      providerDesc: 'Ollama 本机运行 bge-reranker-v2-m3（免 Key，但 Ollama 原生不支持重排，选它会被静默降级）；Cohere 为云端 API（需 Key）',
       baseURL: 'Rerank 接口地址 (Base URL)',
       baseURLDesc: 'Ollama 填根地址（如 http://localhost:11434）；Cohere 填 https://api.cohere.ai/v1',
       model: '重排模型',
@@ -506,6 +508,12 @@ export default {
       apiKey: 'API Key',
       apiKeyDesc: '本地系统凭据库存储，不上传；Ollama 本机可留空，Cohere 必填',
       note: '重排服务不可用（未配置 / 地址错误 / 模型未拉取）时会自动回退 RRF 融合，不阻断问答。',
+      testConnection: '测试连接',
+      testing: '连接中…',
+      ollamaWarning: '注意：Ollama 原生不支持重排（上游未提供 /api/rerank 端点）。选择 Ollama 后检索会静默降级为纯 RRF，你不会看到任何报错。建议改用 Cohere，或保持「关闭重排」。',
+      probeOk: 'Rerank 端点可用',
+      probeFail: 'Rerank 端点不可用',
+      probeLocalFail: '连接不上本机 rerank 服务',
     },
     shortcuts: {
       title: '快捷键',
@@ -800,6 +808,7 @@ export default {
     noWorkspace: '请先选择工作区',
     askFailed: '问答失败：{msg}',
     clear: '清空对话',
+    rerankOllamaHint: '重排（Rerank）当前选择了 Ollama，但 Ollama 原生不支持重排，问答检索会静默降级为纯 RRF。建议前往「设置 → 重排序」改用 Cohere 或关闭重排。',
   },
   import: {
     title: '数据导入',

@@ -10,7 +10,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -22,7 +22,7 @@ import * as core$0 from "../../core/models.js";
  * @returns {$CancellablePromise<void>}
  */
 export function ReportError(report) {
-    return $Call.ByName("github.com/notevault/notevault/internal/infra/monitor.ErrorMonitor.ReportError", report);
+    return $Call.ByID(2687483945, report);
 }
 
 /**
@@ -31,5 +31,5 @@ export function ReportError(report) {
  * @returns {$CancellablePromise<void>}
  */
 export function UpdateConfig(cfg) {
-    return $Call.ByName("github.com/notevault/notevault/internal/infra/monitor.ErrorMonitor.UpdateConfig", cfg);
+    return $Call.ByID(463756268, cfg);
 }

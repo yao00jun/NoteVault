@@ -11,7 +11,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 /**
  * Summarize 调用大模型生成笔记摘要
@@ -28,5 +28,5 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
  * @returns {$CancellablePromise<string>}
  */
 export function Summarize(apiKey, baseURL, model, content) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.SummarizeService.Summarize", apiKey, baseURL, model, content);
+    return $Call.ByID(191659032, apiKey, baseURL, model, content);
 }

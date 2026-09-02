@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -29,7 +29,9 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<$models.ImportResult | null>}
  */
 export function ImportMarkdownFolder(srcDir, workspacePath, opts) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.ImportService.ImportMarkdownFolder", srcDir, workspacePath, opts);
+    return $Call.ByID(2818946393, srcDir, workspacePath, opts).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
@@ -47,7 +49,7 @@ export function ImportMarkdownFolder(srcDir, workspacePath, opts) {
  * @returns {$CancellablePromise<string>}
  */
 export function ImportMarkdownFolderAsync(srcDir, workspacePath, opts) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.ImportService.ImportMarkdownFolderAsync", srcDir, workspacePath, opts);
+    return $Call.ByID(350080803, srcDir, workspacePath, opts);
 }
 
 /**
@@ -60,5 +62,11 @@ export function ImportMarkdownFolderAsync(srcDir, workspacePath, opts) {
  * @returns {$CancellablePromise<$models.ImportResult | null>}
  */
 export function ImportZip(zipPath, workspacePath, opts) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.ImportService.ImportZip", zipPath, workspacePath, opts);
+    return $Call.ByID(2310028839, zipPath, workspacePath, opts).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
+
+// Private type creation functions
+const $$createType0 = $models.ImportResult.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);

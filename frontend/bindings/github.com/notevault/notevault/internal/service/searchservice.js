@@ -11,7 +11,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -26,7 +26,24 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<$models.SearchIndexStats | null>}
  */
 export function GetIndexStats(workspacePath) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.SearchService.GetIndexStats", workspacePath);
+    return $Call.ByID(830342823, workspacePath).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
+}
+
+/**
+ * GetSearchSnippet 按需为单个结果生成 snippet（前端滚动到可视区时调用）。
+ * 
+ * 只读取这一个文件的正文并定位片段，不拖累 Search/HybridSearch 的首屏延迟。
+ * 与 Search 即时片段用同一套口径（首个查询 token 定位、半径 50），保证两者
+ * 视觉一致。未配置查询或文档不在索引中时返回空串/报错，由调用方决定降级展示。
+ * @param {string} workspacePath
+ * @param {string} relPath
+ * @param {string} query
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetSearchSnippet(workspacePath, relPath, query) {
+    return $Call.ByID(2343159905, workspacePath, relPath, query);
 }
 
 /**
@@ -36,23 +53,17 @@ export function GetIndexStats(workspacePath) {
  * 返回匹配的文件列表（已按匹配次数降序、并截断到结果上限）
  * @param {string} workspacePath
  * @param {string} query
- * @returns {$CancellablePromise<($models.SearchResult | null)[] | null>}
+ * @returns {$CancellablePromise<($models.SearchResult | null)[]>}
  */
 export function Search(workspacePath, query) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.SearchService.Search", workspacePath, query);
+    return $Call.ByID(3885591112, workspacePath, query).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType4($result);
+    }));
 }
 
-/**
- * GetSearchSnippet 按需为单个结果生成片段（前端滚动到可视区时调用）。
- * 
- * Search/HybridSearch 只对前 N 条即时生成 snippet，其余留空；本方法供前端
- * 把留空结果滚入视区时补取，避免一次性读 200 篇正文拖慢首屏。
- * 口径与即时片段一致（首个查询 token 定位、半径 50）。
- * @param {string} workspacePath
- * @param {string} relPath
- * @param {string} query
- * @returns {$CancellablePromise<string>}
- */
-export function GetSearchSnippet(workspacePath, relPath, query) {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.SearchService.GetSearchSnippet", workspacePath, relPath, query);
-}
+// Private type creation functions
+const $$createType0 = $models.SearchIndexStats.createFrom;
+const $$createType1 = $Create.Nullable($$createType0);
+const $$createType2 = $models.SearchResult.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = $Create.Array($$createType3);

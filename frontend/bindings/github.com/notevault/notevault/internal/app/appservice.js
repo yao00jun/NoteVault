@@ -10,7 +10,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 /**
  * ForceQuit 立即终止进程，跳过任何 graceful shutdown。
@@ -18,7 +18,7 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
  * @returns {$CancellablePromise<void>}
  */
 export function ForceQuit() {
-    return $Call.ByName("github.com/notevault/notevault/internal/app.AppService.ForceQuit");
+    return $Call.ByID(2589447011);
 }
 
 /**
@@ -26,7 +26,7 @@ export function ForceQuit() {
  * @returns {$CancellablePromise<string>}
  */
 export function GetAppName() {
-    return $Call.ByName("github.com/notevault/notevault/internal/app.AppService.GetAppName");
+    return $Call.ByID(2406554073);
 }
 
 /**
@@ -34,7 +34,7 @@ export function GetAppName() {
  * @returns {$CancellablePromise<string>}
  */
 export function GetVersion() {
-    return $Call.ByName("github.com/notevault/notevault/internal/app.AppService.GetVersion");
+    return $Call.ByID(4253886169);
 }
 
 /**
@@ -43,7 +43,7 @@ export function GetVersion() {
  * @returns {$CancellablePromise<string>}
  */
 export function OpenFileDialog(filter) {
-    return $Call.ByName("github.com/notevault/notevault/internal/app.AppService.OpenFileDialog", filter);
+    return $Call.ByID(3890244475, filter);
 }
 
 /**
@@ -51,5 +51,5 @@ export function OpenFileDialog(filter) {
  * @returns {$CancellablePromise<string>}
  */
 export function OpenFolderDialog() {
-    return $Call.ByName("github.com/notevault/notevault/internal/app.AppService.OpenFolderDialog");
+    return $Call.ByID(2639156413);
 }

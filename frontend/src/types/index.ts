@@ -68,8 +68,8 @@ export interface EmbeddingSettings {
  * 未配置时检索融合退化为纯 RRF，行为与未开启语义检索一致。
  */
 export interface RerankSettings {
-  /** 厂商：ollama（本机 /api/rerank，免鉴权）| cohere（/v1/rerank，需 Key） */
-  provider: 'ollama' | 'cohere'
+  /** 厂商：'' 表示关闭重排（默认）| ollama（本机 /api/rerank，免鉴权，但 Ollama 原生不支持）| cohere（/v1/rerank，需 Key） */
+  provider: 'ollama' | 'cohere' | ''
   /** rerank 接口地址：ollama 填根地址 http://localhost:11434；cohere 填 https://api.cohere.ai/v1 */
   baseURL: string
   /** rerank 模型名称，如 bge-reranker-v2-m3（Ollama）/ rerank-v3.5（Cohere） */
