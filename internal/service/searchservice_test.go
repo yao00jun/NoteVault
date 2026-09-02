@@ -272,3 +272,71 @@ func itoa(i int) string {
 	}
 	return b.String()
 }
+
+// TestSearch_TwoTierSnippet 锁定 P0 基线表点明的 p95 优化：
+// Search 只对前 eagerSnippetCap 条结果即时生成 snippet，其余留空交给前端按需取。
+func TestSearch_TwoTierSnippet(t *testing.T) {
+	ClearAllSearchIndexes()
+	s := NewSearchService(NewFileService())
+	s.eagerSnippetLimit = 5
+
+	dir := t.TempDir()
+	const n = 10
+	for i := 0; i < n; i++ {
+		name := filepath.Join(dir, "file"+itoa(i)+".md")
+		mustWrite(t, name, "# 文档\ncommonword 是关键词。")
+	}
+	got, err := s.Search(dir, "commonword")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != n {
+		t.Fatalf("expected %d results, got %d", n, len(got))
+	}
+	for i, r := range got {
+		if i < s.eagerSnippetLimit {
+			if r.Snippet == "" {
+				t.Errorf("result %d should have eager snippet, got empty", i)
+			}
+		} else {
+			if r.Snippet != "" {
+				t.Errorf("result %d should be lazy (empty snippet), got %q", i, r.Snippet)
+			}
+		}
+		// 两种模式下 matchCount 都应非零（内存 tokenFreq 估算）
+		if r.MatchCount <= 0 {
+			t.Errorf("result %d should have positive matchCount, got %d", i, r.MatchCount)
+		}
+	}
+}
+
+// TestSearch_GetSearchSnippet 验证按需取片段与即时片段口径一致，且边界正确。
+func TestSearch_GetSearchSnippet(t *testing.T) {
+	ClearAllSearchIndexes()
+	s := NewSearchService(NewFileService())
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "note.md"), "# 我的笔记\n这里包含 apple 这个关键词，apple 很重要。")
+	got, err := s.Search(dir, "apple")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(got))
+	}
+
+	snippet, err := s.GetSearchSnippet(dir, got[0].Path, "apple")
+	if err != nil {
+		t.Fatalf("GetSearchSnippet error: %v", err)
+	}
+	if !strings.Contains(snippet, "apple") {
+		t.Fatalf("GetSearchSnippet should contain 'apple', got %q", snippet)
+	}
+	// 空查询返回空串且不报错
+	if s2, err := s.GetSearchSnippet(dir, got[0].Path, "   "); err != nil || s2 != "" {
+		t.Fatalf("empty query should return ('', nil), got (%q, %v)", s2, err)
+	}
+	// 不存在的文档应报错（前端据此降级展示）
+	if _, err := s.GetSearchSnippet(dir, "missing.md", "apple"); err == nil {
+		t.Fatalf("expected error for missing doc")
+	}
+}

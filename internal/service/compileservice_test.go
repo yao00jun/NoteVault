@@ -161,14 +161,17 @@ func TestCompileService_CompileAll(t *testing.T) {
 		TLDR: "x", Tags: []string{"t"}, SuggestedLinks: []string{"A"},
 	}})
 
-	results, errs := svc.CompileAll(ws, "", "", "")
-	if len(errs) != 0 {
-		t.Fatalf("不应有错误: %v", errs)
+	res, err := svc.CompileAll(ws, "", "", "")
+	if err != nil {
+		t.Fatalf("CompileAll 不应返回顶层错误: %v", err)
 	}
-	if len(results) != 3 {
-		t.Fatalf("期望编译 3 篇，实际 %d", len(results))
+	if len(res.Errors) != 0 {
+		t.Fatalf("不应有错误: %v", res.Errors)
 	}
-	for _, r := range results {
+	if len(res.Results) != 3 {
+		t.Fatalf("期望编译 3 篇，实际 %d", len(res.Results))
+	}
+	for _, r := range res.Results {
 		if !strings.HasPrefix(r.Dest, "Compiled/") {
 			t.Errorf("结果未进入 Compiled: %s", r.Dest)
 		}

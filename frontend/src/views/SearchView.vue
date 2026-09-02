@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { Search, FileText, X, Clock, ArrowRight, AlertCircle } from 'lucide-vue-next'
+import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
+import { Search, FileText, X, Clock, ArrowRight, AlertCircle, Sparkles } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
-import { SearchService, WorkspaceService } from '@bindings/github.com/notevault/notevault/index.js'
+import { SearchService, WorkspaceService, QnAService } from '@bindings/github.com/notevault/notevault/index.js'
 import { cleanSnippet, highlightText } from '@/utils/text'
 
 interface SearchResult {
@@ -30,6 +31,16 @@ type SortMode = 'relevance' | 'recent'
 const router = useRouter()
 const { t, tm } = useI18n()
 const workspaceStore = useWorkspaceStore()
+const settingsStore = useSettingsStore()
+
+// 语义检索开关（P1-3 / P1-3b 前端变现）：开启时调用 QnAService.HybridSearch
+// （BM25 + 向量 RRF，可选 Rerank），未配置 embedding 时后端自动退化为纯 BM25。
+const semanticMode = ref(false)
+const semanticConfigured = computed(
+  () =>
+    !!settingsStore.settings.embedding.baseURL.trim() &&
+    !!settingsStore.settings.embedding.model.trim(),
+)
 
 const searchQuery = ref('')
 const results = ref<SearchResult[]>([])
@@ -114,7 +125,27 @@ async function doSearch() {
   errorMsg.value = ''
   isSearching.value = true
   try {
-    const data = await SearchService.Search(currentWorkspace.value.path, query)
+    let data: unknown
+    if (semanticMode.value) {
+      // 语义检索：BM25 + 向量 RRF（+ 可选 Rerank）。embedding 未配置时后端退化为纯 BM25。
+      const emb = settingsStore.settings.embedding
+      const rerank = settingsStore.settings.rerank
+      data = await QnAService.HybridSearch(
+        currentWorkspace.value.path,
+        query,
+        emb.baseURL,
+        emb.model,
+        emb.apiKey,
+        {
+          provider: rerank.provider,
+          baseURL: rerank.baseURL,
+          model: rerank.model,
+          apiKey: rerank.apiKey,
+        },
+      )
+    } else {
+      data = await SearchService.Search(currentWorkspace.value.path, query)
+    }
     if (generation !== searchGeneration) return
     results.value = Array.isArray(data) ? data as SearchResult[] : []
     // 顺带刷新索引覆盖统计（不 await，避免拖慢搜索结果呈现）
@@ -185,6 +216,85 @@ function getFolder(path: string): string {
   if (idx === -1) return ''
   return path.substring(0, idx)
 }
+
+// ---- snippet 按需生成（P0 基线表点明的 p95 优化点）----
+// Search/HybridSearch 只对前 N 条即时生成 snippet，其余留空；
+// 当用户把这些结果滚入视区时再按需调 GetSearchSnippet 补取，
+// 避免一次性读 200 篇正文拖慢首屏。
+const resultsListRef = ref<HTMLElement | null>(null)
+const snippetCache = new Map<string, string>()
+const snippetRequested = new Set<string>()
+
+function snippetKey(path: string, query: string) {
+  return `${path}::${query}`
+}
+
+async function fetchSnippet(result: SearchResult, query: string) {
+  const key = snippetKey(result.path, query)
+  const cached = snippetCache.get(key)
+  if (cached !== undefined) {
+    result.snippet = cached
+    return
+  }
+  if (snippetRequested.has(key)) return
+  snippetRequested.add(key)
+  try {
+    const ws = currentWorkspace.value?.path
+    if (!ws) return
+    const snip = await SearchService.GetSearchSnippet(ws, result.path, query)
+    snippetCache.set(key, snip)
+    // query 已切换则丢弃回填，避免串味
+    if (searchQuery.value.trim() === query) {
+      result.snippet = snip
+    }
+  } catch (e) {
+    console.warn('GetSearchSnippet failed for', result.path, e)
+  }
+}
+
+let snippetObserver: IntersectionObserver | null = null
+
+function observeSnippets() {
+  if (typeof IntersectionObserver === 'undefined') return
+  if (!snippetObserver) {
+    snippetObserver = new IntersectionObserver(
+      (entries) => {
+        const q = searchQuery.value.trim()
+        if (!q) return
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          const path = (entry.target as HTMLElement).dataset.path
+          if (path) {
+            const r = results.value.find((x) => x.path === path)
+            if (r && !r.snippet) void fetchSnippet(r, q)
+            snippetObserver?.unobserve(entry.target)
+          }
+        }
+      },
+      { rootMargin: '200px' },
+    )
+  }
+  // 观察当前视区附近的空片段结果
+  nextTick(() => {
+    const list = resultsListRef.value
+    if (!list || !snippetObserver) return
+    list.querySelectorAll<HTMLElement>('.result-item').forEach((el) => {
+      const path = el.dataset.path
+      if (!path) return
+      const r = results.value.find((x) => x.path === path)
+      if (r && !r.snippet) snippetObserver!.observe(el)
+    })
+  })
+}
+
+watch(sortedResults, () => {
+  observeSnippets()
+})
+
+onBeforeUnmount(() => {
+  snippetObserver?.disconnect()
+  snippetObserver = null
+})
 </script>
 
 <template>
@@ -214,6 +324,19 @@ function getFolder(path: string): string {
           <X :size="16" />
         </button>
       </div>
+      <div class="search-toolbar">
+        <button
+          type="button"
+          class="semantic-toggle"
+          :class="{ active: semanticMode }"
+          data-testid="semantic-toggle"
+          :title="t('search.semanticHint')"
+          @click="semanticMode = !semanticMode"
+        >
+          <Sparkles :size="14" />
+          <span>{{ t('search.semantic') }}</span>
+        </button>
+      </div>
     </div>
 
     <div class="search-content">
@@ -224,6 +347,15 @@ function getFolder(path: string): string {
       >
         <AlertCircle :size="16" />
         <span>{{ errorMsg }}</span>
+      </div>
+      <!-- 语义检索开启但未配置 embedding：明确提示已退化为关键词检索（P0-5 同源的「不静默」原则） -->
+      <div
+        v-else-if="semanticMode && !semanticConfigured"
+        class="semantic-hint"
+        data-testid="semantic-hint"
+      >
+        <Sparkles :size="14" />
+        <span>{{ t('search.semanticHint') }}</span>
       </div>
       <!-- 搜索中 -->
       <div
@@ -308,14 +440,18 @@ function getFolder(path: string): string {
           <AlertCircle :size="14" />
           <span>{{ indexWarning }}</span>
         </div>
-        <div class="results-list">
-          <div
-            v-for="result in sortedResults"
-            :key="result.path"
-            class="result-item"
-            data-testid="search-result"
-            @click="openResult(result)"
-          >
+        <div
+          ref="resultsListRef"
+          class="results-list"
+        >
+        <div
+          v-for="result in sortedResults"
+          :key="result.path"
+          class="result-item"
+          data-testid="search-result"
+          :data-path="result.path"
+          @click="openResult(result)"
+        >
             <div class="result-icon">
               <FileText :size="18" />
             </div>
@@ -425,6 +561,53 @@ function getFolder(path: string): string {
 .search-clear:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.search-toolbar {
+  display: flex;
+  align-items: center;
+  margin-top: var(--space-3);
+}
+
+.semantic-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.semantic-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.semantic-toggle.active {
+  background: var(--accent-alpha);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 500;
+}
+
+.semantic-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 720px;
+  margin: 0 auto var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--warning-border, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--warning-bg, var(--bg-secondary));
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.5;
 }
 
 .search-content {
@@ -654,6 +837,8 @@ function getFolder(path: string): string {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+  /* 懒加载片段未到达视区时为空，给两行高占位避免布局跳动 */
+  min-height: calc(var(--text-sm) * 3);
 }
 
 .result-meta {

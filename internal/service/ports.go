@@ -38,6 +38,12 @@ type Searcher interface {
 	// 超限部分会被跳过。不把它暴露出来，用户会以为「搜不到就是没有」，
 	// 实际上只是那部分文件根本没进索引。
 	GetIndexStats(workspacePath string) (*SearchIndexStats, error)
+	// GetSearchSnippet 按需为单个结果生成片段（前端滚动到可视区时调用）。
+	//
+	// Search/HybridSearch 只对前 N 条即时生成 snippet（P0 基线表点明的 p95 优化点），
+	// 其余留空；前端把留空结果滚入视区时再用本方法取片段，避免一次性读 200 篇正文。
+	// 口径与即时片段一致（首个查询 token 定位、半径 50）。
+	GetSearchSnippet(workspacePath, relPath, query string) (string, error)
 }
 
 // ---------------------------------------------------------------------------
@@ -320,6 +326,21 @@ type Templater interface {
 }
 
 var _ Templater = (*TemplateService)(nil)
+
+// ---------------------------------------------------------------------------
+// 知识编译（P1-5）
+// ---------------------------------------------------------------------------
+
+// CompileOperator 定义「知识编译流水线」接口：列出 Inbox 待编译笔记、
+// 编译单篇、编译全部。Inbox/Compiled 目录约定由 CompileService 内部持有，
+// 端口只暴露动作语义，不暴露目录名（保持后端可自由调整落盘布局）。
+type CompileOperator interface {
+	ListInbox(workspacePath string) ([]string, error)
+	CompileNote(workspacePath, relativePath, apiKey, baseURL, model string) (*CompileResult, error)
+	CompileAll(workspacePath, apiKey, baseURL, model string) (*CompileAllResult, error)
+}
+
+var _ CompileOperator = (*CompileService)(nil)
 
 // ---------------------------------------------------------------------------
 // Git 友好（P2-4）

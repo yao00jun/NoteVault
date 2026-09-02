@@ -13,7 +13,7 @@ import { buildContent, extractTags, splitFrontMatter } from '@/utils/frontmatter
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
-import { FileService, WorkspaceService, SearchService, TagService, ArchiveService, TrashService, SummarizeService, ExportService } from '@bindings/github.com/notevault/notevault/index.js'
+import { FileService, WorkspaceService, SearchService, TagService, ArchiveService, TrashService, SummarizeService, ExportService, CompileService } from '@bindings/github.com/notevault/notevault/index.js'
 import { arrayBufferToBase64, generateMarkdownImage } from '@/utils/image'
 import { marked } from 'marked'
 import { useToast } from '@/composables/useToast'
@@ -665,6 +665,59 @@ const summary = ref('')
 const summaryOpen = ref(false)
 const isSummarizing = ref(false)
 
+// ============ 知识编译（单篇）============
+const isCompiling = ref(false)
+
+async function handleCompile() {
+  if (!activeTab.value) {
+    toast.warning(t('editor.openNoteFirst'))
+    return
+  }
+  // 编译流水线只处理 Inbox/ 下的笔记（与 CompileView 一致）
+  if (activeTab.value.path.split('/')[0].toLowerCase() !== 'inbox') {
+    toast.warning(t('editor.compileOnlyInbox'))
+    return
+  }
+  const ai = settingsStore.settings.ai
+  if (!ai.apiKey || !ai.apiKey.trim()) {
+    toast.warning(t('editor.compileNoKey'))
+    return
+  }
+  // 先把未保存的编辑落盘，确保编译的是当前内容（后端按磁盘文件编译）
+  if (activeTab.value.isDirty) {
+    await saveTab(activeTabIndex.value)
+  }
+  isCompiling.value = true
+  const oldIndex = activeTabIndex.value
+  const oldPath = activeTab.value.path
+  try {
+    const result = (await CompileService.CompileNote(
+      currentWorkspace.value!.path,
+      oldPath,
+      ai.apiKey,
+      ai.baseURL,
+      ai.model,
+    )) as { Dest?: string; SnapshotID?: string } | null
+    if (!result || !result.Dest) {
+      toast.error(t('editor.compileFailed', { msg: t('editor.compileEmptyResult') }))
+      return
+    }
+    // 文件已移动到 Compiled/，关闭旧标签页并跟随到新位置，保持编辑器一致
+    tabs.value.splice(oldIndex, 1)
+    if (tabs.value.length === 0) activeTabIndex.value = -1
+    else if (oldIndex <= activeTabIndex.value) activeTabIndex.value = Math.max(0, activeTabIndex.value - 1)
+    await openFileByPath(result.Dest)
+    await invalidateTagCache()
+    await loadFileTree()
+    workspaceStore.incrementFileTreeVersion()
+    toast.success(t('editor.compiled', { dest: result.Dest, snapshot: result.SnapshotID || '' }))
+  } catch (e) {
+    toast.error(t('editor.compileFailed', { msg: (e as Error).message }))
+  } finally {
+    isCompiling.value = false
+  }
+}
+
 async function handleSummarize() {
   if (!activeTab.value) {
     alert(t('editor.openNoteFirst'))
@@ -857,10 +910,12 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       :active-tab="activeTab"
       :view-mode="viewMode"
       :is-exporting="isExporting"
+      :is-compiling="isCompiling"
       @switch-tab="switchToTab"
       @close-tab="closeTab"
       @new-file="handleNewFile('')"
       @summarize="handleSummarize"
+      @compile="handleCompile"
       @export-md="exportMarkdown"
       @export-html="exportSingleHTML"
       @save="saveCurrentTab"

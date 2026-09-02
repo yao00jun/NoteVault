@@ -24,6 +24,7 @@ export { PluginService } from "@bindings/github.com/notevault/notevault/internal
 export {
   ArchiveService,
   BaseService,
+  CompileService,
   CredentialService,
   ExportService,
   FileService,

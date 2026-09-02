@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import {
   Library,
   MessageCircle,
+  Square,
   Upload,
   Puzzle,
   FolderOpen,
@@ -15,6 +16,7 @@ import {
   History,
   Archive,
   Trash2,
+  Sparkles,
   ChevronRight,
   ChevronDown,
   Plus,
@@ -186,6 +188,7 @@ const navItems = computed<NavItem[]>(() => [
   { id: 'knowledge', label: t('sidebar.nav.knowledge'), icon: Library, route: '/knowledge', group: 'library' },
   { id: 'graph', label: t('sidebar.nav.graph'), icon: GitGraph, route: '/graph', group: 'library' },
   { id: 'bases', label: t('sidebar.nav.bases'), icon: Table2, route: '/bases', group: 'library' },
+  { id: 'canvas', label: t('sidebar.nav.canvas'), icon: Square, route: '/canvas', group: 'library' },
   { id: 'todos', label: t('sidebar.nav.todos'), icon: CheckSquare, route: '/todos', group: 'tasks' },
   { id: 'reminders', label: t('sidebar.nav.reminders'), icon: Clock, route: '/reminders', group: 'tasks' },
   { id: 'files', label: t('sidebar.nav.files'), icon: FolderOpen, route: '/editor', group: 'workspace' },
@@ -197,6 +200,7 @@ const navItems = computed<NavItem[]>(() => [
   { id: 'history', label: t('sidebar.nav.history'), icon: History, route: '/history', group: 'manage' },
   { id: 'archive', label: t('sidebar.nav.archive'), icon: Archive, route: '/archive', group: 'manage' },
   { id: 'trash', label: t('sidebar.nav.trash'), icon: Trash2, route: '/trash', group: 'manage' },
+  { id: 'compile', label: t('sidebar.nav.compile'), icon: Sparkles, route: '/compile', group: 'manage' },
 ])
 
 const groupedItems = computed(() => {

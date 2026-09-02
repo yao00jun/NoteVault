@@ -41,3 +41,18 @@ export function GetIndexStats(workspacePath) {
 export function Search(workspacePath, query) {
     return $Call.ByName("github.com/notevault/notevault/internal/service.SearchService.Search", workspacePath, query);
 }
+
+/**
+ * GetSearchSnippet 按需为单个结果生成片段（前端滚动到可视区时调用）。
+ * 
+ * Search/HybridSearch 只对前 N 条即时生成 snippet，其余留空；本方法供前端
+ * 把留空结果滚入视区时补取，避免一次性读 200 篇正文拖慢首屏。
+ * 口径与即时片段一致（首个查询 token 定位、半径 50）。
+ * @param {string} workspacePath
+ * @param {string} relPath
+ * @param {string} query
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetSearchSnippet(workspacePath, relPath, query) {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.SearchService.GetSearchSnippet", workspacePath, relPath, query);
+}

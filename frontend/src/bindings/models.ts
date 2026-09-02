@@ -27,6 +27,10 @@ export { PropKind } from "@bindings/github.com/notevault/notevault/internal/serv
 export type {
   ArchivedFile,
   BaseCell,
+  CompileAllResult,
+  CompileErrorItem,
+  CompileOutput,
+  CompileResult,
   BaseDef,
   BaseFilter,
   BaseFilterGroup,

@@ -77,6 +77,7 @@ func TestPortMethodSets(t *testing.T) {
 		{"TaskService ↔ TaskOperator", portType[TaskOperator](), &TaskService{}},
 		{"GitService ↔ Gitter", portType[Gitter](), &GitService{}},
 		{"TemplateService ↔ Templater", portType[Templater](), &TemplateService{}},
+		{"CompileService ↔ CompileOperator", portType[CompileOperator](), &CompileService{}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

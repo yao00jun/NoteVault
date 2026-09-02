@@ -12,16 +12,28 @@ vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
   SearchService: {
     Search: vi.fn(),
     GetIndexStats: vi.fn(),
+    GetSearchSnippet: vi.fn(),
+  },
+  QnAService: {
+    HybridSearch: vi.fn(),
+  },
+  // 同步 mock CredentialService 让 settings store 启动时不报未处理 Promise
+  CredentialService: {
+    GetCredential: vi.fn().mockResolvedValue(''),
+    SaveCredential: vi.fn().mockResolvedValue(undefined),
+    DeleteCredential: vi.fn().mockResolvedValue(undefined),
   },
 }))
 
 import SearchView from './SearchView.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { WorkspaceService, SearchService } from '@bindings/github.com/notevault/notevault/index.js'
+import { WorkspaceService, SearchService, QnAService } from '@bindings/github.com/notevault/notevault/index.js'
 
 const mockedGetCurrentWorkspace = vi.mocked(WorkspaceService.GetCurrentWorkspace)
 const mockedSearch = vi.mocked(SearchService.Search)
 const mockedGetIndexStats = vi.mocked(SearchService.GetIndexStats)
+const mockedHybridSearch = vi.mocked(QnAService.HybridSearch)
+const mockedGetSnippet = vi.mocked(SearchService.GetSearchSnippet)
 
 /** 造一条搜索结果。modTime 缺省给个固定值，避免每个用例重复写。 */
 function result(path: string, title: string, modTime: string, matchCount = 1) {
@@ -58,6 +70,8 @@ describe('SearchView', () => {
     mockedGetCurrentWorkspace.mockReset()
     mockedSearch.mockReset()
     mockedGetIndexStats.mockReset()
+    mockedHybridSearch.mockReset()
+    mockedGetSnippet.mockReset()
     mockedGetIndexStats.mockResolvedValue({
       docCount: 0,
       tokenCount: 0,
@@ -233,5 +247,77 @@ describe('SearchView', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="index-warning"]').exists()).toBe(false)
+  })
+
+  // --- 语义检索开关（P1-3 / P1-3b 前端变现） ---
+
+  it('默认走关键词检索（SearchService.Search）', async () => {
+    const { wrapper, workspaceStore } = mountSearch()
+    workspaceStore.setCurrentWorkspace({
+      id: 'ws_1', name: '测试库', path: '/tmp/vault', createdAt: '', lastOpenedAt: '',
+    })
+    mockedSearch.mockResolvedValue([result('a.md', 'A', '2026-08-01T00:00:00Z')])
+    await wrapper.find('[data-testid="search-input"]').setValue('关键词')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+
+    expect(mockedSearch).toHaveBeenCalledTimes(1)
+    expect(mockedHybridSearch).not.toHaveBeenCalled()
+  })
+
+  it('开启语义检索后改走 HybridSearch，且关键词检索不再被调用', async () => {
+    const { wrapper, workspaceStore } = mountSearch()
+    workspaceStore.setCurrentWorkspace({
+      id: 'ws_1', name: '测试库', path: '/tmp/vault', createdAt: '', lastOpenedAt: '',
+    })
+    mockedHybridSearch.mockResolvedValue([result('a.md', 'A', '2026-08-01T00:00:00Z')])
+    await wrapper.find('[data-testid="semantic-toggle"]').trigger('click')
+    await wrapper.find('[data-testid="search-input"]').setValue('语义查询')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+
+    expect(mockedHybridSearch).toHaveBeenCalledTimes(1)
+    expect(mockedHybridSearch.mock.calls[0][0]).toBe('/tmp/vault')
+    expect(mockedHybridSearch.mock.calls[0][1]).toBe('语义查询')
+    expect(mockedSearch).not.toHaveBeenCalled()
+  })
+
+  // --- P0 基线表点明的 p95 优化：snippet 按需生成 ---
+
+  it('空片段结果滚入视区时按需调 GetSearchSnippet 补取', async () => {
+    // 最小 IntersectionObserver：observe 立即把目标标记为进入视区
+    class FakeIO {
+      cb: (entries: any[], obs: any) => void
+      constructor(cb: any) {
+        this.cb = cb
+      }
+      observe(el: Element) {
+        this.cb([{ isIntersecting: true, target: el }], this)
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('IntersectionObserver', FakeIO as any)
+    try {
+      const { wrapper, workspaceStore } = mountSearch()
+      workspaceStore.setCurrentWorkspace({
+        id: 'ws_1', name: '测试库', path: '/tmp/vault', createdAt: '', lastOpenedAt: '',
+      })
+      // 两条结果 snippet 均为空，模拟「超出即时片段上限的懒加载项」
+      mockedSearch.mockResolvedValue([
+        result('a.md', 'A', '2026-08-01T00:00:00Z'),
+        result('b.md', 'B', '2026-08-02T00:00:00Z'),
+      ])
+      mockedGetSnippet.mockResolvedValue('按需补取的片段')
+      await wrapper.find('[data-testid="search-input"]').setValue('关键词')
+      await vi.advanceTimersByTimeAsync(300)
+      await flushPromises()
+      await flushPromises()
+
+      expect(mockedGetSnippet).toHaveBeenCalled()
+      expect(wrapper.text()).toContain('按需补取的片段')
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

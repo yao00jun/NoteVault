@@ -37,6 +37,11 @@ const routes = [
     component: () => import('@/views/BasesView.vue'),
   },
   {
+    path: '/canvas',
+    name: 'canvas',
+    component: () => import('@/views/CanvasView.vue'),
+  },
+  {
     path: '/qna',
     name: 'qna',
     component: () => import('@/views/QnAView.vue'),
@@ -75,6 +80,11 @@ const routes = [
     path: '/trash',
     name: 'trash',
     component: () => import('@/views/TrashView.vue'),
+  },
+  {
+    path: '/compile',
+    name: 'compile',
+    component: () => import('@/views/CompileView.vue'),
   },
   {
     path: '/settings',

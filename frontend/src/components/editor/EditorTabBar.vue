@@ -3,6 +3,7 @@
  * EditorTabBar - 编辑器顶部标签页栏 + 右侧工具栏
  * 纯展示组件：标签页与工具栏交互通过 emit 交还父组件处理。
  */
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   FileText,
@@ -13,6 +14,7 @@ import {
   Edit3,
   Eye,
   Sparkles,
+  Wand2,
   FileDown,
   FileCode,
 } from 'lucide-vue-next'
@@ -27,13 +29,14 @@ interface Tab {
   lastSavedAt: string
 }
 
-defineProps<{
+const props = defineProps<{
   tabs: Tab[]
   activeTabIndex: number
   isSaving: boolean
   activeTab: Tab | null
   viewMode: 'split' | 'editor' | 'preview'
   isExporting: boolean
+  isCompiling: boolean
 }>()
 
 const emit = defineEmits<{
@@ -41,11 +44,26 @@ const emit = defineEmits<{
   (e: 'close-tab', index: number, event: Event): void
   (e: 'new-file'): void
   (e: 'summarize'): void
+  (e: 'compile'): void
   (e: 'export-md'): void
   (e: 'export-html'): void
   (e: 'save'): void
   (e: 'toggle-view'): void
 }>()
+
+// 编译流水线仅处理 Inbox/ 下的笔记（后端 CompileNote 亦强校验），
+// 不在 Inbox 时禁用按钮并给出明确提示，避免误点后收到后端报错。
+const inInbox = computed(() => {
+  const p = props.activeTab?.path
+  if (!p) return false
+  return p.split('/')[0].toLowerCase() === 'inbox'
+})
+const compileTooltip = computed(() => {
+  if (!props.activeTab) return t('editor.compile')
+  if (!inInbox.value) return t('editor.compileOnlyInbox')
+  if (props.isCompiling) return t('editor.compiling')
+  return t('editor.compile')
+})
 </script>
 
 <template>
@@ -100,6 +118,15 @@ const emit = defineEmits<{
         @click="emit('summarize')"
       >
         <Sparkles :size="14" />
+      </button>
+      <button
+        class="tool-btn"
+        :title="compileTooltip"
+        :disabled="!activeTab || isCompiling || !inInbox"
+        data-testid="compile-button"
+        @click="emit('compile')"
+      >
+        <Wand2 :size="14" />
       </button>
       <button
         class="tool-btn"

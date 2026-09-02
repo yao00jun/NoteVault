@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -59,6 +60,14 @@ const (
 	// 任一用例改值都会影响同进程内其它用例，且并行测试下不可靠。
 	// 现改为 SearchService.maxResults 实例字段，测试按实例注入。
 	defaultMaxSearchResults = 200
+
+	// defaultEagerSnippetLimit 是 Search/HybridSearch 在返回结果时「即时生成
+	// snippet」的条数上限。超出部分 snippet 留空，由前端滚动到可视区时按需
+	// 调 GetSearchSnippet 取（P0 基线表点明的 p95 优化点：瓶颈不在 BM25 打分，
+	// 而在给 Top-200 结果逐个读正文生成 snippet）。
+	// 程序化消费者（MCP server）没有前端懒加载，用 NewSearchServiceForFullSnippets
+	// 把该上限提到整型上界，一次拿全。
+	defaultEagerSnippetLimit = 50
 )
 
 // SearchService 提供全文搜索功能，基于内存反向索引。
@@ -73,13 +82,18 @@ type SearchService struct {
 	// 刻意不加导出 setter：Wails 会把 Service 的导出方法全部绑成前端 API，
 	// 仅为测试开洞会污染绑定契约（见 ports_contract_test.go）。
 	maxResults int
+	// eagerSnippetLimit 「即时生成 snippet」的条数上限；<=0 时回落 defaultEagerSnippetLimit。
+	// 刻意不加导出 setter：Wails 会把 Service 的导出方法全部绑成前端 API，
+	// 仅为测试/MCP 开洞会污染绑定契约（见 ports_contract_test.go）。
+	eagerSnippetLimit int
 }
 
 // NewSearchService 创建搜索服务实例（索引走包级默认注册表）
 func NewSearchService(fileService *FileService) *SearchService {
 	return &SearchService{
-		fileService: fileService,
-		maxResults:  defaultMaxSearchResults,
+		fileService:     fileService,
+		maxResults:      defaultMaxSearchResults,
+		eagerSnippetLimit: defaultEagerSnippetLimit,
 	}
 }
 
@@ -89,9 +103,21 @@ func NewSearchService(fileService *FileService) *SearchService {
 // 时机集中到容器持有的那一个注册表上，而不是散落在全局。
 func NewSearchServiceWithRegistry(fileService *FileService, indexes *SearchIndexRegistry) *SearchService {
 	return &SearchService{
-		fileService: fileService,
-		indexes:     indexes,
-		maxResults:  defaultMaxSearchResults,
+		fileService:     fileService,
+		indexes:         indexes,
+		maxResults:      defaultMaxSearchResults,
+		eagerSnippetLimit: defaultEagerSnippetLimit,
+	}
+}
+
+// NewSearchServiceForFullSnippets 创建「即时生成全部 snippet」的实例，供程序化
+// 消费者（如 MCP server）使用——它们没有前端滚动懒加载，需要一次拿全。
+// 这是一个包级构造函数而非 SearchService 的导出方法，因此不会被 Wails 绑成前端 API。
+func NewSearchServiceForFullSnippets(fileService *FileService) *SearchService {
+	return &SearchService{
+		fileService:     fileService,
+		maxResults:      defaultMaxSearchResults,
+		eagerSnippetLimit: math.MaxInt,
 	}
 }
 
@@ -109,6 +135,15 @@ func (s *SearchService) resultCap() int {
 		return s.maxResults
 	}
 	return defaultMaxSearchResults
+}
+
+// eagerSnippetCap 返回生效的「即时生成 snippet」条数上限
+// （零值或非法值回落 defaultEagerSnippetLimit，保证零值实例可用）
+func (s *SearchService) eagerSnippetCap() int {
+	if s.eagerSnippetLimit > 0 {
+		return s.eagerSnippetLimit
+	}
+	return defaultEagerSnippetLimit
 }
 
 // Search 在工作区中搜索关键词
@@ -149,29 +184,44 @@ func (s *SearchService) Search(workspacePath string, query string) ([]*SearchRes
 	scored := idx.scoreBM25(queryTokens, s.resultCap())
 	idx.mu.RUnlock()
 
+	// 两段式 snippet：前 eagerSnippetCap 条结果即时读正文生成 snippet（覆盖首屏，
+	// 不依赖滚动）；其余结果 snippet 留空，交给前端滚动到可视区时按需调
+	// GetSearchSnippet 取。这样把「给 Top-200 逐个读正文」的 p95 瓶颈从搜索
+	// 关键路径上挪走（P0 基线表点明的优化点）。matchCount 在两段下都用内存里的
+	// tokenFreq 之和估算（正文未读时本就只能如此）。
+	eagerCap := s.eagerSnippetCap()
 	results := make([]*SearchResult, 0, len(scored))
-	for _, sd := range scored {
-		content, contentLower, err := sd.doc.contentOnce(idx)
-		if err != nil {
-			// 文档已被并发 refresh 重建/删除（errDocStale），或正文读取失败 → 跳过
-			continue
-		}
+	for i, sd := range scored {
+		var snippet string
+		var matchCount int
 
-		// 优先用整串出现次数（与用户直觉一致）；多词查询整串匹配不到时
-		// 回落到各 token 词频之和，避免显示「匹配 0 次」这种反直觉结果。
-		matchCount := strings.Count(contentLower, queryLower)
-		if matchCount == 0 {
+		if i < eagerCap {
+			content, contentLower, err := sd.doc.contentOnce(idx)
+			if err != nil {
+				// 文档已被并发 refresh 重建/删除（errDocStale），或正文读取失败 → 跳过
+				continue
+			}
+			// 优先用整串出现次数（与用户直觉一致）；多词查询整串匹配不到时
+			// 回落到各 token 词频之和，避免显示「匹配 0 次」这种反直觉结果。
+			matchCount = strings.Count(contentLower, queryLower)
+			if matchCount == 0 {
+				for _, qt := range queryTokens {
+					matchCount += sd.doc.tokenFreq[qt]
+				}
+			}
+			// 用首个查询 token 定位片段：多词查询时整串（含空格）在正文里
+			// 几乎不可能连续出现，按整串定位会退化成「返回开头 100 字」。
+			snippet = extractSnippet(content, queryTokens[0], 50)
+		} else {
 			for _, qt := range queryTokens {
 				matchCount += sd.doc.tokenFreq[qt]
 			}
 		}
 
 		results = append(results, &SearchResult{
-			Path:    sd.doc.relPath,
-			Title:   sd.doc.title,
-			Snippet: extractSnippet(content, queryTokens[0], 50),
-			// 用首个查询 token 定位片段：多词查询时整串（含空格）在正文里
-			// 几乎不可能连续出现，按整串定位会退化成「返回开头 100 字」。
+			Path:       sd.doc.relPath,
+			Title:      sd.doc.title,
+			Snippet:    snippet,
 			MatchCount: matchCount,
 			ModTime:    sd.doc.modTime,
 		})
@@ -182,6 +232,42 @@ func (s *SearchService) Search(workspacePath string, query string) ([]*SearchRes
 	idx.enforceContentBudget()
 
 	return results, nil
+}
+
+// GetSearchSnippet 按需为单个结果生成 snippet（前端滚动到可视区时调用）。
+//
+// 只读取这一个文件的正文并定位片段，不拖累 Search/HybridSearch 的首屏延迟。
+// 与 Search 即时片段用同一套口径（首个查询 token 定位、半径 50），保证两者
+// 视觉一致。未配置查询或文档不在索引中时返回空串/报错，由调用方决定降级展示。
+func (s *SearchService) GetSearchSnippet(workspacePath, relPath, query string) (string, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return "", nil
+	}
+
+	idx := s.idxOf(workspacePath)
+	_ = idx.LoadSummary(workspacePath)
+	if _, err := idx.refresh(workspacePath); err != nil {
+		return "", err
+	}
+
+	idx.mu.RLock()
+	doc, ok := idx.docs[relPath]
+	idx.mu.RUnlock()
+	if !ok {
+		return "", fmt.Errorf("文档不在索引中：%s", relPath)
+	}
+
+	content, _, err := doc.contentOnce(idx)
+	if err != nil {
+		return "", err
+	}
+
+	queryTokens := tokenize(strings.ToLower(query))
+	if len(queryTokens) == 0 {
+		return "", nil
+	}
+	return extractSnippet(content, queryTokens[0], 50), nil
 }
 
 // extractSnippet 提取匹配位置周围的文本片段

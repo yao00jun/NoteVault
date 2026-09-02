@@ -604,18 +604,29 @@ func (s *QnAService) HybridSearch(workspacePath, query, embBaseURL, embModel, em
 		}
 	}
 
+	// 两段式 snippet（与 SearchService.Search 同口径）：前 defaultEagerSnippetLimit
+	// 条即时生成，其余留空交前端按需取，避免给 Top-N 全部读正文拖慢首屏。
 	results := make([]*SearchResult, 0, len(fused))
-	for _, f := range fused {
+	for i, f := range fused {
 		doc, ok := docByRel[f.relPath]
 		if !ok {
 			continue
 		}
-		content, contentLower, err := doc.contentOnce(idx)
-		if err != nil {
-			continue
-		}
-		matchCount := strings.Count(contentLower, queryLower)
-		if matchCount == 0 {
+		var snippet string
+		var matchCount int
+		if i < defaultEagerSnippetLimit {
+			content, contentLower, err := doc.contentOnce(idx)
+			if err != nil {
+				continue
+			}
+			matchCount = strings.Count(contentLower, queryLower)
+			if matchCount == 0 {
+				for _, qt := range queryTokens {
+					matchCount += doc.tokenFreq[qt]
+				}
+			}
+			snippet = extractSnippet(content, queryTokens[0], 50)
+		} else {
 			for _, qt := range queryTokens {
 				matchCount += doc.tokenFreq[qt]
 			}
@@ -623,7 +634,7 @@ func (s *QnAService) HybridSearch(workspacePath, query, embBaseURL, embModel, em
 		results = append(results, &SearchResult{
 			Path:       doc.relPath,
 			Title:      doc.title,
-			Snippet:    extractSnippet(content, queryTokens[0], 50),
+			Snippet:    snippet,
 			MatchCount: matchCount,
 			ModTime:    doc.modTime,
 		})

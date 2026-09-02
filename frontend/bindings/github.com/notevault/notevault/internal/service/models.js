@@ -134,6 +134,24 @@
  */
 
 /**
+ * CompileAllResult 是 CompileAll 的聚合结果，专为 Wails 绑定设计：
+ * 返回单一结构体 + error（而非 Go 惯用的 (results, []error) 双返回值）。
+ * 原因：Wails 会把多返回值序列化为元组，而 []error 是接口切片，
+ * 每个 error 经 JSON 会退化成 {}，前端拿不到任何错误信息。
+ * 这里用结构化的 CompileErrorItem 承载「路径 + 消息」，前端可逐条展示。
+ * @typedef {Object} CompileAllResult
+ * @property {(CompileResult | null)[] | null} Results - Results 编译成功的篇目。
+ * @property {CompileErrorItem[] | null} Errors - Errors 单篇失败明细（路径 + 原因），不阻断其他篇。
+ */
+
+/**
+ * CompileErrorItem 单篇编译失败的路径与原因。
+ * @typedef {Object} CompileErrorItem
+ * @property {string} Path - Path 失败的 Inbox 相对路径。
+ * @property {string} Error - Error 人类可读的错误原因。
+ */
+
+/**
  * CompileOutput 是「知识编译」的结构化产出。
  * @typedef {Object} CompileOutput
  * @property {string} TLDR - TLDR 一句话摘要，调用方约束模型控制在 200 字以内。

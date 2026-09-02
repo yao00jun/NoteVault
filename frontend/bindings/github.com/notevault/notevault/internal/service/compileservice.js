@@ -17,12 +17,13 @@ import * as $models from "./models.js";
 
 /**
  * CompileAll 编译 Inbox 内全部笔记。
- * 单篇失败不影响其他篇；返回每篇结果或错误，由调用方决定如何处理。
+ * 单篇失败不影响其他篇；失败项进入 Errors 而非顶层 error，
+ * 顶层 error 仅代表「连 Inbox 都列不出来」这类致命错误。
  * @param {string} workspacePath
  * @param {string} apiKey
  * @param {string} baseURL
  * @param {string} model
- * @returns {$CancellablePromise<[($models.CompileResult | null)[] | null, any[] | null]>}
+ * @returns {$CancellablePromise<$models.CompileAllResult | null>}
  */
 export function CompileAll(workspacePath, apiKey, baseURL, model) {
     return $Call.ByName("github.com/notevault/notevault/internal/service.CompileService.CompileAll", workspacePath, apiKey, baseURL, model);

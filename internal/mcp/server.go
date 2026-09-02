@@ -47,7 +47,7 @@ func NewServer(workspacePath string, enableWrite bool) *Server {
 		workspacePath: workspacePath,
 		enableWrite:   enableWrite,
 		fileSvc:       fs,
-		searchSvc:     service.NewSearchService(fs),
+		searchSvc:     service.NewSearchServiceForFullSnippets(fs),
 		tagSvc:        service.NewTagService(),
 		todoSvc:       service.NewTodoService(),
 		graphSvc:      service.NewGraphService(),

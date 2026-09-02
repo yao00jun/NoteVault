@@ -149,3 +149,69 @@ export interface SearchResult {
   matchCount: number
   isFileMatch: boolean
 }
+
+// ===== JSON Canvas 开放格式（P2-3，与 Obsidian 双向兼容）=====
+// 规范：https://jsoncanvas.org
+// 画布即工作区内的 .canvas 纯 JSON 文件，不进 .notevault/，符合「纯文件 / 无锁定」红线。
+
+export type CanvasNodeSide = 'top' | 'right' | 'bottom' | 'left'
+
+/** 1–6 为无色占位；red/orange/yellow/green/cyan/blue/purple/pink 为彩色 */
+export type CanvasNodeColor =
+  | '1' | '2' | '3' | '4' | '5' | '6'
+  | 'red' | 'orange' | 'yellow' | 'green' | 'cyan' | 'blue' | 'purple' | 'pink'
+
+export interface CanvasNodeBase {
+  id: string
+  x: number
+  y: number
+  width: number
+  height: number
+  color?: CanvasNodeColor
+}
+
+export interface CanvasTextNode extends CanvasNodeBase {
+  type: 'text'
+  text: string
+}
+
+export interface CanvasFileNode extends CanvasNodeBase {
+  type: 'file'
+  /** 相对工作区根目录的文件路径 */
+  file: string
+  /** 可选的子路径（Obsidian heading/block 锚点），本版仅原样保留 */
+  subpath?: string
+}
+
+export interface CanvasLinkNode extends CanvasNodeBase {
+  type: 'link'
+  url: string
+}
+
+export interface CanvasGroupNode extends CanvasNodeBase {
+  type: 'group'
+  label?: string
+}
+
+export type CanvasNode =
+  | CanvasTextNode
+  | CanvasFileNode
+  | CanvasLinkNode
+  | CanvasGroupNode
+
+export interface CanvasEdge {
+  id: string
+  fromNode: string
+  fromSide?: CanvasNodeSide
+  fromEnd?: 'none' | 'arrow'
+  toNode: string
+  toSide?: CanvasNodeSide
+  toEnd?: 'none' | 'arrow'
+  color?: CanvasNodeColor
+  label?: string
+}
+
+export interface CanvasData {
+  nodes: CanvasNode[]
+  edges: CanvasEdge[]
+}

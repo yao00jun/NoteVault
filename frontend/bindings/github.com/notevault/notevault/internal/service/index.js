@@ -126,6 +126,20 @@ import * as $models from "./models.js";
  */
 
 /**
+ * CompileAllResult 是 CompileAll 的聚合结果，专为 Wails 绑定设计：
+ * 返回单一结构体 + error（而非 Go 惯用的 (results, []error) 双返回值）。
+ * 原因：Wails 会把多返回值序列化为元组，而 []error 是接口切片，
+ * 每个 error 经 JSON 会退化成 {}，前端拿不到任何错误信息。
+ * 这里用结构化的 CompileErrorItem 承载「路径 + 消息」，前端可逐条展示。
+ * @typedef {$models.CompileAllResult} CompileAllResult
+ */
+
+/**
+ * CompileErrorItem 单篇编译失败的路径与原因。
+ * @typedef {$models.CompileErrorItem} CompileErrorItem
+ */
+
+/**
  * CompileOutput 是「知识编译」的结构化产出。
  * @typedef {$models.CompileOutput} CompileOutput
  */

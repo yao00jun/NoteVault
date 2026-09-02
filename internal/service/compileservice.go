@@ -239,24 +239,44 @@ func (s *CompileService) CompileNote(workspacePath, relativePath, apiKey, baseUR
 	}, nil
 }
 
+// CompileAllResult 是 CompileAll 的聚合结果，专为 Wails 绑定设计：
+// 返回单一结构体 + error（而非 Go 惯用的 (results, []error) 双返回值）。
+// 原因：Wails 会把多返回值序列化为元组，而 []error 是接口切片，
+// 每个 error 经 JSON 会退化成 {}，前端拿不到任何错误信息。
+// 这里用结构化的 CompileErrorItem 承载「路径 + 消息」，前端可逐条展示。
+type CompileAllResult struct {
+	// Results 编译成功的篇目。
+	Results []*CompileResult
+	// Errors 单篇失败明细（路径 + 原因），不阻断其他篇。
+	Errors []CompileErrorItem
+}
+
+// CompileErrorItem 单篇编译失败的路径与原因。
+type CompileErrorItem struct {
+	// Path 失败的 Inbox 相对路径。
+	Path string
+	// Error 人类可读的错误原因。
+	Error string
+}
+
 // CompileAll 编译 Inbox 内全部笔记。
-// 单篇失败不影响其他篇；返回每篇结果或错误，由调用方决定如何处理。
-func (s *CompileService) CompileAll(workspacePath, apiKey, baseURL, model string) ([]*CompileResult, []error) {
+// 单篇失败不影响其他篇；失败项进入 Errors 而非顶层 error，
+// 顶层 error 仅代表「连 Inbox 都列不出来」这类致命错误。
+func (s *CompileService) CompileAll(workspacePath, apiKey, baseURL, model string) (*CompileAllResult, error) {
 	notes, err := s.ListInbox(workspacePath)
 	if err != nil {
-		return nil, []error{err}
+		return nil, err
 	}
-	var results []*CompileResult
-	var errs []error
+	res := &CompileAllResult{}
 	for _, n := range notes {
 		r, e := s.CompileNote(workspacePath, n, apiKey, baseURL, model)
 		if e != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", n, e))
+			res.Errors = append(res.Errors, CompileErrorItem{Path: n, Error: e.Error()})
 			continue
 		}
-		results = append(results, r)
+		res.Results = append(res.Results, r)
 	}
-	return results, errs
+	return res, nil
 }
 
 // ---- frontmatter 合并辅助 ----
