@@ -35,8 +35,10 @@ import (
 //
 //	NV_EVAL_EMBED_BASE    embedding 端点，默认 http://127.0.0.1:11434/v1
 //	NV_EVAL_EMBED_MODEL   embedding 模型，默认 bge-m3
-//	NV_EVAL_RERANK_BASE   rerank 端点，默认 http://127.0.0.1:11434
+//	NV_EVAL_RERANK_BASE   rerank 端点，默认空（需显式填写）
 //	NV_EVAL_RERANK_MODEL  rerank 模型，默认空（空则跳过第 ③ 组）
+//	NV_EVAL_RERANK_PROVIDER  rerank provider，默认 cohere
+//	NV_EVAL_RERANK_APIKEY    rerank API Key（provider 为非本机端点时必须，如硅基流动 sk-...）
 // ---------------------------------------------------------------------------
 
 // evalCorpus 是评测语料：relPath → Markdown 正文。
@@ -515,8 +517,10 @@ func TestRetrievalEval_Ollama_BGEM3(t *testing.T) {
 
 	embBase := envOrDefault("NV_EVAL_EMBED_BASE", "http://127.0.0.1:11434/v1")
 	embModel := envOrDefault("NV_EVAL_EMBED_MODEL", "bge-m3")
-	rerankBase := envOrDefault("NV_EVAL_RERANK_BASE", "http://127.0.0.1:11434")
+	rerankBase := envOrDefault("NV_EVAL_RERANK_BASE", "")
 	rerankModel := os.Getenv("NV_EVAL_RERANK_MODEL")
+	rerankProvider := RerankProvider(envOrDefault("NV_EVAL_RERANK_PROVIDER", "cohere"))
+	rerankAPIKey := os.Getenv("NV_EVAL_RERANK_APIKEY")
 
 	base := runEvalArm(t, ws, evalArm{
 		name: "① BM25 基线",
@@ -541,9 +545,10 @@ func TestRetrievalEval_Ollama_BGEM3(t *testing.T) {
 			embBase:  embBase,
 			embModel: embModel,
 			rerankCfg: RerankConfig{
-				Provider: RerankProviderOllama,
+				Provider: rerankProvider,
 				BaseURL:  rerankBase,
 				Model:    rerankModel,
+				APIKey:   rerankAPIKey,
 			},
 		})
 		reports = append(reports, rr)

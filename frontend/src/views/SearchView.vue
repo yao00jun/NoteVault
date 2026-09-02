@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
-import { Search, FileText, X, Clock, ArrowRight, AlertCircle, AlertTriangle, Sparkles } from 'lucide-vue-next'
+import { Search, FileText, X, Clock, ArrowRight, AlertCircle, Sparkles } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
 import { SearchService, WorkspaceService, QnAService } from '@bindings/github.com/notevault/notevault/index.js'
+import type { RerankProvider } from '@bindings/github.com/notevault/notevault/internal/service/models.js'
 import { cleanSnippet, highlightText } from '@/utils/text'
 
 interface SearchResult {
@@ -40,12 +41,6 @@ const semanticConfigured = computed(
   () =>
     !!settingsStore.settings.embedding.baseURL.trim() &&
     !!settingsStore.settings.embedding.model.trim(),
-)
-
-// rerank 选了 Ollama 时显式提示（P1-3b 不静默）：Ollama 原生不支持 /api/rerank，
-// 选它会让语义检索静默降级为纯 RRF，用户无感。前端无法直接探测，但这是确定事实。
-const rerankOllamaSelected = computed(
-  () => settingsStore.settings.rerank.provider === 'ollama',
 )
 
 const searchQuery = ref('')
@@ -143,7 +138,7 @@ async function doSearch() {
         emb.model,
         emb.apiKey,
         {
-          provider: rerank.provider,
+          provider: rerank.provider as unknown as RerankProvider,
           baseURL: rerank.baseURL,
           model: rerank.model,
           apiKey: rerank.apiKey,
@@ -362,15 +357,6 @@ onBeforeUnmount(() => {
       >
         <Sparkles :size="14" />
         <span>{{ t('search.semanticHint') }}</span>
-      </div>
-      <!-- rerank 选了 Ollama：Ollama 原生不支持重排，会静默降级为纯 RRF，明确提示（P1-3b 不静默） -->
-      <div
-        v-else-if="semanticMode && rerankOllamaSelected"
-        class="semantic-hint"
-        data-testid="rerank-hint"
-      >
-        <AlertTriangle :size="14" />
-        <span>{{ t('search.rerankOllamaHint') }}</span>
       </div>
       <!-- 搜索中 -->
       <div

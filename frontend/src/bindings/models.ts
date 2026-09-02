@@ -56,6 +56,7 @@ export type {
   QnAResponse,
   RerankConfig,
   RerankProbeResult,
+  EmbeddingProbeResult,
   Reminder,
   SearchIndexStats,
   SearchResult,

@@ -2,10 +2,11 @@
 import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { MessageCircle, Send, Trash2, FileText, Loader2, AlertTriangle, Sparkles } from 'lucide-vue-next'
+import { MessageCircle, Send, Trash2, FileText, Loader2, Sparkles } from 'lucide-vue-next'
 import { marked } from 'marked'
 import { QnAService } from '@bindings/github.com/notevault/notevault/index.js'
 import type { QnACitation } from '@bindings/github.com/notevault/notevault/models.js'
+import type { RerankProvider } from '@bindings/github.com/notevault/notevault/internal/service/models.js'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 
@@ -13,12 +14,6 @@ const { t } = useI18n()
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
 const settingsStore = useSettingsStore()
-
-// rerank 选了 Ollama 时显式提示（P1-3b 不静默）：Ollama 原生不支持 /api/rerank，
-// 选它会让问答检索静默降级为纯 RRF，用户无感。这是确定事实，无需实时探测。
-const rerankOllamaSelected = computed(
-  () => settingsStore.settings.rerank.provider === 'ollama',
-)
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -61,11 +56,12 @@ async function ask() {
       ai.apiKey,
       ai.baseURL,
       ai.model,
+      ai.protocol,
       emb.baseURL,
       emb.model,
       emb.apiKey,
       {
-        provider: rerank.provider,
+        provider: rerank.provider as unknown as RerankProvider,
         baseURL: rerank.baseURL,
         model: rerank.model,
         apiKey: rerank.apiKey,
@@ -141,15 +137,6 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
         <Trash2 :size="14" />
         <span>{{ t('qna.clear') }}</span>
       </button>
-    </div>
-
-    <div
-      v-if="rerankOllamaSelected"
-      class="qna-rerank-hint"
-      data-testid="rerank-hint"
-    >
-      <AlertTriangle :size="14" />
-      <span>{{ t('qna.rerankOllamaHint') }}</span>
     </div>
 
     <div

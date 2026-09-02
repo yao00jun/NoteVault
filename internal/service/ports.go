@@ -171,7 +171,7 @@ type Exporter interface {
 
 // Summarizer 定义 AI 摘要接口
 type Summarizer interface {
-	Summarize(apiKey, baseURL, model, content string) (string, error)
+	Summarize(apiKey, baseURL, model, protocol, content string) (string, error)
 }
 
 // LLMConfigurator 定义 LLM 端点配置与自检接口。
@@ -179,8 +179,9 @@ type Summarizer interface {
 // 若挂在其中任一功能接口上，另一个就得反向依赖它。
 type LLMConfigurator interface {
 	Presets() []LLMEndpointPreset
-	Probe(apiKey, baseURL string) *LLMProbeResult
+	Probe(apiKey, baseURL, protocol string) *LLMProbeResult
 	ProbeRerank(cfg RerankConfig) *RerankProbeResult
+	ProbeEmbedding(apiKey, baseURL, model string) *EmbeddingProbeResult
 }
 
 // CredentialKeeper 定义系统级密钥存取接口（P2-5）。
@@ -199,11 +200,12 @@ type CredentialKeeper interface {
 // QnAProvider 定义知识库问答接口（检索增强生成）
 type QnAProvider interface {
 	// Answer 提问并返回带引用的回答。
+	// protocol 为 AI 生成协议（openai-chat / openai-responses / anthropic-messages / google-gemini / google-vertex）。
 	// embBaseURL/embModel/embAPIKey 为语义检索的 embedding 端点配置（与生成端点独立）；
 	// 三者为空时向量 leg 不启用，检索退化为纯 BM25，行为与 P0 结束态一致。
 	// rerankCfg 为可选重排序端点配置（P1-3b）；未配置时融合退化为纯 BM25 + 向量 RRF，
 	// 与 P1-3 结束态一致；重排服务不可用时静默回退，不阻断问答。
-	Answer(apiKey, baseURL, model, embBaseURL, embModel, embAPIKey string, rerankCfg RerankConfig, workspacePath, question string) (*QnAResponse, error)
+	Answer(apiKey, baseURL, model, protocol, embBaseURL, embModel, embAPIKey string, rerankCfg RerankConfig, workspacePath, question string) (*QnAResponse, error)
 	// HybridSearch 文档级混合检索（BM25 + 向量 RRF 融合），供前端搜索增强。
 	// rerankCfg 同上，可选。
 	HybridSearch(workspacePath, query, embBaseURL, embModel, embAPIKey string, rerankCfg RerankConfig) ([]*SearchResult, error)
@@ -337,8 +339,8 @@ var _ Templater = (*TemplateService)(nil)
 // 端口只暴露动作语义，不暴露目录名（保持后端可自由调整落盘布局）。
 type CompileOperator interface {
 	ListInbox(workspacePath string) ([]string, error)
-	CompileNote(workspacePath, relativePath, apiKey, baseURL, model string) (*CompileResult, error)
-	CompileAll(workspacePath, apiKey, baseURL, model string) (*CompileAllResult, error)
+	CompileNote(workspacePath, relativePath, apiKey, baseURL, model, protocol string) (*CompileResult, error)
+	CompileAll(workspacePath, apiKey, baseURL, model, protocol string) (*CompileAllResult, error)
 }
 
 var _ CompileOperator = (*CompileService)(nil)

@@ -39,8 +39,12 @@ export interface Tag {
   count: number
 }
 
+export type AIProtocol = 'openai-chat' | 'openai-responses' | 'anthropic-messages' | 'google-gemini' | 'google-vertex'
+
 export interface AISettings {
-  /** OpenAI 兼容接口地址，如 https://api.openai.com/v1 或 https://api.deepseek.com/v1 */
+  /** AI 协议/端点类型 */
+  protocol: AIProtocol
+  /** 接口地址，如 https://api.openai.com/v1 或 https://api.deepseek.com/v1 */
   baseURL: string
   /** 模型名称，如 gpt-4o-mini / deepseek-chat */
   model: string
@@ -54,6 +58,8 @@ export interface AISettings {
  * （例如生成走云端、embedding 走本机 Ollama）。
  */
 export interface EmbeddingSettings {
+  /** 服务厂商：ollama（本机）| siliconflow | cohere */
+  provider: 'ollama' | 'siliconflow' | 'cohere'
   /** OpenAI 兼容 embedding 接口地址，如 http://localhost:11434/v1（Ollama 本机） */
   baseURL: string
   /** embedding 模型名称，如 bge-m3 / nomic-embed-text */
@@ -66,15 +72,17 @@ export interface EmbeddingSettings {
  * 重排序（Rerank）端点配置（P1-3b，可选）。
  * 在 BM25 + 向量召回之后做一遍 cross-encoder 重排，进一步修正召回顺序。
  * 未配置时检索融合退化为纯 RRF，行为与未开启语义检索一致。
+ *
+ * 注：Ollama 原生不支持 /api/rerank（上游 PR 从未合并），因此下拉中不再提供 Ollama 选项。
  */
 export interface RerankSettings {
-  /** 厂商：'' 表示关闭重排（默认）| ollama（本机 /api/rerank，免鉴权，但 Ollama 原生不支持）| cohere（/v1/rerank，需 Key） */
-  provider: 'ollama' | 'cohere' | ''
-  /** rerank 接口地址：ollama 填根地址 http://localhost:11434；cohere 填 https://api.cohere.ai/v1 */
+  /** 厂商：'' 表示关闭重排（默认）| cohere（/v1/rerank，需 Key） */
+  provider: 'cohere' | ''
+  /** rerank 接口地址，如 https://api.cohere.ai/v1 */
   baseURL: string
-  /** rerank 模型名称，如 bge-reranker-v2-m3（Ollama）/ rerank-v3.5（Cohere） */
+  /** rerank 模型名称，如 rerank-multilingual-v3.0（Cohere）/ BAAI/bge-reranker-v2-m3（硅基流动） */
   model: string
-  /** API Key：ollama 本机可留空；cohere 必填 */
+  /** API Key：云端必填 */
   apiKey: string
 }
 

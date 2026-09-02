@@ -1,11 +1,8 @@
 package service
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -194,14 +191,13 @@ func (s *QnAService) retrieveChunks(workspacePath, question string) []scoredChun
 // 注：rerankCfg 用结构体而非 3~4 个裸 string 传入（对比 embedding 的三裸 string），
 // 是 P1-3 之后的演进——配置字段更多（provider/baseURL/model/apiKey）时，结构体比
 // 一长串位置参数更易读、不易错位。embedding 的裸 string 签名已在 P1-3 落地，不回溯重构。
-func (s *QnAService) Answer(apiKey, baseURL, model, embBaseURL, embModel, embAPIKey string, rerankCfg RerankConfig, workspacePath, question string) (*QnAResponse, error) {
+func (s *QnAService) Answer(apiKey, baseURL, model, protocol, embBaseURL, embModel, embAPIKey string, rerankCfg RerankConfig, workspacePath, question string) (*QnAResponse, error) {
 	question = strings.TrimSpace(question)
 	if question == "" {
 		return nil, fmt.Errorf("问题不能为空")
 	}
 	// 本机端点（Ollama / LM Studio）不需要 Key，requireCredential 会放行
-	credential, err := requireCredential(baseURL, apiKey)
-	if err != nil {
+	if _, err := requireCredential(baseURL, apiKey); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(workspacePath) == "" {
@@ -257,55 +253,13 @@ func (s *QnAService) Answer(apiKey, baseURL, model, embBaseURL, embModel, embAPI
 		"4. 使用 Markdown 输出，简洁准确，不要编造片段中不存在的内容。\n\n" +
 		"知识库片段：\n" + ctx.String()
 
-	reqBody := chatRequest{
-		Model:  model,
-		Stream: false,
-		Messages: []chatMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: question},
-		},
-	}
-	body, err := json.Marshal(reqBody)
+	answer, err := llmChatComplete(context.Background(), s.client, apiKey, baseURL, model, protocol, systemPrompt, question)
 	if err != nil {
-		return nil, fmt.Errorf("构造请求失败：%w", err)
-	}
-
-	baseURL = normalizeBaseURL(baseURL)
-	if model == "" {
-		model = "gpt-4o-mini"
-	}
-
-	req, err := http.NewRequest(http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("构造请求失败：%w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	applyAuth(req, credential)
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("请求 AI 服务失败（请检查网络与 BaseURL）：%w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respData, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("AI 服务返回错误（%d）：%s", resp.StatusCode, string(respData))
-	}
-
-	var cr chatResponse
-	if err := json.Unmarshal(respData, &cr); err != nil {
-		return nil, fmt.Errorf("解析 AI 响应失败：%w", err)
-	}
-	if cr.Error != nil && cr.Error.Message != "" {
-		return nil, fmt.Errorf("AI 服务错误：%s", cr.Error.Message)
-	}
-	if len(cr.Choices) == 0 {
-		return nil, fmt.Errorf("AI 服务未返回内容")
+		return nil, err
 	}
 
 	return &QnAResponse{
-		Answer:    strings.TrimSpace(cr.Choices[0].Message.Content),
+		Answer:    answer,
 		Citations: citations,
 	}, nil
 }

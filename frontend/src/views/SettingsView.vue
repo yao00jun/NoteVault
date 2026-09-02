@@ -5,7 +5,8 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { LLMConfigService } from '@bindings/github.com/notevault/notevault/index.js'
-import type { LLMEndpointPreset, LLMProbeResult, RerankProbeResult } from '@bindings/github.com/notevault/notevault/models.js'
+import type { LLMEndpointPreset, LLMProbeResult, RerankProbeResult, EmbeddingProbeResult } from '@bindings/github.com/notevault/notevault/models.js'
+import type { RerankProvider } from '@bindings/github.com/notevault/notevault/internal/service/models.js'
 import { TOOLBAR_ITEMS, VISIBLE_DEFAULT, TOOLBAR_ORDER_DEFAULT, type ToolbarItem } from '@/components/editor/toolbarButtons'
 import type { ThemeType } from '@/types'
 import type { Locale } from '@/i18n'
@@ -26,6 +27,72 @@ const probeResult = ref<LLMProbeResult | null>(null)
 const rerankProbing = ref(false)
 const rerankProbeResult = ref<RerankProbeResult | null>(null)
 
+// --- P1-3 embedding 自检（语义检索端点能否返回向量）---
+const embeddingProbing = ref(false)
+const embeddingProbeResult = ref<EmbeddingProbeResult | null>(null)
+
+// P1-3b：rerank 云端预设（与 AI 预设同源思路，但 rerank 走独立配置段）。
+// 硅基流动接口与 Cohere 同格式（/v1/rerank + Bearer），故复用 provider='cohere' 路径。
+const rerankPresets = [
+  {
+    id: 'siliconflow',
+    label: '硅基流动 SiliconFlow',
+    baseURL: 'https://api.siliconflow.cn/v1',
+    model: 'BAAI/bge-reranker-v2-m3',
+    hint: '国内低延迟、有免费额度；rerank 走 /v1/rerank，与 Cohere 同格式，复用 cohere 路径',
+  },
+  {
+    id: 'cohere',
+    label: 'Cohere',
+    baseURL: 'https://api.cohere.ai/v1',
+    model: 'rerank-multilingual-v3.0',
+    hint: 'Cohere /rerank 原生端点，rerank-multilingual-v3.0 支持中文',
+  },
+]
+function applyRerankPreset(id: string) {
+  const p = rerankPresets.find((x) => x.id === id)
+  if (!p) return
+  settingsStore.settings.rerank.provider = 'cohere'
+  settingsStore.settings.rerank.baseURL = p.baseURL
+  settingsStore.settings.rerank.model = p.model
+  rerankProbeResult.value = null
+}
+
+// P1-3：embedding 云端预设（与 rerank 同源思路，但 embedding 走独立配置段，无 provider 开关）。
+// 硅基流动 /v1/embeddings 与 OpenAI 同格式，直接复用 embedding 段。
+const embeddingPresets = [
+  {
+    id: 'ollama',
+    label: 'Ollama',
+    baseURL: 'http://localhost:11434/v1',
+    model: 'bge-m3',
+    hint: '本机运行 bge-m3，免 API Key，首次加载模型需要几十秒',
+  },
+  {
+    id: 'siliconflow',
+    label: '硅基流动 SiliconFlow',
+    baseURL: 'https://api.siliconflow.cn/v1',
+    model: 'BAAI/bge-m3',
+    hint: '国内低延迟、有免费额度；Embedding 走 /v1/embeddings，与 OpenAI 同格式，需填写 API Key',
+  },
+  {
+    id: 'cohere',
+    label: 'Cohere',
+    baseURL: 'https://api.cohere.ai/compatibility/v1',
+    model: 'embed-multilingual-v3.0',
+    hint: 'Cohere 兼容端点（/compatibility/v1/embeddings），需填写 API Key；embed-multilingual-v3.0 支持中文',
+  },
+]
+function applyEmbeddingPreset(id: string) {
+  const p = embeddingPresets.find((x) => x.id === id)
+  if (!p) return
+  // 云端端点需要 Key，故保留用户已填的 apiKey，不清除
+  settingsStore.settings.embedding.provider = p.id as 'ollama' | 'siliconflow' | 'cohere'
+  settingsStore.settings.embedding.baseURL = p.baseURL
+  settingsStore.settings.embedding.model = p.model
+  embeddingProbeResult.value = null
+}
+
 void (async () => {
   try {
     presets.value = (await LLMConfigService.Presets() ?? []) as LLMEndpointPreset[]
@@ -38,6 +105,8 @@ void (async () => {
 function applyPreset(id: string) {
   const p = presets.value.find((x) => x.id === id)
   if (!p) return
+  // 当前预设均为 OpenAI 兼容端点，协议统一回 openai-chat
+  settingsStore.settings.ai.protocol = 'openai-chat'
   settingsStore.settings.ai.baseURL = p.baseURL
   settingsStore.settings.ai.model = p.model
   if (!p.requiresKey) {
@@ -54,6 +123,7 @@ async function probeEndpoint() {
     probeResult.value = await LLMConfigService.Probe(
       settingsStore.settings.ai.apiKey ?? '',
       settingsStore.settings.ai.baseURL ?? '',
+      settingsStore.settings.ai.protocol ?? 'openai-chat',
     ) as LLMProbeResult
   } catch (e) {
     probeResult.value = {
@@ -78,7 +148,7 @@ async function probeRerankEndpoint() {
   const r = settingsStore.settings.rerank
   try {
     rerankProbeResult.value = (await LLMConfigService.ProbeRerank({
-      provider: r.provider,
+      provider: r.provider as unknown as RerankProvider,
       baseURL: r.baseURL ?? '',
       model: r.model ?? '',
       apiKey: r.apiKey ?? '',
@@ -93,6 +163,32 @@ async function probeRerankEndpoint() {
     }
   } finally {
     rerankProbing.value = false
+  }
+}
+
+// 语义检索端点自检：复用后端 LLMConfigService.ProbeEmbedding，
+// 探测的地址与实际嵌入请求完全一致（normalizeBaseURL + /embeddings），
+// 明确暴露「端点 404 / Key 失效 / 模型不支持 embedding」等原本要等到建向量索引才暴露的问题。
+async function probeEmbeddingEndpoint() {
+  embeddingProbing.value = true
+  embeddingProbeResult.value = null
+  const e = settingsStore.settings.embedding
+  try {
+    embeddingProbeResult.value = (await LLMConfigService.ProbeEmbedding(
+      e.apiKey ?? '',
+      e.baseURL ?? '',
+      e.model ?? '',
+    )) as EmbeddingProbeResult
+  } catch (err) {
+    embeddingProbeResult.value = {
+      ok: false,
+      endpoint: '',
+      isLocal: false,
+      latencyMs: 0,
+      message: err instanceof Error ? err.message : String(err),
+    }
+  } finally {
+    embeddingProbing.value = false
   }
 }
 
@@ -508,6 +604,22 @@ async function scrollToSection(id: string) {
         <p class="section-hint">
           {{ t('settings.ai.desc') }}
         </p>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.ai.protocol') }}</span>
+            <span class="setting-desc">{{ t('settings.ai.protocolDesc') }}</span>
+          </div>
+          <select
+            v-model="settingsStore.settings.ai.protocol"
+            class="setting-select"
+          >
+            <option value="openai-chat">{{ t('settings.ai.protocolOpenAIChat') }}</option>
+            <option value="openai-responses">{{ t('settings.ai.protocolOpenAIResponses') }}</option>
+            <option value="anthropic-messages">{{ t('settings.ai.protocolAnthropicMessages') }}</option>
+            <option value="google-gemini">{{ t('settings.ai.protocolGoogleGemini') }}</option>
+            <option value="google-vertex">{{ t('settings.ai.protocolGoogleVertex') }}</option>
+          </select>
+        </div>
         <div
           v-if="presets.length"
           class="setting-item"
@@ -652,6 +764,38 @@ async function scrollToSection(id: string) {
         </p>
         <div class="setting-item">
           <div class="setting-info">
+            <span class="setting-label">{{ t('settings.embedding.provider') }}</span>
+            <span class="setting-desc">{{ t('settings.embedding.providerDesc') }}</span>
+          </div>
+          <select
+            v-model="settingsStore.settings.embedding.provider"
+            class="setting-select"
+          >
+            <option value="ollama">{{ t('settings.embedding.providerOllama') }}</option>
+            <option value="siliconflow">{{ t('settings.embedding.providerSiliconflow') }}</option>
+            <option value="cohere">{{ t('settings.embedding.providerCohere') }}</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.embedding.preset') }}</span>
+            <span class="setting-desc">{{ t('settings.embedding.presetDesc') }}</span>
+          </div>
+          <div class="preset-row">
+            <button
+              v-for="p in embeddingPresets"
+              :key="p.id"
+              class="preset-btn"
+              :class="{ active: settingsStore.settings.embedding.provider === p.id }"
+              :title="p.hint"
+              @click="applyEmbeddingPreset(p.id)"
+            >
+              {{ p.label }}
+            </button>
+          </div>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
             <span class="setting-label">{{ t('settings.embedding.baseURL') }}</span>
             <span class="setting-desc">{{ t('settings.embedding.baseURLDesc') }}</span>
           </div>
@@ -700,6 +844,45 @@ async function scrollToSection(id: string) {
             </button>
           </div>
         </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.embedding.testConnection') }}</span>
+            <span class="setting-desc">{{ t('settings.embedding.testConnectionDesc') }}</span>
+          </div>
+          <button
+            class="probe-btn"
+            :disabled="embeddingProbing"
+            data-testid="embedding-probe-btn"
+            @click="probeEmbeddingEndpoint"
+          >
+            <Sparkles :size="14" />
+            {{ embeddingProbing ? t('settings.embedding.testing') : t('settings.embedding.testConnection') }}
+          </button>
+        </div>
+        <div
+          v-if="embeddingProbeResult"
+          class="probe-result"
+          :class="embeddingProbeResult.ok ? 'ok' : 'fail'"
+          data-testid="embedding-probe-result"
+        >
+          <div class="probe-head">
+            <strong>{{ embeddingProbeResult.ok ? t('settings.embedding.probeOk') : t('settings.embedding.probeFail') }}</strong>
+            <span
+              v-if="embeddingProbeResult.isLocal"
+              class="preset-badge"
+            >{{ t('settings.ai.localEndpoint') }}</span>
+            <span
+              v-if="embeddingProbeResult.latencyMs > 0"
+              class="probe-latency"
+            >{{ embeddingProbeResult.latencyMs }} ms</span>
+          </div>
+          <p
+            v-if="embeddingProbeResult.message"
+            class="probe-msg"
+          >
+            {{ embeddingProbeResult.message }}
+          </p>
+        </div>
         <p class="section-hint">
           {{ t('settings.embedding.note') }}
         </p>
@@ -726,17 +909,27 @@ async function scrollToSection(id: string) {
             class="setting-select"
           >
             <option value="">{{ t('settings.rerank.none') }}</option>
-            <option value="ollama">Ollama（本机 /api/rerank，免 Key）</option>
-            <option value="cohere">Cohere（/v1/rerank，需 Key）</option>
+            <option value="cohere">{{ t('settings.rerank.providerCohere') }}</option>
           </select>
         </div>
-        <p
-          v-if="settingsStore.settings.rerank.provider === 'ollama'"
-          class="section-warning"
-        >
-          <AlertTriangle :size="14" />
-          {{ t('settings.rerank.ollamaWarning') }}
-        </p>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.rerank.preset') }}</span>
+            <span class="setting-desc">{{ t('settings.rerank.presetDesc') }}</span>
+          </div>
+          <div class="preset-row">
+            <button
+              v-for="p in rerankPresets"
+              :key="p.id"
+              class="preset-btn"
+              :class="{ active: settingsStore.settings.rerank.provider === 'cohere' && settingsStore.settings.rerank.baseURL === p.baseURL }"
+              :title="p.hint"
+              @click="applyRerankPreset(p.id)"
+            >
+              {{ p.label }}
+            </button>
+          </div>
+        </div>
         <div class="setting-item">
           <div class="setting-info">
             <span class="setting-label">{{ t('settings.rerank.baseURL') }}</span>
@@ -745,7 +938,7 @@ async function scrollToSection(id: string) {
           <input
             v-model="settingsStore.settings.rerank.baseURL"
             class="setting-input"
-            placeholder="http://localhost:11434"
+            placeholder="https://api.cohere.ai/v1"
           >
         </div>
         <div class="setting-item">
@@ -756,7 +949,7 @@ async function scrollToSection(id: string) {
           <input
             v-model="settingsStore.settings.rerank.model"
             class="setting-input"
-            placeholder="bge-reranker-v2-m3"
+            placeholder="rerank-multilingual-v3.0"
           >
         </div>
         <div class="setting-item">

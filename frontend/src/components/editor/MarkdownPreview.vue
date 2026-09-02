@@ -897,7 +897,7 @@ onBeforeUnmount(() => {
 }
 
 /* 嵌入内段落缩进减半，视觉上区分 */
-.markdown-preview :deep(.nv-embed-body :deep(p)) {
+.markdown-preview :deep(.nv-embed-body p) {
   margin: var(--space-2) 0;
 }
 

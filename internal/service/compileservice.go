@@ -30,7 +30,7 @@ type CompileOutput struct {
 // summarizeCompileClient 是其生产默认实现，复用 SummarizeService.Summarize。
 // 测试时可注入桩实现。
 type CompileAI interface {
-	Compile(apiKey, baseURL, model, title, body string) (*CompileOutput, error)
+	Compile(apiKey, baseURL, model, protocol, title, body string) (*CompileOutput, error)
 }
 
 // summarizeCompileClient 把 SummarizeService 适配成 CompileAI：
@@ -46,7 +46,7 @@ func NewSummarizeCompileAI(svc *SummarizeService) CompileAI {
 	return &summarizeCompileClient{svc: svc}
 }
 
-func (c *summarizeCompileClient) Compile(apiKey, baseURL, model, title, body string) (*CompileOutput, error) {
+func (c *summarizeCompileClient) Compile(apiKey, baseURL, model, protocol, title, body string) (*CompileOutput, error) {
 	content := body
 	if strings.TrimSpace(content) == "" {
 		content = title
@@ -62,7 +62,7 @@ func (c *summarizeCompileClient) Compile(apiKey, baseURL, model, title, body str
 		"只能建议与本文主题相关、可能已存在于知识库中的笔记标题。\n\n" +
 		"标题：\n" + title + "\n\n正文：\n" + content
 
-	raw, err := c.svc.Summarize(apiKey, baseURL, model, userPrompt)
+	raw, err := c.svc.Summarize(apiKey, baseURL, model, protocol, userPrompt)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +182,7 @@ func (s *CompileService) ListInbox(workspacePath string) ([]string, error) {
 
 // CompileNote 编译单篇笔记：先建快照，再调 AI，最后把更新后的笔记移动到 Compiled。
 // relativePath 必须位于 Inbox 目录内，否则报错（避免误编译库内其他笔记）。
-func (s *CompileService) CompileNote(workspacePath, relativePath, apiKey, baseURL, model string) (*CompileResult, error) {
+func (s *CompileService) CompileNote(workspacePath, relativePath, apiKey, baseURL, model, protocol string) (*CompileResult, error) {
 	rel := filepath.ToSlash(relativePath)
 	if !strings.HasPrefix(rel, s.inboxDir+"/") {
 		return nil, fmt.Errorf("编译目标 %q 不在 Inbox 目录 %q 内", rel, s.inboxDir)
@@ -202,7 +202,7 @@ func (s *CompileService) CompileNote(workspacePath, relativePath, apiKey, baseUR
 	fm, body, found := SplitFrontMatter(content)
 	title := compileTitle(fm, body, filepath.Base(rel))
 
-	out, err := s.ai.Compile(apiKey, baseURL, model, title, body)
+	out, err := s.ai.Compile(apiKey, baseURL, model, protocol, title, body)
 	if err != nil {
 		return nil, fmt.Errorf("AI 编译失败：%w", err)
 	}
@@ -262,14 +262,14 @@ type CompileErrorItem struct {
 // CompileAll 编译 Inbox 内全部笔记。
 // 单篇失败不影响其他篇；失败项进入 Errors 而非顶层 error，
 // 顶层 error 仅代表「连 Inbox 都列不出来」这类致命错误。
-func (s *CompileService) CompileAll(workspacePath, apiKey, baseURL, model string) (*CompileAllResult, error) {
+func (s *CompileService) CompileAll(workspacePath, apiKey, baseURL, model, protocol string) (*CompileAllResult, error) {
 	notes, err := s.ListInbox(workspacePath)
 	if err != nil {
 		return nil, err
 	}
 	res := &CompileAllResult{}
 	for _, n := range notes {
-		r, e := s.CompileNote(workspacePath, n, apiKey, baseURL, model)
+		r, e := s.CompileNote(workspacePath, n, apiKey, baseURL, model, protocol)
 		if e != nil {
 			res.Errors = append(res.Errors, CompileErrorItem{Path: n, Error: e.Error()})
 			continue

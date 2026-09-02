@@ -88,6 +88,7 @@ async function compileOne(path: string) {
       ai.value.apiKey,
       ai.value.baseURL,
       ai.value.model,
+      ai.value.protocol,
     )) as CompileResult | null
     if (!res) throw new Error('empty result')
     status[path] = 'done'
@@ -118,6 +119,7 @@ async function compileAll() {
       ai.value.apiKey,
       ai.value.baseURL,
       ai.value.model,
+      ai.value.protocol,
     )) as CompileAllResult | null
     if (!res) throw new Error('empty result')
     lastResult.value = res

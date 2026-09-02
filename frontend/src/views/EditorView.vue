@@ -697,6 +697,7 @@ async function handleCompile() {
       ai.apiKey,
       ai.baseURL,
       ai.model,
+      ai.protocol,
     )) as { Dest?: string; SnapshotID?: string } | null
     if (!result || !result.Dest) {
       toast.error(t('editor.compileFailed', { msg: t('editor.compileEmptyResult') }))
@@ -736,6 +737,7 @@ async function handleSummarize() {
       ai.apiKey,
       ai.baseURL,
       ai.model,
+      ai.protocol,
       activeTab.value.content,
     )
     summary.value = result as string

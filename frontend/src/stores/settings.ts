@@ -23,22 +23,23 @@ const defaultSettings: AppSettings = {
   editorMode: 'split',
   fontSize: 13,
   ai: {
+    protocol: 'openai-chat',
     baseURL: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini',
     apiKey: '',
   },
   // P1-3：语义检索的 embedding 端点，默认本机 Ollama + bge-m3（中文强）。
   embedding: {
+    provider: 'ollama',
     baseURL: 'http://localhost:11434/v1',
     model: 'bge-m3',
     apiKey: '',
   },
-  // P1-3b：重排序端点。默认**关闭**（provider 留空）——因为本机 Ollama 原生不支持
-  // /api/rerank（上游 PR 从未合并），默认开 Ollama 会静默 404 降级为纯 RRF，用户完全无感。
-  // 需显式选 Cohere（真实支持重排）或将来接入支持重排的端点才生效。
+  // P1-3b：重排序端点。默认**关闭**（provider 留空）。
+  // 仅支持云端 /v1/rerank 端点（Cohere / 硅基流动）。
   rerank: {
     provider: '',
-    baseURL: 'http://localhost:11434',
+    baseURL: '',
     model: '',
     apiKey: '',
   },
@@ -84,7 +85,12 @@ function loadSettings(): AppSettings {
       return {
         ...defaultSettings,
         ...stored,
-        ai: { ...defaultSettings.ai, ...(stored.ai ?? {}) },
+        ai: {
+          ...defaultSettings.ai,
+          ...(stored.ai ?? {}),
+          // 迁移：旧版本没有 protocol 字段，兜底为 openai-chat
+          protocol: (stored.ai?.protocol as any) ?? defaultSettings.ai.protocol,
+        },
         embedding: { ...defaultSettings.embedding, ...(stored.embedding ?? {}) },
         rerank: { ...defaultSettings.rerank, ...(stored.rerank ?? {}) },
         editor: { ...defaultSettings.editor, ...(stored.editor ?? {}) },
