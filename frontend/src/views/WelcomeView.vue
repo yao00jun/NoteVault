@@ -30,7 +30,7 @@ const workspaceStore = useWorkspaceStore()
 const router = useRouter()
 
 const showDialog = ref(false)
-const dialogMode = ref<'new-doc' | 'open-folder'>('new-doc')
+const dialogMode = ref<'new-doc' | 'open-folder' | 'recent'>('new-doc')
 const workspaceName = ref('')
 const workspacePath = ref('')
 const docName = ref('')
@@ -41,7 +41,11 @@ const recentError = ref('')
 const recentSectionRef = ref<HTMLElement | null>(null)
 
 const dialogTitle = computed(() => {
-  return dialogMode.value === 'new-doc' ? t('welcome.dialog.newDocTitle') : t('welcome.dialog.openFolderTitle')
+  return dialogMode.value === 'new-doc'
+    ? t('welcome.dialog.newDocTitle')
+    : dialogMode.value === 'recent'
+      ? t('welcome.recentTitle')
+      : t('welcome.dialog.openFolderTitle')
 })
 
 // 加载最近打开的工作区
@@ -84,8 +88,9 @@ function handleAction(action: string) {
     workspacePath.value = ''
     showDialog.value = true
   } else if (action === 'recent') {
-    // 「最近打开」卡片：历史列表本就渲染在下方，这里给出可见反馈——
-    // 有历史则平滑滚动到列表；还没有任何历史时引导用户先打开一个文件夹。
+    // 「最近打开」卡片：弹窗列出最近工作区供选择（旧实现是滚动定位，
+    // 窗口高度足够时毫无视觉反馈，被用户当成"点了没反应"）。
+    // 没有任何历史时引导用户先打开一个文件夹。
     if (recentWorkspaces.value.length === 0) {
       recentError.value = t('welcome.recentEmpty')
       dialogMode.value = 'open-folder'
@@ -94,9 +99,8 @@ function handleAction(action: string) {
       showDialog.value = true
       return
     }
-    nextTick(() => {
-      recentSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
+    dialogMode.value = 'recent'
+    showDialog.value = true
   }
 }
 
@@ -468,6 +472,23 @@ const features = computed(() => [
                 :placeholder="t('welcome.dialog.docNamePlaceholder')"
                 class="form-input"
               >
+            </div>
+          </template>
+          <!-- 最近工作区选择模式 -->
+          <template v-else-if="dialogMode === 'recent'">
+            <div class="recent-list">
+              <button
+                v-for="ws in recentWorkspaces"
+                :key="ws.id"
+                class="recent-item"
+                :disabled="openingPath !== null && openingPath !== ws.path"
+                :data-loading="openingPath === ws.path"
+                @click="closeDialog(); openRecentWorkspace(ws)"
+              >
+                <FolderOpen :size="16" />
+                <span class="recent-name">{{ ws.name }}</span>
+                <span class="recent-path">{{ ws.path }}</span>
+              </button>
             </div>
           </template>
           <!-- 打开文件夹模式 -->
