@@ -9,10 +9,12 @@ vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
   StatsService: { GetWritingActivity: vi.fn(), GetOnThisDay: vi.fn(async () => []) },
   GraphService: { GetGraph: vi.fn() },
   ReportService: { GenerateWeeklyReport: vi.fn() },
+  ReviewService: { GenerateReview: vi.fn(), ScheduleWeeklyReview: vi.fn() },
+  ReminderService: { GetAllReminders: vi.fn(async () => []) },
 }))
 
 import ReportsView from './ReportsView.vue'
-import { StatsService, GraphService, ReportService } from '@bindings/github.com/notevault/notevault/index.js'
+import { StatsService, GraphService, ReportService, ReviewService, ReminderService } from '@bindings/github.com/notevault/notevault/index.js'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const mockedActivity = vi.mocked(StatsService.GetWritingActivity)
@@ -150,6 +152,59 @@ describe('ReportsView（写作报表中心）', () => {
       model: 'gpt-4o-mini',
       protocol: 'openai-chat',
     })
+  })
+
+  it('生成本期回顾：调用后端、打开回顾笔记、展示降级说明', async () => {
+    mockedActivity.mockResolvedValue(makeActivity(91, {}) as any)
+    mockedGraph.mockResolvedValue({ nodes: [], edges: [] } as any)
+    const mockedGen = vi.mocked(ReviewService.GenerateReview)
+    mockedGen.mockResolvedValue({
+      path: 'Reviews/回顾-2026-09-04.md',
+      summarized: 3,
+      failed: 1,
+      recapTitles: ['old.md'],
+      aiUsed: true,
+      message: '3 篇摘要成功，1 篇失败',
+    } as any)
+
+    const { wrapper } = mountReports()
+    await flushPromises()
+
+    const btns = wrapper.findAll('.rp-review-actions button')
+    expect(btns).toHaveLength(2)
+    await btns[0].trigger('click')
+    await flushPromises()
+
+    expect(mockedGen).toHaveBeenCalledTimes(1)
+    const msg = wrapper.find('.rp-generate-msg')
+    expect(msg.exists()).toBe(true)
+    expect(msg.text()).toContain('3 篇摘要成功')
+    expect(msg.classes()).toContain('ok')
+  })
+
+  it('预约回顾提醒成功后展示预约时间', async () => {
+    mockedActivity.mockResolvedValue(makeActivity(91, {}) as any)
+    mockedGraph.mockResolvedValue({ nodes: [], edges: [] } as any)
+    vi.mocked(ReviewService.ScheduleWeeklyReview).mockResolvedValue({
+      id: 'r1',
+      filePath: '',
+      fileName: '',
+      content: '回顾',
+      remindAt: '2026-09-07T09:00:00+08:00',
+      createdAt: '',
+      completed: false,
+    } as any)
+
+    const { wrapper } = mountReports()
+    await flushPromises()
+
+    const btns = wrapper.findAll('.rp-review-actions button')
+    await btns[1].trigger('click')
+    await flushPromises()
+
+    const msgs = wrapper.findAll('.rp-generate-msg')
+    expect(msgs.length).toBeGreaterThanOrEqual(1)
+    expect(msgs[msgs.length - 1].text()).toContain('回顾提醒')
   })
 
   it('周报生成失败时展示后端错误信息', async () => {

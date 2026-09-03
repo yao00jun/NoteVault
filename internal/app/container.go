@@ -63,6 +63,7 @@ type Container struct {
 	Import       *service.ImportService
 	Compile      *service.CompileService
 	Report       *service.ReportService
+	Review       *service.ReviewService
 	Tasks        *service.TaskService
 	Git          *service.GitService
 	Templates    *service.TemplateService
@@ -131,6 +132,7 @@ func NewContainer(cfg ContainerConfig) *Container {
 		Templates:    service.NewTemplateService(fileService),
 		Compile:      service.NewCompileService(fileService, snapshotService, service.NewSummarizeCompileAI(service.NewSummarizeService()), "Inbox", "Compiled"),
 		Report:       service.NewReportService(fileService, todoService),
+		Review:       service.NewReviewService(fileService, service.NewSummarizeService(), reminderService),
 		ErrorMonitor: errorMonitor,
 		Plugin:       plugin.NewPluginService(cfg.PluginsDir),
 		Indexes:      indexRegistry,
@@ -176,6 +178,7 @@ func (c *Container) WailsServices() []application.Service {
 		application.NewService(c.Import),
 		application.NewService(c.Compile),
 		application.NewService(c.Report),
+		application.NewService(c.Review),
 		application.NewService(c.Tasks),
 		application.NewService(c.Git),
 		application.NewService(c.Templates),

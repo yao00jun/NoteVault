@@ -12,11 +12,11 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { BarChart3, Flame, Link2, CalendarRange, Activity, FileText, History, Loader2 } from 'lucide-vue-next'
-import { StatsService, GraphService, ReportService } from '@bindings/github.com/notevault/notevault/index.js'
+import { StatsService, GraphService, ReportService, ReviewService, ReminderService } from '@bindings/github.com/notevault/notevault/index.js'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
 const settingsStore = useSettingsStore()
@@ -49,6 +49,13 @@ const errorMsg = ref('')
 const generating = ref(false)
 const generateMsg = ref('')
 const generateOk = ref(false)
+
+const reviewing = ref(false)
+const reviewMsg = ref('')
+const reviewOk = ref(false)
+const scheduling = ref(false)
+const scheduleMsg = ref('')
+const scheduleOk = ref(false)
 
 async function load() {
   const ws = workspaceStore.currentWorkspace
@@ -115,6 +122,59 @@ function openFile(path: string) {
   workspaceStore.openFile(path)
   workspaceStore.incrementFileTreeVersion()
   router.push('/editor')
+}
+
+// 生成本期定期回顾：近 7 天笔记逐篇 AI 摘要 + 旧笔记重温清单
+async function generateReview() {
+  if (reviewing.value) return
+  const ws = workspaceStore.currentWorkspace
+  if (!ws?.path) return
+  reviewing.value = true
+  reviewMsg.value = ''
+  try {
+    const ai = settingsStore.settings.ai
+    const result = (await ReviewService.GenerateReview(ws.path, {
+      baseURL: ai.baseURL,
+      model: ai.model,
+      apiKey: ai.apiKey,
+      protocol: ai.protocol,
+    }, 7)) as { path: string; summarized: number; failed: number; aiUsed: boolean; message: string }
+    reviewOk.value = result.aiUsed || result.summarized > 0
+    reviewMsg.value = result.message ||
+      (result.failed > 0
+        ? `${result.summarized} 篇摘要成功，${result.failed} 篇失败`
+        : `已生成 ${result.summarized} 篇笔记摘要`)
+    await load()
+    openFile(result.path)
+  } catch (e) {
+    reviewOk.value = false
+    reviewMsg.value = (e as Error).message
+  } finally {
+    reviewing.value = false
+  }
+}
+
+// 预约下周一 09:00 的回顾提醒（一次性，到点后可再约）
+async function scheduleReview() {
+  if (scheduling.value) return
+  const ws = workspaceStore.currentWorkspace
+  if (!ws?.path) return
+  scheduling.value = true
+  scheduleMsg.value = ''
+  try {
+    const rem = (await ReviewService.ScheduleWeeklyReview(ws.path)) as { remindAt: string }
+    const when = new Date(rem.remindAt)
+    scheduleOk.value = true
+    scheduleMsg.value = t('reports.scheduleDone', {
+      date: when.toLocaleDateString(locale.value),
+      time: when.toLocaleTimeString(locale.value, { hour: '2-digit', minute: '2-digit' }),
+    })
+  } catch (e) {
+    scheduleOk.value = false
+    scheduleMsg.value = (e as Error).message
+  } finally {
+    scheduling.value = false
+  }
 }
 
 // 生成本周知识周报：AI 配置了就走 LLM 回顾，没配置/失败自动降级纯统计版
@@ -260,7 +320,64 @@ async function generateWeeklyReport() {
         </div>
       </section>
 
-      <!-- 写作热力图 -->
+      <!-- 定期回顾 -->
+    <section class="rp-section">
+      <h2 class="rp-section-title">
+        {{ t('reports.review.title') }}
+      </h2>
+      <p class="rp-review-desc">
+        {{ t('reports.review.desc') }}
+      </p>
+      <div class="rp-review-actions">
+        <button
+          class="rp-generate-btn"
+          :disabled="reviewing"
+          @click="generateReview"
+        >
+          <Loader2
+            v-if="reviewing"
+            :size="14"
+            class="spin"
+          />
+          <FileText
+            v-else
+            :size="14"
+          />
+          <span>{{ reviewing ? t('reports.review.working') : t('reports.review.generate') }}</span>
+        </button>
+        <button
+          class="rp-schedule-btn"
+          :disabled="scheduling"
+          @click="scheduleReview"
+        >
+          <Loader2
+            v-if="scheduling"
+            :size="14"
+            class="spin"
+          />
+          <CalendarRange
+            v-else
+            :size="14"
+          />
+          <span>{{ scheduling ? t('reports.review.scheduling') : t('reports.review.schedule') }}</span>
+        </button>
+      </div>
+      <div
+        v-if="reviewMsg"
+        class="rp-generate-msg"
+        :class="{ ok: reviewOk }"
+      >
+        {{ reviewMsg }}
+      </div>
+      <div
+        v-if="scheduleMsg"
+        class="rp-generate-msg ok"
+      >
+        {{ scheduleMsg }}
+      </div>
+    </section>
+
+    <!-- 写作热力图 -->
       <section class="rp-section">
         <h2 class="rp-section-title">
           {{ t('reports.heatmap') }}
@@ -583,6 +700,35 @@ async function generateWeeklyReport() {
 .rp-generate-btn:disabled {
   opacity: 0.6;
   cursor: default;
+}
+.rp-review-actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.rp-schedule-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  transition: border-color var(--transition-fast);
+}
+.rp-schedule-btn:hover:not(:disabled) {
+  border-color: var(--border-accent);
+}
+.rp-schedule-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.rp-review-desc {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
 }
 .rp-generate-msg {
   padding: var(--space-2) var(--space-3);

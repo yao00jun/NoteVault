@@ -35,6 +35,7 @@ export {
   QnAService,
   ReminderService,
   ReportService,
+  ReviewService,
   SearchService,
   SnapshotService,
   StatsService,

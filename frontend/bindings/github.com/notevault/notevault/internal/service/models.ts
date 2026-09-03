@@ -724,6 +724,37 @@ export enum RerankProvider {
 };
 
 /**
+ * ReviewResult 回顾生成结果。
+ */
+export interface ReviewResult {
+    /**
+     * 回顾笔记相对路径（正斜杠）
+     */
+    "path": string;
+
+    /**
+     * 成功生成 AI 摘要的笔记数
+     */
+    "summarized": number;
+
+    /**
+     * 单篇摘要失败数（已降级为仅列标题）
+     */
+    "failed": number;
+
+    /**
+     * 旧笔记重温清单
+     */
+    "recapTitles": string[] | null;
+    "aiUsed": boolean;
+
+    /**
+     * 降级说明（空 = 完全成功）
+     */
+    "message": string;
+}
+
+/**
  * SearchIndexStats 描述索引的覆盖情况，供状态栏提示（P0-5）
  */
 export interface SearchIndexStats {

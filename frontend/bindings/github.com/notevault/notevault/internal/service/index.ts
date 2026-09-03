@@ -14,6 +14,7 @@ import * as LLMConfigService from "./llmconfigservice.js";
 import * as QnAService from "./qnaservice.js";
 import * as ReminderService from "./reminderservice.js";
 import * as ReportService from "./reportservice.js";
+import * as ReviewService from "./reviewservice.js";
 import * as SearchService from "./searchservice.js";
 import * as SnapshotService from "./snapshotservice.js";
 import * as StatsService from "./statsservice.js";
@@ -38,6 +39,7 @@ export {
     QnAService,
     ReminderService,
     ReportService,
+    ReviewService,
     SearchService,
     SnapshotService,
     StatsService,
@@ -92,6 +94,7 @@ export type {
     Reminder,
     RerankConfig,
     RerankProbeResult,
+    ReviewResult,
     SearchIndexStats,
     SearchResult,
     Snapshot,
