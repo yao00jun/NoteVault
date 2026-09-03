@@ -15,8 +15,7 @@ includes:
   windows: ./build/windows/Taskfile.yml
   darwin: ./build/darwin/Taskfile.yml
   linux: ./build/linux/Taskfile.yml
-  ios: ./build/ios/Taskfile.yml
-  android: ./build/android/Taskfile.yml
+  # 移动端（iOS / Android）模板已移除：NoteVault 定位为桌面应用，不做移动端。
 
 tasks:
   build:
