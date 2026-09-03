@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import EditorTabBar from '@/components/editor/EditorTabBar.vue'
 import EditorBacklinks from '@/components/editor/EditorBacklinks.vue'
@@ -11,11 +11,13 @@ import MarkdownPreview from '@/components/editor/MarkdownPreview.vue'
 import DocumentPropertiesPanel from '@/components/editor/DocumentPropertiesPanel.vue'
 import { buildContent, extractTags, splitFrontMatter } from '@/utils/frontmatter'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
 import { FileService, WorkspaceService, SearchService, TagService, ArchiveService, TrashService, SummarizeService, ExportService, CompileService } from '@bindings/github.com/notevault/notevault/index.js'
 import { arrayBufferToBase64, generateMarkdownImage } from '@/utils/image'
 import { marked } from 'marked'
+import { sanitizeHtml } from '@/utils/sanitize'
 import { useToast } from '@/composables/useToast'
 
 const workspaceStore = useWorkspaceStore()
@@ -226,12 +228,13 @@ async function saveCurrentTab() {
   }
 }
 
-// 自动保存（debounce）
+// 自动保存（debounce；间隔读用户设置，不再硬编码）
 function scheduleAutoSave() {
   if (saveTimer) clearTimeout(saveTimer)
+  const delay = Math.max(200, settingsStore.settings.autoSaveInterval || 500)
   saveTimer = setTimeout(() => {
     saveCurrentTab()
-  }, 1000)
+  }, delay)
 }
 
 // 新建文件
@@ -697,6 +700,7 @@ async function handleCompile() {
       ai.apiKey,
       ai.baseURL,
       ai.model,
+      ai.protocol,
     )) as { Dest?: string; SnapshotID?: string } | null
     if (!result || !result.Dest) {
       toast.error(t('editor.compileFailed', { msg: t('editor.compileEmptyResult') }))
@@ -736,6 +740,7 @@ async function handleSummarize() {
       ai.apiKey,
       ai.baseURL,
       ai.model,
+      ai.protocol,
       activeTab.value.content,
     )
     summary.value = result as string
@@ -810,7 +815,7 @@ async function exportSingleHTML() {
 
 // 把 Markdown 渲染为内联样式的独立 HTML 文件
 function buildStandaloneHTML(title: string, markdown: string): string {
-  const body = marked.parse(markdown) as string
+  const body = sanitizeHtml(marked.parse(markdown) as string)
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -848,25 +853,63 @@ function escapeHtml(s: string): string {
 }
 
 // 初始化
-onMounted(async () => {
-  if (!currentWorkspace.value) {
-    try {
-      const ws = await WorkspaceService.GetCurrentWorkspace()
-      if (ws) {
-        workspaceStore.setCurrentWorkspace(ws as any)
-      }
-    } catch (e) {
-      console.error('Failed to get current workspace:', e)
-    }
+// flushDirtyTab：清掉挂起的自动保存定时器，并对未保存的当前标签页立即保存。
+// keep-alive 下路由切换触发的是 deactivated 而非 unmount，flush 必须挂在
+// onDeactivated 才能覆盖"切页面前最后 1 秒（一个 debounce 窗口）的编辑"；
+// onBeforeUnmount 保留作真卸载时的兜底。注意 deactivated 时不能清 saveTimer：
+// 组件仍保活，用户可能切回来继续编辑，定时器要照常工作。
+function flushDirtyTab() {
+  const tab = tabs.value[activeTabIndex.value]
+  if (tab?.isDirty) {
+    void saveTab(activeTabIndex.value)
   }
-  await loadFileTree()
+}
+onDeactivated(flushDirtyTab)
+onBeforeUnmount(() => {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
+  flushDirtyTab()
+})
 
+// 打开请求的文件：优先 route.query.file（欢迎页"新建文档"经此跳转），
+// 其次 store 里的 activeFile。keep-alive 下 onMounted 只跑一次，
+// 第二次从欢迎页带 query 跳转必须由 watcher 接住，否则新文件静默不打开。
+async function openRequestedFile() {
   const requestedPath = route.query.file
   if (typeof requestedPath === 'string' && requestedPath.trim()) {
     await openFileByPath(decodeURIComponent(requestedPath))
   } else if (workspaceStore.activeFile) {
     await openFileByPath(workspaceStore.activeFile)
   }
+}
+
+// 同一个 query 值连续两次跳转（如重复打开同一文件）不会再触发 watch，
+// 用 activated 钩子兜底：每次回到编辑器页都检查一次
+onActivated(() => {
+  void openRequestedFile()
+})
+
+watch(() => route.query.file, (val) => {
+  if (typeof val === 'string' && val.trim()) {
+    void openFileByPath(decodeURIComponent(val))
+  }
+})
+
+onMounted(async () => {
+  if (!currentWorkspace.value) {
+    try {
+      const ws = await WorkspaceService.GetCurrentWorkspace()
+      if (ws) {
+        workspaceStore.setCurrentWorkspace(toWorkspace(ws))
+      }
+    } catch (e) {
+      console.error('Failed to get current workspace:', e)
+    }
+  }
+  await loadFileTree()
+  await openRequestedFile()
 })
 
 // 工作区变化时重新加载文件树并清空标签页

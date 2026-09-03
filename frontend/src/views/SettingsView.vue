@@ -4,9 +4,8 @@ import { Settings, Palette, Keyboard, Info, ArrowLeft, Sparkles, Eye, EyeOff, Al
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
-import { LLMConfigService } from '@bindings/github.com/notevault/notevault/index.js'
-import type { LLMEndpointPreset, LLMProbeResult, RerankProbeResult } from '@bindings/github.com/notevault/notevault/models.js'
-import { TOOLBAR_ITEMS, VISIBLE_DEFAULT, TOOLBAR_ORDER_DEFAULT, type ToolbarItem } from '@/components/editor/toolbarButtons'
+import { useAiEndpointSettings } from '@/composables/useAiEndpointSettings'
+import { useEditorToolbarSettings } from '@/composables/useEditorToolbarSettings'
 import type { ThemeType } from '@/types'
 import type { Locale } from '@/i18n'
 
@@ -15,91 +14,21 @@ const settingsStore = useSettingsStore()
 const router = useRouter()
 const apiKeyVisible = ref(false)
 
-// --- P1-6 端点预设与连通性自检 ---
-// 本机端点（Ollama / LM Studio）不需要 API Key。后端 requireCredential 会放行，
-// 这里只负责让用户不必手记地址和端口。
-const presets = ref<LLMEndpointPreset[]>([])
-const probing = ref(false)
-const probeResult = ref<LLMProbeResult | null>(null)
+// AI 三区块（AI/Embedding/Rerank）的预设与自检逻辑抽至 composable（模板/样式不变）
+const {
+  presets, probing, probeResult,
+  rerankProbing, rerankProbeResult, embeddingProbing, embeddingProbeResult,
+  rerankPresets, embeddingPresets,
+  applyRerankPreset, applyEmbeddingPreset, applyPreset,
+  probeEndpoint, probeRerankEndpoint, probeEmbeddingEndpoint,
+  useModel,
+} = useAiEndpointSettings()
 
-// --- P1-3b rerank 自检（与 AI 端点自检同源）---
-const rerankProbing = ref(false)
-const rerankProbeResult = ref<RerankProbeResult | null>(null)
-
-void (async () => {
-  try {
-    presets.value = (await LLMConfigService.Presets() ?? []) as LLMEndpointPreset[]
-  } catch {
-    // 预设拉取失败不影响手填地址，静默降级
-    presets.value = []
-  }
-})()
-
-function applyPreset(id: string) {
-  const p = presets.value.find((x) => x.id === id)
-  if (!p) return
-  settingsStore.settings.ai.baseURL = p.baseURL
-  settingsStore.settings.ai.model = p.model
-  if (!p.requiresKey) {
-    // 切到本机端点时清掉旧的云端 Key，避免误发到本机服务
-    settingsStore.settings.ai.apiKey = ''
-  }
-  probeResult.value = null
-}
-
-async function probeEndpoint() {
-  probing.value = true
-  probeResult.value = null
-  try {
-    probeResult.value = await LLMConfigService.Probe(
-      settingsStore.settings.ai.apiKey ?? '',
-      settingsStore.settings.ai.baseURL ?? '',
-    ) as LLMProbeResult
-  } catch (e) {
-    probeResult.value = {
-      ok: false,
-      endpoint: '',
-      isLocal: false,
-      models: [],
-      latencyMs: 0,
-      message: e instanceof Error ? e.message : String(e),
-    }
-  } finally {
-    probing.value = false
-  }
-}
-
-// 重排端点自检：复用后端 LLMConfigService.ProbeRerank，
-// 探测的地址与实际重排请求完全一致（见 rerankEndpointURL），
-// 因此能明确暴露「Ollama 无 /api/rerank」这类原本会被静默降级的情况。
-async function probeRerankEndpoint() {
-  rerankProbing.value = true
-  rerankProbeResult.value = null
-  const r = settingsStore.settings.rerank
-  try {
-    rerankProbeResult.value = (await LLMConfigService.ProbeRerank({
-      provider: r.provider,
-      baseURL: r.baseURL ?? '',
-      model: r.model ?? '',
-      apiKey: r.apiKey ?? '',
-    })) as RerankProbeResult
-  } catch (e) {
-    rerankProbeResult.value = {
-      ok: false,
-      endpoint: '',
-      isLocal: false,
-      latencyMs: 0,
-      message: e instanceof Error ? e.message : String(e),
-    }
-  } finally {
-    rerankProbing.value = false
-  }
-}
-
-// 自检返回了模型列表时，一键把当前模型换成列表里的（本机模型名通常带 tag，手打易错）
-function useModel(name: string) {
-  settingsStore.settings.ai.model = name
-}
+// 编辑工具栏（显隐/拖拽排序/自定义命令）逻辑抽至 composable
+const {
+  toggleToolbarButton, resetToolbarButtons, toolbarLabel, isFixedButton,
+  onDragStart, onDrop, addCustomCommand, removeCustomCommand,
+} = useEditorToolbarSettings()
 
 function goBack() {
   if (window.history.length > 1) {
@@ -141,65 +70,6 @@ const shortcuts = computed(() => [
   { keys: 'Ctrl + \\', desc: t('settings.shortcuts.code') + ' (编辑器内)' },
   { keys: 'Esc', desc: t('settings.shortcuts.esc') + ' (命令面板打开时)' },
 ])
-
-function toggleToolbarButton(id: string) {
-  const arr = settingsStore.settings.toolbar.visibleButtons
-  if (arr.includes(id)) {
-    settingsStore.settings.toolbar.visibleButtons = arr.filter((x) => x !== id)
-  } else {
-    settingsStore.settings.toolbar.visibleButtons = [...arr, id]
-  }
-}
-
-function resetToolbarButtons() {
-  settingsStore.settings.toolbar.visibleButtons = [...VISIBLE_DEFAULT]
-  settingsStore.settings.toolbar.order = [...TOOLBAR_ORDER_DEFAULT]
-}
-
-// 工具栏按钮名称 / 固定标识查询
-const itemMap = new Map<string, ToolbarItem>(TOOLBAR_ITEMS.map((i) => [i.id as string, i]))
-function toolbarLabel(id: string): string {
-  const it = itemMap.get(id)
-  return it ? t(it.i18nKey || id) : id
-}
-function isFixedButton(id: string): boolean {
-  return itemMap.get(id)?.fixed === true
-}
-
-// 拖拽排序（对应 Editing Toolbar 的 menu dragging and sorting）
-let dragId = ''
-function onDragStart(id: string, e: DragEvent) {
-  dragId = id
-  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
-}
-function onDrop(targetId: string) {
-  const order = [...settingsStore.settings.toolbar.order]
-  const from = order.indexOf(dragId)
-  const to = order.indexOf(targetId)
-  if (from < 0 || to < 0 || from === to) return
-  order.splice(from, 1)
-  order.splice(to, 0, dragId)
-  settingsStore.settings.toolbar.order = order
-}
-
-// 自定义命令管理
-function addCustomCommand() {
-  settingsStore.settings.toolbar.customCommands = [
-    ...settingsStore.settings.toolbar.customCommands,
-    {
-      id: 'cmd-' + Date.now().toString(36),
-      name: t('settings.editor.toolbar.newCommand'),
-      type: 'wrap',
-      prefix: '',
-      suffix: '',
-    },
-  ]
-}
-function removeCustomCommand(idx: number) {
-  settingsStore.settings.toolbar.customCommands = settingsStore.settings.toolbar.customCommands.filter(
-    (_, i) => i !== idx,
-  )
-}
 
 function onLanguageChange(e: Event) {
   const value = (e.target as HTMLSelectElement).value as Locale
@@ -508,6 +378,22 @@ async function scrollToSection(id: string) {
         <p class="section-hint">
           {{ t('settings.ai.desc') }}
         </p>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.ai.protocol') }}</span>
+            <span class="setting-desc">{{ t('settings.ai.protocolDesc') }}</span>
+          </div>
+          <select
+            v-model="settingsStore.settings.ai.protocol"
+            class="setting-select"
+          >
+            <option value="openai-chat">{{ t('settings.ai.protocolOpenAIChat') }}</option>
+            <option value="openai-responses">{{ t('settings.ai.protocolOpenAIResponses') }}</option>
+            <option value="anthropic-messages">{{ t('settings.ai.protocolAnthropicMessages') }}</option>
+            <option value="google-gemini">{{ t('settings.ai.protocolGoogleGemini') }}</option>
+            <option value="google-vertex">{{ t('settings.ai.protocolGoogleVertex') }}</option>
+          </select>
+        </div>
         <div
           v-if="presets.length"
           class="setting-item"
@@ -652,6 +538,38 @@ async function scrollToSection(id: string) {
         </p>
         <div class="setting-item">
           <div class="setting-info">
+            <span class="setting-label">{{ t('settings.embedding.provider') }}</span>
+            <span class="setting-desc">{{ t('settings.embedding.providerDesc') }}</span>
+          </div>
+          <select
+            v-model="settingsStore.settings.embedding.provider"
+            class="setting-select"
+          >
+            <option value="ollama">{{ t('settings.embedding.providerOllama') }}</option>
+            <option value="siliconflow">{{ t('settings.embedding.providerSiliconflow') }}</option>
+            <option value="cohere">{{ t('settings.embedding.providerCohere') }}</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.embedding.preset') }}</span>
+            <span class="setting-desc">{{ t('settings.embedding.presetDesc') }}</span>
+          </div>
+          <div class="preset-row">
+            <button
+              v-for="p in embeddingPresets"
+              :key="p.id"
+              class="preset-btn"
+              :class="{ active: settingsStore.settings.embedding.provider === p.id }"
+              :title="p.hint"
+              @click="applyEmbeddingPreset(p.id)"
+            >
+              {{ p.label }}
+            </button>
+          </div>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
             <span class="setting-label">{{ t('settings.embedding.baseURL') }}</span>
             <span class="setting-desc">{{ t('settings.embedding.baseURLDesc') }}</span>
           </div>
@@ -700,6 +618,45 @@ async function scrollToSection(id: string) {
             </button>
           </div>
         </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.embedding.testConnection') }}</span>
+            <span class="setting-desc">{{ t('settings.embedding.testConnectionDesc') }}</span>
+          </div>
+          <button
+            class="probe-btn"
+            :disabled="embeddingProbing"
+            data-testid="embedding-probe-btn"
+            @click="probeEmbeddingEndpoint"
+          >
+            <Sparkles :size="14" />
+            {{ embeddingProbing ? t('settings.embedding.testing') : t('settings.embedding.testConnection') }}
+          </button>
+        </div>
+        <div
+          v-if="embeddingProbeResult"
+          class="probe-result"
+          :class="embeddingProbeResult.ok ? 'ok' : 'fail'"
+          data-testid="embedding-probe-result"
+        >
+          <div class="probe-head">
+            <strong>{{ embeddingProbeResult.ok ? t('settings.embedding.probeOk') : t('settings.embedding.probeFail') }}</strong>
+            <span
+              v-if="embeddingProbeResult.isLocal"
+              class="preset-badge"
+            >{{ t('settings.ai.localEndpoint') }}</span>
+            <span
+              v-if="embeddingProbeResult.latencyMs > 0"
+              class="probe-latency"
+            >{{ embeddingProbeResult.latencyMs }} ms</span>
+          </div>
+          <p
+            v-if="embeddingProbeResult.message"
+            class="probe-msg"
+          >
+            {{ embeddingProbeResult.message }}
+          </p>
+        </div>
         <p class="section-hint">
           {{ t('settings.embedding.note') }}
         </p>
@@ -726,17 +683,27 @@ async function scrollToSection(id: string) {
             class="setting-select"
           >
             <option value="">{{ t('settings.rerank.none') }}</option>
-            <option value="ollama">Ollama（本机 /api/rerank，免 Key）</option>
-            <option value="cohere">Cohere（/v1/rerank，需 Key）</option>
+            <option value="cohere">{{ t('settings.rerank.providerCohere') }}</option>
           </select>
         </div>
-        <p
-          v-if="settingsStore.settings.rerank.provider === 'ollama'"
-          class="section-warning"
-        >
-          <AlertTriangle :size="14" />
-          {{ t('settings.rerank.ollamaWarning') }}
-        </p>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.rerank.preset') }}</span>
+            <span class="setting-desc">{{ t('settings.rerank.presetDesc') }}</span>
+          </div>
+          <div class="preset-row">
+            <button
+              v-for="p in rerankPresets"
+              :key="p.id"
+              class="preset-btn"
+              :class="{ active: settingsStore.settings.rerank.provider === 'cohere' && settingsStore.settings.rerank.baseURL === p.baseURL }"
+              :title="p.hint"
+              @click="applyRerankPreset(p.id)"
+            >
+              {{ p.label }}
+            </button>
+          </div>
+        </div>
         <div class="setting-item">
           <div class="setting-info">
             <span class="setting-label">{{ t('settings.rerank.baseURL') }}</span>
@@ -745,7 +712,7 @@ async function scrollToSection(id: string) {
           <input
             v-model="settingsStore.settings.rerank.baseURL"
             class="setting-input"
-            placeholder="http://localhost:11434"
+            placeholder="https://api.cohere.ai/v1"
           >
         </div>
         <div class="setting-item">
@@ -756,7 +723,7 @@ async function scrollToSection(id: string) {
           <input
             v-model="settingsStore.settings.rerank.model"
             class="setting-input"
-            placeholder="bge-reranker-v2-m3"
+            placeholder="rerank-multilingual-v3.0"
           >
         </div>
         <div class="setting-item">

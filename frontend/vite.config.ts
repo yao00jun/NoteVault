@@ -5,6 +5,15 @@ import { fileURLToPath, URL } from "node:url";
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // Vite 8 默认用 lightningcss 做 CSS 转换与压缩。lightningcss 不认识 Vue scoped
+  // 的 `:deep()` 组合子，会在 [lightningcss minify] 阶段报 "deep is not recognized"。
+  // 用 postcss 做转换可保证 Vue 的 scoped 插件先在 postcss 阶段把 `:deep()` 改写成
+  // `[data-v-xxx] p` 这类普通选择器，lightningcss 压缩时就再也碰不到 `:deep`。
+  // 注意：真正的告警根因是 MarkdownPreview.vue 里有一处「嵌套 :deep()」(`:deep(.nv-embed-body :deep(p))`)，
+  // 该写法 Vue 无法解析、会原样透传，已被修正为 `:deep(.nv-embed-body p)`。
+  css: {
+    transformer: "postcss",
+  },
   server: {
     host: "127.0.0.1",
     port: Number(process.env.WAILS_VITE_PORT) || 9245,

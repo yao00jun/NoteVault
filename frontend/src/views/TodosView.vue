@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { CheckSquare, Square, Plus, Trash2, Flag, FileText, AlertCircle } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useI18n } from 'vue-i18n'
 import { TodoService, WorkspaceService } from '@bindings/github.com/notevault/notevault/index.js'
 
@@ -84,7 +85,7 @@ async function ensureWorkspace() {
     try {
       const ws = await WorkspaceService.GetCurrentWorkspace()
       if (ws) {
-        workspaceStore.setCurrentWorkspace(ws as any)
+        workspaceStore.setCurrentWorkspace(toWorkspace(ws))
       } else {
         router.push('/')
         return false

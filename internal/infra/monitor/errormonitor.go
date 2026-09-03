@@ -16,13 +16,12 @@ import (
 	"time"
 
 	"github.com/notevault/notevault/internal/core"
-	"github.com/notevault/notevault/internal/service"
 )
 
 // ErrorMonitorConfig 已上移至 core（见 core/models.go），本包通过 core.ErrorMonitorConfig 引用。
 // ErrorReport 同理（core.ErrorReport）。
-// 编译时断言：ErrorMonitor 实现 service.Reporter 端口接口。
-var _ service.Reporter = (*ErrorMonitor)(nil)
+// Reporter 端口契约断言移至 service 包的外部测试（ports_contract_external_test.go），
+// 避免 infra 生产代码反向依赖 service。
 
 // ErrorMonitor 错误监控服务
 // 同时落地到本地日志文件（轮转）与可选的 Sentry 上报。

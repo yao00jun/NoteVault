@@ -5,7 +5,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
+	"sort"
+	"sync"
 	"time"
 
 	"github.com/notevault/notevault/internal/infra/schema"
@@ -22,7 +23,11 @@ type TrashedFile struct {
 }
 
 // TrashService 提供回收站管理功能
-type TrashService struct{}
+type TrashService struct {
+	// mu 串行化对 trash.json 的读-改-写：Wails 每次调用独立 goroutine，
+	// 并发 Move/Restore/Delete 各自 load→改→save 会互相覆盖丢更新。
+	mu sync.Mutex
+}
 
 // NewTrashService 创建回收站服务实例
 func NewTrashService() *TrashService {
@@ -98,7 +103,12 @@ func (s *TrashService) saveTrashIndex(workspacePath string, files []*TrashedFile
 
 // MoveToTrash 移动文件到回收站
 func (s *TrashService) MoveToTrash(workspacePath string, relativePath string) (*TrashedFile, error) {
-	srcPath := filepath.Join(workspacePath, relativePath)
+	// 路径必须落在工作区内：relativePath 含 ".." 或绝对路径时
+	// filepath.Join 会丢掉工作区前缀，把工作区外任意文件"悄悄"移进回收站
+	srcPath, err := confineToWorkspace(workspacePath, relativePath)
+	if err != nil {
+		return nil, err
+	}
 	trashDir := s.getTrashDir(workspacePath)
 
 	// 确保回收站目录存在
@@ -106,8 +116,8 @@ func (s *TrashService) MoveToTrash(workspacePath string, relativePath string) (*
 		return nil, err
 	}
 
-	// 生成唯一 ID，避免重名冲突
-	id := "trash_" + time.Now().Format("20060102150405")
+	// 纳秒级 ID：秒级时间戳在同一秒内删除多个文件会互相覆盖
+	id := "trash_" + time.Now().Format("20060102150405") + fmt.Sprintf("_%09d", time.Now().UnixNano()%1e9)
 	destPath := filepath.Join(trashDir, id+"_"+filepath.Base(relativePath))
 
 	// 移动文件
@@ -130,6 +140,8 @@ func (s *TrashService) MoveToTrash(workspacePath string, relativePath string) (*
 	}
 
 	// 更新索引
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	files, err := s.loadTrashIndex(workspacePath)
 	if err != nil {
 		return nil, err
@@ -144,6 +156,8 @@ func (s *TrashService) MoveToTrash(workspacePath string, relativePath string) (*
 
 // RestoreFromTrash 从回收站恢复文件
 func (s *TrashService) RestoreFromTrash(workspacePath string, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	files, err := s.loadTrashIndex(workspacePath)
 	if err != nil {
 		return err
@@ -161,8 +175,15 @@ func (s *TrashService) RestoreFromTrash(workspacePath string, id string) error {
 	}
 
 	trashDir := s.getTrashDir(workspacePath)
-	srcPath := filepath.Join(trashDir, trashed.Path)
-	destPath := filepath.Join(workspacePath, trashed.OriginalPath)
+	// trashed.Path / OriginalPath 来自索引文件，同样按不可信输入做越界校验
+	srcPath, err := confineToWorkspace(trashDir, trashed.Path)
+	if err != nil {
+		return err
+	}
+	destPath, err := confineToWorkspace(workspacePath, trashed.OriginalPath)
+	if err != nil {
+		return err
+	}
 
 	// 确保目标目录存在
 	destDir := filepath.Dir(destPath)
@@ -188,6 +209,8 @@ func (s *TrashService) RestoreFromTrash(workspacePath string, id string) error {
 
 // PermanentlyDelete 永久删除回收站中的文件
 func (s *TrashService) PermanentlyDelete(workspacePath string, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	files, err := s.loadTrashIndex(workspacePath)
 	if err != nil {
 		return err
@@ -205,7 +228,10 @@ func (s *TrashService) PermanentlyDelete(workspacePath string, id string) error 
 	}
 
 	trashDir := s.getTrashDir(workspacePath)
-	filePath := filepath.Join(trashDir, trashed.Path)
+	filePath, err := confineToWorkspace(trashDir, trashed.Path)
+	if err != nil {
+		return err
+	}
 
 	// 删除文件
 	if err := os.Remove(filePath); err != nil {
@@ -231,19 +257,17 @@ func (s *TrashService) GetTrashedFiles(workspacePath string) ([]*TrashedFile, er
 	}
 
 	// 按删除时间降序排序
-	for i := 0; i < len(files); i++ {
-		for j := i + 1; j < len(files); j++ {
-			if files[i].DeletedAt < files[j].DeletedAt {
-				files[i], files[j] = files[j], files[i]
-			}
-		}
-	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].DeletedAt > files[j].DeletedAt
+	})
 
 	return files, nil
 }
 
 // EmptyTrash 清空回收站
 func (s *TrashService) EmptyTrash(workspacePath string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	files, err := s.loadTrashIndex(workspacePath)
 	if err != nil {
 		return err
@@ -251,16 +275,25 @@ func (s *TrashService) EmptyTrash(workspacePath string) error {
 
 	trashDir := s.getTrashDir(workspacePath)
 
-	// 删除所有文件（删除失败则返回错误，索引保留以便重试）
+	// 逐条删除，只把确认删掉的条目移出索引。
+	// confine 校验失败（索引被篡改）或删除失败的条目必须留在索引里：
+	// 若无条件清空索引，文件还躺在 .trash/ 却从 UI 永久消失，变成孤儿。
+	remaining := make([]*TrashedFile, 0, len(files))
 	for _, f := range files {
-		filePath := filepath.Join(trashDir, f.Path)
+		filePath, cerr := confineToWorkspace(trashDir, f.Path)
+		if cerr != nil {
+			remaining = append(remaining, f)
+			continue
+		}
 		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("删除回收站文件失败：%w", err)
+			remaining = append(remaining, f)
+			continue
 		}
 	}
-
-	// 清空索引
-	return s.saveTrashIndex(workspacePath, []*TrashedFile{})
+	if len(remaining) < len(files) {
+		return s.saveTrashIndex(workspacePath, remaining)
+	}
+	return nil
 }
 
 // GetTrashStats 获取回收站统计
@@ -280,6 +313,3 @@ func (s *TrashService) GetTrashStats(workspacePath string) (map[string]int64, er
 		"size":  totalSize,
 	}, nil
 }
-
-// 确保字符串方法可用
-var _ = strings.ToLower

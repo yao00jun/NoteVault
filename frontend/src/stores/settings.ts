@@ -23,22 +23,23 @@ const defaultSettings: AppSettings = {
   editorMode: 'split',
   fontSize: 13,
   ai: {
+    protocol: 'openai-chat',
     baseURL: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini',
     apiKey: '',
   },
   // P1-3：语义检索的 embedding 端点，默认本机 Ollama + bge-m3（中文强）。
   embedding: {
+    provider: 'ollama',
     baseURL: 'http://localhost:11434/v1',
     model: 'bge-m3',
     apiKey: '',
   },
-  // P1-3b：重排序端点。默认**关闭**（provider 留空）——因为本机 Ollama 原生不支持
-  // /api/rerank（上游 PR 从未合并），默认开 Ollama 会静默 404 降级为纯 RRF，用户完全无感。
-  // 需显式选 Cohere（真实支持重排）或将来接入支持重排的端点才生效。
+  // P1-3b：重排序端点。默认**关闭**（provider 留空）。
+  // 仅支持云端 /v1/rerank 端点（Cohere / 硅基流动）。
   rerank: {
     provider: '',
-    baseURL: 'http://localhost:11434',
+    baseURL: '',
     model: '',
     apiKey: '',
   },
@@ -84,7 +85,12 @@ function loadSettings(): AppSettings {
       return {
         ...defaultSettings,
         ...stored,
-        ai: { ...defaultSettings.ai, ...(stored.ai ?? {}) },
+        ai: {
+          ...defaultSettings.ai,
+          ...(stored.ai ?? {}),
+          // 迁移：旧版本没有 protocol 字段，兜底为 openai-chat
+          protocol: (stored.ai?.protocol as any) ?? defaultSettings.ai.protocol,
+        },
         embedding: { ...defaultSettings.embedding, ...(stored.embedding ?? {}) },
         rerank: { ...defaultSettings.rerank, ...(stored.rerank ?? {}) },
         editor: { ...defaultSettings.editor, ...(stored.editor ?? {}) },
@@ -116,8 +122,10 @@ function loadSettings(): AppSettings {
 /**
  * P2-5 迁移：把旧版本遗留在 localStorage 里的明文 apiKey 搬进系统凭据库，
  * 然后从 localStorage 中彻底清除。只需执行一次（搬完即从存储里消失）。
+ * 必须 await 写入成功后才清除：迁移失败就保留明文 Key，下次启动重试——
+ * 否则一次凭据库瞬时故障会永久丢 Key。
  */
-function migrateLegacyApiKey(): void {
+async function migrateLegacyApiKey(): Promise<void> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return
@@ -126,11 +134,14 @@ function migrateLegacyApiKey(): void {
     if (!ai) return
     const legacy = ai.apiKey
     if (typeof legacy !== 'string' || legacy === '') return
-    void CredentialService.SaveCredential(API_KEY_CREDENTIAL, legacy).catch((e) => {
-      console.warn('[settings] 迁移 API Key 到系统凭据库失败:', e)
-    })
-    ai.apiKey = ''
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(stored))
+    try {
+      await CredentialService.SaveCredential(API_KEY_CREDENTIAL, legacy)
+      ai.apiKey = ''
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored))
+    } catch (e) {
+      // 保留 localStorage 里的 Key，下次启动重试
+      console.warn('[settings] 迁移 API Key 到系统凭据库失败，保留原文待重试:', e)
+    }
   } catch (e) {
     console.warn('[settings] API Key 迁移检查失败:', e)
   }
@@ -139,11 +150,17 @@ function migrateLegacyApiKey(): void {
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>(loadSettings())
 
+  // 恢复门闩：restoreApiKey 把同一个 Key 写回 settings 会触发下方三个
+  // apiKey watch，把恢复值再 SaveCredential 一遍（幂等但多余的往返）。
+  // 恢复期间挂上门闩，watch 直接跳过。
+  let restoringKeys = false
+
   /**
    * P2-5：从系统凭据库恢复 apiKey / embedding apiKey（应用启动路径，异步不阻塞首屏）。
    * 凭据库不可用（如未授权访问）时不阻塞：用户在设置页重填一次即可。
    */
   async function restoreApiKey(): Promise<void> {
+    restoringKeys = true
     try {
       const key = await CredentialService.GetCredential(API_KEY_CREDENTIAL)
       if (typeof key === 'string' && key !== '' && settings.value.ai.apiKey === '') {
@@ -167,6 +184,8 @@ export const useSettingsStore = defineStore('settings', () => {
       }
     } catch (e) {
       console.warn('[settings] 从系统凭据库恢复 Rerank Key 失败:', e)
+    } finally {
+      restoringKeys = false
     }
   }
 
@@ -196,6 +215,7 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(
     () => settings.value.ai.apiKey,
     (key) => {
+      if (restoringKeys) return
       void CredentialService.SaveCredential(API_KEY_CREDENTIAL, key ?? '').catch((e) => {
         console.warn('[settings] 保存 API Key 到系统凭据库失败:', e)
       })
@@ -206,6 +226,7 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(
     () => settings.value.embedding.apiKey,
     (key) => {
+      if (restoringKeys) return
       void CredentialService.SaveCredential(EMBEDDING_API_KEY_CREDENTIAL, key ?? '').catch((e) => {
         console.warn('[settings] 保存 Embedding Key 到系统凭据库失败:', e)
       })
@@ -216,6 +237,7 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(
     () => settings.value.rerank.apiKey,
     (key) => {
+      if (restoringKeys) return
       void CredentialService.SaveCredential(RERANK_API_KEY_CREDENTIAL, key ?? '').catch((e) => {
         console.warn('[settings] 保存 Rerank Key 到系统凭据库失败:', e)
       })

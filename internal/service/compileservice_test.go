@@ -16,7 +16,7 @@ type fakeCompileAI struct {
 	err error
 }
 
-func (f *fakeCompileAI) Compile(_, _, _, _, _ string) (*CompileOutput, error) {
+func (f *fakeCompileAI) Compile(_, _, _, _, _, _ string) (*CompileOutput, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -83,7 +83,7 @@ func TestCompileService_CompileNote_MovesAndKeepsFrontmatter(t *testing.T) {
 		SuggestedLinks: []string{"Redis 入门", "分布式缓存"},
 	}})
 
-	res, err := svc.CompileNote(ws, "Inbox/cache.md", "", "", "")
+	res, err := svc.CompileNote(ws, "Inbox/cache.md", "", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestCompileService_CompileNote_RejectsNonInbox(t *testing.T) {
 	ws := seedCompileVault(t)
 	svc := newTestCompileService(&fakeCompileAI{out: &CompileOutput{}})
 
-	_, err := svc.CompileNote(ws, "Other/note.md", "", "", "")
+	_, err := svc.CompileNote(ws, "Other/note.md", "", "", "", "")
 	if err == nil {
 		t.Fatal("非 Inbox 路径应被拒绝")
 	}
@@ -142,7 +142,7 @@ func TestCompileService_CompileNote_AICreateFailKeepsOriginal(t *testing.T) {
 	ws := seedCompileVault(t)
 	svc := newTestCompileService(&fakeCompileAI{err: errFakeAI})
 
-	_, err := svc.CompileNote(ws, "Inbox/cache.md", "", "", "")
+	_, err := svc.CompileNote(ws, "Inbox/cache.md", "", "", "", "")
 	if err == nil {
 		t.Fatal("AI 失败应报错")
 	}
@@ -161,7 +161,7 @@ func TestCompileService_CompileAll(t *testing.T) {
 		TLDR: "x", Tags: []string{"t"}, SuggestedLinks: []string{"A"},
 	}})
 
-	res, err := svc.CompileAll(ws, "", "", "")
+	res, err := svc.CompileAll(ws, "", "", "", "")
 	if err != nil {
 		t.Fatalf("CompileAll 不应返回顶层错误: %v", err)
 	}

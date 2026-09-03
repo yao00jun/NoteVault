@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -106,33 +107,23 @@ func (s *TodoService) GetAllTodos(workspacePath string) ([]*TodoItem, error) {
 		}
 	})
 
-	// 排序：未完成在前，高优先级在前
-	for i := 0; i < len(todos); i++ {
-		for j := i + 1; j < len(todos); j++ {
-			// 未完成在前
-			if todos[i].Completed && !todos[j].Completed {
-				todos[i], todos[j] = todos[j], todos[i]
-				continue
-			}
-			if todos[i].Completed == todos[j].Completed {
-				// 高优先级在前
-				priorityOrder := map[string]int{"high": 0, "medium": 1, "low": 2}
-				if priorityOrder[todos[i].Priority] > priorityOrder[todos[j].Priority] {
-					todos[i], todos[j] = todos[j], todos[i]
-				}
-			}
+	// 排序：未完成在前，高优先级在前（sort.Slice 稳定且 O(n log n)）
+	priorityOrder := map[string]int{"high": 0, "medium": 1, "low": 2}
+	sort.SliceStable(todos, func(i, j int) bool {
+		if todos[i].Completed != todos[j].Completed {
+			return !todos[i].Completed
 		}
-	}
+		return priorityOrder[todos[i].Priority] < priorityOrder[todos[j].Priority]
+	})
 
 	return todos, nil
 }
 
 // ToggleTodo 切换待办事项的完成状态
 func (s *TodoService) ToggleTodo(workspacePath string, filePath string, lineIndex int) error {
-	// 防路径穿越：解析后的路径必须仍位于工作区内
-	fullPath := filepath.Join(workspacePath, filePath)
-	rel, err := filepath.Rel(workspacePath, fullPath)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	// 防路径穿越：与 confineToWorkspace 同一口径
+	fullPath, err := confineToWorkspace(workspacePath, filePath)
+	if err != nil {
 		return fmt.Errorf("非法文件路径：%s", filePath)
 	}
 	content, err := os.ReadFile(fullPath)

@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-vue-next'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { WorkspaceService, FileService } from '@bindings/github.com/notevault/notevault/index.js'
@@ -120,7 +121,7 @@ async function createNewDoc() {
     // 创建或打开工作区（后端按路径去重）
     const ws = await WorkspaceService.CreateWorkspace(workspaceName.value, workspacePath.value)
     if (ws) {
-      workspaceStore.setCurrentWorkspace(ws as any)
+      workspaceStore.setCurrentWorkspace(toWorkspace(ws))
     }
   } catch (e) {
     console.error('Failed to create workspace:', e)
@@ -176,11 +177,11 @@ async function openFolder() {
     const existing = recentWorkspaces.value.find(w => w.path === workspacePath.value)
     if (existing) {
       await WorkspaceService.SetCurrentWorkspace(existing.id)
-      workspaceStore.setCurrentWorkspace(existing as any)
+      workspaceStore.setCurrentWorkspace(toWorkspace(existing))
     } else {
       const ws = await WorkspaceService.CreateWorkspace(workspaceName.value, workspacePath.value)
       if (ws) {
-        workspaceStore.setCurrentWorkspace(ws as any)
+        workspaceStore.setCurrentWorkspace(toWorkspace(ws))
       }
     }
     showDialog.value = false
@@ -206,7 +207,7 @@ async function openRecentWorkspace(ws: Workspace) {
   console.log('[recent] opening workspace', ws.id, ws.path)
   try {
     await WorkspaceService.SetCurrentWorkspace(ws.id)
-    workspaceStore.setCurrentWorkspace(ws as any)
+    workspaceStore.setCurrentWorkspace(toWorkspace(ws))
     await router.push('/editor')
   } catch (e) {
     // 错误必须可见：Wails v3 的 alert 会路由到独立 dialog，用户经常看不见。
@@ -227,11 +228,11 @@ async function openDemo() {
     const existing = recentWorkspaces.value.find(w => w.path === demoPath)
     if (existing) {
       await WorkspaceService.SetCurrentWorkspace(existing.id)
-      workspaceStore.setCurrentWorkspace(existing as any)
+      workspaceStore.setCurrentWorkspace(toWorkspace(existing))
     } else {
       const ws = await WorkspaceService.CreateWorkspace('演示工作区', demoPath)
       if (ws) {
-        workspaceStore.setCurrentWorkspace(ws as any)
+        workspaceStore.setCurrentWorkspace(toWorkspace(ws))
         // 创建一些演示文档
         await FileService.CreateFile(demoPath, '欢迎使用 NoteVault.md', '# 欢迎使用 NoteVault\n\n这是一个本地优先的个人知识库管理工具。\n\n## 功能特性\n\n- #Markdown 编辑\n- #标签 管理\n- 待办事项\n- 全文搜索\n\n## 待办示例\n\n- [ ] 探索 NoteVault 的功能\n- [x] 创建第一个文档\n- [ ] 设置自己的工作区\n')
         await FileService.CreateFile(demoPath, '快速入门.md', '# 快速入门\n\n## 基本操作\n\n1. 点击左侧文件树的 + 新建文档\n2. 在编辑器中输入 Markdown 内容\n3. 右侧实时预览\n4. 自动保存到本地\n\n## 快捷链接\n\n试试点击 [[欢迎使用 NoteVault]] 跳转到对应文档\n')

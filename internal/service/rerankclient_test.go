@@ -7,30 +7,7 @@ import (
 	"testing"
 )
 
-// TestProbeRerank_Ollama_404 覆盖 P1-3b 的核心静默失效场景：
-// Ollama 原生不提供 /api/rerank，自检必须**明确**识别为不可用，而不是 404 被降级逻辑吞掉。
-func TestProbeRerank_Ollama_404(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer srv.Close()
-
-	svc := NewLLMConfigService()
-	res := svc.ProbeRerank(RerankConfig{
-		Provider: RerankProviderOllama,
-		BaseURL:  srv.URL,
-		Model:    "bge-reranker-v2-m3",
-	})
-	if res.OK {
-		t.Fatalf("期望 OK=false（Ollama 无 /api/rerank），实际 OK=true")
-	}
-	if !strings.Contains(res.Message, "Ollama") {
-		t.Fatalf("期望提示 Ollama 不支持重排，实际: %s", res.Message)
-	}
-	t.Logf("Ollama 404 提示: %s", res.Message)
-}
-
-// TestProbeRerank_Cohere_404 验证非 Ollama provider 的 404 给出不同的可操作提示（指向 baseURL）。
+// TestProbeRerank_Cohere_404 验证 404 给出指向 baseURL 的可操作提示。
 func TestProbeRerank_Cohere_404(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -62,7 +39,7 @@ func TestProbeRerank_OK(t *testing.T) {
 
 	svc := NewLLMConfigService()
 	res := svc.ProbeRerank(RerankConfig{
-		Provider: RerankProviderOllama,
+		Provider: RerankProviderCohere,
 		BaseURL:  srv.URL,
 		Model:    "bge-reranker-v2-m3",
 	})

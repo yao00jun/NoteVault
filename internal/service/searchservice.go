@@ -91,8 +91,8 @@ type SearchService struct {
 // NewSearchService 创建搜索服务实例（索引走包级默认注册表）
 func NewSearchService(fileService *FileService) *SearchService {
 	return &SearchService{
-		fileService:     fileService,
-		maxResults:      defaultMaxSearchResults,
+		fileService:       fileService,
+		maxResults:        defaultMaxSearchResults,
 		eagerSnippetLimit: defaultEagerSnippetLimit,
 	}
 }
@@ -103,9 +103,9 @@ func NewSearchService(fileService *FileService) *SearchService {
 // 时机集中到容器持有的那一个注册表上，而不是散落在全局。
 func NewSearchServiceWithRegistry(fileService *FileService, indexes *SearchIndexRegistry) *SearchService {
 	return &SearchService{
-		fileService:     fileService,
-		indexes:         indexes,
-		maxResults:      defaultMaxSearchResults,
+		fileService:       fileService,
+		indexes:           indexes,
+		maxResults:        defaultMaxSearchResults,
 		eagerSnippetLimit: defaultEagerSnippetLimit,
 	}
 }
@@ -115,8 +115,8 @@ func NewSearchServiceWithRegistry(fileService *FileService, indexes *SearchIndex
 // 这是一个包级构造函数而非 SearchService 的导出方法，因此不会被 Wails 绑成前端 API。
 func NewSearchServiceForFullSnippets(fileService *FileService) *SearchService {
 	return &SearchService{
-		fileService:     fileService,
-		maxResults:      defaultMaxSearchResults,
+		fileService:       fileService,
+		maxResults:        defaultMaxSearchResults,
 		eagerSnippetLimit: math.MaxInt,
 	}
 }

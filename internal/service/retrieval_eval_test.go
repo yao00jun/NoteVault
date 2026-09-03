@@ -35,8 +35,10 @@ import (
 //
 //	NV_EVAL_EMBED_BASE    embedding 端点，默认 http://127.0.0.1:11434/v1
 //	NV_EVAL_EMBED_MODEL   embedding 模型，默认 bge-m3
-//	NV_EVAL_RERANK_BASE   rerank 端点，默认 http://127.0.0.1:11434
+//	NV_EVAL_RERANK_BASE   rerank 端点，默认空（需显式填写）
 //	NV_EVAL_RERANK_MODEL  rerank 模型，默认空（空则跳过第 ③ 组）
+//	NV_EVAL_RERANK_PROVIDER  rerank provider，默认 cohere
+//	NV_EVAL_RERANK_APIKEY    rerank API Key（provider 为非本机端点时必须，如硅基流动 sk-...）
 // ---------------------------------------------------------------------------
 
 // evalCorpus 是评测语料：relPath → Markdown 正文。
@@ -241,10 +243,10 @@ type evalRow struct {
 
 // evalReport 是一个分组（arm）的评测结果。
 type evalReport struct {
-	name        string
-	recallAtK   float64
-	mrrAtK      float64
-	rows        []evalRow
+	name         string
+	recallAtK    float64
+	mrrAtK       float64
+	rows         []evalRow
 	recallByKind map[string]float64
 }
 
@@ -441,8 +443,8 @@ func TestQnAService_HybridSearch_VectorOnlyRecall(t *testing.T) {
 		dim: 3,
 		aliases: [][]string{
 			{"缓存失效", "invalidate cache", "cache invalidation"}, // dim 0
-			{"goroutine"},                                          // dim 1
-			{"牛奶"},                                                 // dim 2
+			{"goroutine"}, // dim 1
+			{"牛奶"},        // dim 2
 		},
 	}
 	svc := NewQnAServiceWithRegistry(fs, nil, emb, nil)
@@ -515,8 +517,10 @@ func TestRetrievalEval_Ollama_BGEM3(t *testing.T) {
 
 	embBase := envOrDefault("NV_EVAL_EMBED_BASE", "http://127.0.0.1:11434/v1")
 	embModel := envOrDefault("NV_EVAL_EMBED_MODEL", "bge-m3")
-	rerankBase := envOrDefault("NV_EVAL_RERANK_BASE", "http://127.0.0.1:11434")
+	rerankBase := envOrDefault("NV_EVAL_RERANK_BASE", "")
 	rerankModel := os.Getenv("NV_EVAL_RERANK_MODEL")
+	rerankProvider := RerankProvider(envOrDefault("NV_EVAL_RERANK_PROVIDER", "cohere"))
+	rerankAPIKey := os.Getenv("NV_EVAL_RERANK_APIKEY")
 
 	base := runEvalArm(t, ws, evalArm{
 		name: "① BM25 基线",
@@ -541,9 +545,10 @@ func TestRetrievalEval_Ollama_BGEM3(t *testing.T) {
 			embBase:  embBase,
 			embModel: embModel,
 			rerankCfg: RerankConfig{
-				Provider: RerankProviderOllama,
+				Provider: rerankProvider,
 				BaseURL:  rerankBase,
 				Model:    rerankModel,
+				APIKey:   rerankAPIKey,
 			},
 		})
 		reports = append(reports, rr)

@@ -212,6 +212,18 @@ type searchIndex struct {
 	dirty    bool
 	lastSave time.Time
 
+	// watcher 事件驱动失效（P2 优化）：
+	//   watchActive  = workspace watcher 正在监控该工作区（事件可靠到达）
+	//   watchPending = watcher 收到过事件、尚未被 refresh 消化
+	//   built        = 索引至少完整构建过一次（区分"空库"与"还没建"）
+	// watchActive && !watchPending && built 时 refresh 可短路跳过全量 walk——
+	// 索引与磁盘一致由 watcher 事件保证。事件到达时置 watchPending，
+	// 下一次 refresh 照常 walk 消化变更后归零。walk 保留作兜底：
+	// watcher 未启动/漏事件时行为与旧版完全一致。
+	watchActive  bool
+	watchPending bool
+	built        bool
+
 	// 正文缓存的内存账本：contentBytes 为当前占用，contentBudget 为上限。
 	// 二者共同保证「正文内存可预期」，而不是随知识库体积线性增长。
 	contentBytes  atomic.Int64
@@ -302,12 +314,80 @@ func newSearchIndex() *searchIndex {
 // 增量更新
 // ---------------------------------------------------------------------------
 
+// MarkWatchActive 声明 workspace watcher 已开始监控该工作区。
+// 由 WorkspaceService 在启动 watcher 后调用一次。
+func (idx *searchIndex) MarkWatchActive() {
+	idx.mu.Lock()
+	idx.watchActive = true
+	idx.mu.Unlock()
+}
+
+// InvalidatePath 消化一个 watcher 事件：文件变更直接改写索引
+// （单文件粒度，无需全量 walk）。relPath 为工作区相对路径（正斜杠），
+// 目录级/无法定位的变更退化为「置 watchPending 让下次 refresh 走一遍 walk」。
+// 返回 true 表示已精确消化。
+func (idx *searchIndex) InvalidatePath(relPath string, deleted bool) bool {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+
+	doc, ok := idx.docs[relPath]
+	if deleted {
+		if ok {
+			idx.removeDocLocked(doc)
+			idx.dirty = true
+			return true
+		}
+		return false
+	}
+	// 变更/新增：只在文档已在索引时精确处理（modtime 置零强制下次 rebuild）。
+	// 新增文件走 watchPending → refresh walk 兜底，避免在这里重复读盘 tokenize。
+	if !ok {
+		idx.watchPending = true
+		return false
+	}
+	doc.contentMu.Lock()
+	doc.modTime = time.Time{} // 零值 modtime 与磁盘比对必不相等 → 下次 refresh rebuild
+	doc.contentMu.Unlock()
+	idx.dirty = true
+	return true
+}
+
+// markWatchPending 事件无法精确消化时调用：强制下次 refresh 走一遍 walk。
+func (idx *searchIndex) markWatchPending() {
+	idx.mu.Lock()
+	idx.watchPending = true
+	idx.mu.Unlock()
+}
+
+// skipRefreshable 报告当前是否可以安全跳过 walk（watcher 活跃且无积压事件、
+// 索引已构建过）。加锁快照，避免与 InvalidatePath 竞态。
+func (idx *searchIndex) skipRefreshable() bool {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	return idx.watchActive && !idx.watchPending && idx.built
+}
+
 // refresh 增量更新索引：扫描工作区，仅重新索引新增/变更文件，移除已删除文件。
 // 返回 scanComplete 表示扫描是否完整（未触及 maxScanFiles 上限）。
 func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err error) {
 	// refreshMu 只串行化 refresh 自身，不阻塞查询（query 取读锁即可）。
 	idx.refreshMu.Lock()
 	defer idx.refreshMu.Unlock()
+
+	// watcher 活跃且无积压事件：索引与磁盘一致，跳过全量 walk。
+	// 这是逐键实时搜索的性能关键——否则每敲一个字符就 stat 一遍全库。
+	// （watchPending 在下面 walk 完成后归零。）
+	if idx.skipRefreshable() {
+		idx.mu.RLock()
+		complete := idx.scanComplete
+		idx.mu.RUnlock()
+		return complete, nil
+	}
+	defer func() {
+		idx.mu.Lock()
+		idx.watchPending = false
+		idx.mu.Unlock()
+	}()
 
 	// -------------------------------------------------------------------
 	// 阶段 1（无锁）：扫描目录树。
@@ -470,6 +550,7 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 	idx.mu.Lock()
 	idx.scanComplete = scanComplete
 	idx.skippedOversize = skippedOversize
+	idx.built = true
 	idx.mu.Unlock()
 
 	// 正文预算在锁外执行：内部需要取读锁做快照，持写锁调用会自锁

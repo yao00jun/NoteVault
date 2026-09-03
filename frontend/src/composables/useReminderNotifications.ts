@@ -1,5 +1,6 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { ReminderService } from '@bindings/github.com/notevault/notevault/index.js'
+import { useSettingsStore } from '@/stores/settings'
 
 interface Reminder {
   id: string
@@ -15,6 +16,26 @@ interface Reminder {
 export function useReminderNotifications(workspacePath: () => string | undefined) {
   const notifiedIds = ref<Set<string>>(new Set())
   let checkInterval: ReturnType<typeof setInterval> | null = null
+  const settingsStore = useSettingsStore()
+
+  // 勿扰时段判断（支持跨午夜窗口，如 22:00-08:00）。
+  // 设置里一直有这项但此前没人消费——勿扰期间通知被静默跳过，
+  // 不记入 notifiedIds：时段结束后若仍在 1 小时补发窗口内会正常弹出。
+  function isDoNotDisturbNow(): boolean {
+    const dnd = settingsStore.settings.reminder.doNotDisturb
+    if (!dnd?.enabled) return false
+    const toMinutes = (hhmm: string) => {
+      const [h, m] = (hhmm || '').split(':').map(Number)
+      return (h || 0) * 60 + (m || 0)
+    }
+    const start = toMinutes(dnd.start)
+    const end = toMinutes(dnd.end)
+    const now = new Date()
+    const cur = now.getHours() * 60 + now.getMinutes()
+    if (start === end) return false
+    if (start < end) return cur >= start && cur < end
+    return cur >= start || cur < end // 跨午夜
+  }
 
   // 请求通知权限
   async function requestNotificationPermission() {
@@ -55,6 +76,8 @@ export function useReminderNotifications(workspacePath: () => string | undefined
     try {
       const reminders = await ReminderService.GetAllReminders(path) as Reminder[]
       const now = new Date()
+
+      if (isDoNotDisturbNow()) return
 
       for (const reminder of reminders) {
         if (reminder.completed) continue

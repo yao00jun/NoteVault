@@ -169,9 +169,12 @@ func main() {
 		},
 	})
 
-	_ = mainWindow
-
 	err := wailsApp.Run()
+	// 退出前把搜索索引摘要落盘：索引平时刻意节流写盘，不显式 flush 的话
+	// 最后一次搜索之后的变更会丢，下次启动得重新扫一遍全库
+	if flushErr := container.FlushIndexes(); flushErr != nil {
+		log.Printf("[exit] 索引摘要落盘失败: %v", flushErr)
+	}
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -11,17 +11,17 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/notevault/notevault/internal/core"
 	"github.com/notevault/notevault/internal/infra/fsutil"
 	"github.com/notevault/notevault/internal/infra/schema"
-	"github.com/notevault/notevault/internal/service"
 )
 
 // core.PluginManifest / core.PluginInfo 已上移至 core（见 core/models.go），本包通过 core.PluginInfo 引用。
-// 编译时断言：PluginService 实现 service.PluginOperator 端口接口。
-var _ service.PluginOperator = (*PluginService)(nil)
+// PluginOperator 端口契约断言移至 service 包的外部测试（ports_contract_external_test.go），
+// 避免 plugin 生产代码反向依赖 service。
 
 // PluginService 插件管理服务：扫描插件目录、读 manifest、启用/禁用
 // 注：本轮只做"发现 + 管理"，不真正执行插件代码（执行需要 JS runtime，留 P9+）
@@ -29,6 +29,10 @@ type PluginService struct {
 	pluginsDir string
 	stateFile  string // 启用状态持久化文件（JSON：{pluginId: true}）
 	trustFile  string // 信任授权持久化文件（JSON：{pluginId: {hash, grantedAt}}）
+
+	// stateMu 串行化启用状态的读-改-写：并发 Enable/Disable 各自
+	// load→改→save 会互相覆盖丢更新。
+	stateMu sync.Mutex
 }
 
 // trustRecord 一次 full-trust 授权记录
@@ -132,12 +136,23 @@ func (s *PluginService) GetPlugin(id string) (*core.PluginInfo, error) {
 
 // EnablePlugin 启用插件
 func (s *PluginService) EnablePlugin(id string) error {
-	if id == "" {
-		return core.NewError(core.ErrInvalidInput, "插件 ID 不能为空")
-	}
-	if _, err := s.GetPlugin(id); err != nil {
+	if err := validatePluginID(id); err != nil {
 		return err
 	}
+	// 只 stat 目标文件确认存在：GetPlugin→ListPlugins 会把所有插件源码
+	// 全量读进内存，只为验证一个 ID 是否存在，纯属浪费
+	found := false
+	for _, ext := range []string{".js", ".mjs"} {
+		if _, err := os.Stat(filepath.Join(s.pluginsDir, id+ext)); err == nil {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return core.NewError(core.ErrNotFound, "插件不存在: "+id)
+	}
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
 	enabled := s.loadEnabledState()
 	enabled[id] = true
 	return s.saveEnabledState(enabled)
@@ -148,6 +163,8 @@ func (s *PluginService) DisablePlugin(id string) error {
 	if id == "" {
 		return core.NewError(core.ErrInvalidInput, "插件 ID 不能为空")
 	}
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
 	enabled := s.loadEnabledState()
 	enabled[id] = false
 	return s.saveEnabledState(enabled)

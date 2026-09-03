@@ -155,3 +155,88 @@ type NoopEmbedder struct{}
 func (NoopEmbedder) Embed(ctx context.Context, cfg EmbeddingConfig, texts []string) ([][]float32, error) {
 	return nil, fmt.Errorf("未配置 Embedding 端点，向量检索不可用（已降级为纯 BM25）")
 }
+
+// EmbeddingProbeResult 嵌入端点连通性自检结果（镜像 RerankProbeResult / LLMProbeResult）。
+// 供前端「设置 → 语义检索」页的「测试连接」按钮使用，让 embedding 配置在保存前
+// 就被明确校验——避免「以为配好、实际建向量索引才 404」的等待浪费，与「不静默」红线对齐。
+type EmbeddingProbeResult struct {
+	OK        bool   `json:"ok"`
+	Endpoint  string `json:"endpoint"`  // 实际探测的地址（应与真实嵌入请求一致）
+	IsLocal   bool   `json:"isLocal"`   // 是否本机端点（免鉴权）
+	LatencyMS int64  `json:"latencyMs"` // 往返耗时
+	Message   string `json:"message"`   // 失败原因或可操作提示
+}
+
+// ProbeEmbedding 对 embedding 端点做连通性自检。
+//
+// 关键约束：必须探测与实际嵌入请求**完全一致**的地址与协议（normalizeBaseURL + /embeddings），
+// 否则会出现「设置页显示可用、实际建索引却 404」的漂移。这里明确识别 401/403/404 等失败，
+// 而不是让调用方在批量建索引时才报模糊错误。
+func (s *LLMConfigService) ProbeEmbedding(apiKey, baseURL, model string) *EmbeddingProbeResult {
+	if strings.TrimSpace(model) == "" {
+		return &EmbeddingProbeResult{OK: false, Message: "未配置 Embedding 模型（model 为空），无法验证"}
+	}
+	base := normalizeBaseURL(baseURL)
+	endpoint := base + "/embeddings"
+	isLocal, _ := resolveLocalEndpoint(baseURL)
+	res := &EmbeddingProbeResult{Endpoint: endpoint, IsLocal: isLocal}
+
+	credential, err := requireCredential(baseURL, apiKey)
+	if err != nil {
+		res.Message = err.Error()
+		return res
+	}
+
+	body, err := json.Marshal(ollamaEmbedRequest{Input: []string{"connectivity check"}, Model: model})
+	if err != nil {
+		res.Message = fmt.Sprintf("构造请求失败：%v", err)
+		return res
+	}
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		res.Message = fmt.Sprintf("构造请求失败：%v", err)
+		return res
+	}
+	req.Header.Set("Content-Type", "application/json")
+	applyAuth(req, credential)
+
+	start := time.Now()
+	resp, err := s.client.Do(req)
+	res.LatencyMS = time.Since(start).Milliseconds()
+	if err != nil {
+		if isLocal {
+			res.Message = fmt.Sprintf("连接不上本机 embedding 服务：%v（请确认服务已启动且已 pull 对应模型）", err)
+		} else {
+			res.Message = fmt.Sprintf("连接失败：%v", err)
+		}
+		return res
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respData, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		var er ollamaEmbedResponse
+		if err := json.Unmarshal(respData, &er); err != nil {
+			res.Message = fmt.Sprintf("端点可达但响应解析失败：%v", err)
+			return res
+		}
+		if er.Error != nil && er.Error.Message != "" {
+			res.Message = fmt.Sprintf("服务错误：%s", er.Error.Message)
+			return res
+		}
+		if len(er.Data) == 0 || len(er.Data[0].Embedding) == 0 {
+			res.Message = "端点返回空向量，请检查模型是否支持 embedding"
+			return res
+		}
+		res.OK = true
+		res.Message = fmt.Sprintf("Embedding 端点可用（向量维度 %d）", len(er.Data[0].Embedding))
+		return res
+	case http.StatusUnauthorized, http.StatusForbidden:
+		res.Message = fmt.Sprintf("鉴权被拒绝（%d）：请检查 API Key", resp.StatusCode)
+		return res
+	default:
+		res.Message = fmt.Sprintf("端点返回 %d：%s", resp.StatusCode, string(respData))
+		return res
+	}
+}

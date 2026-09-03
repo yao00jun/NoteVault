@@ -39,7 +39,7 @@ func TestQnAService_Answer(t *testing.T) {
 	ClearAllSearchIndexes()
 	ws := newQnATestWorkspace(t)
 
-	var gotBody chatRequest
+	var gotBody openAIChatRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-key" {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -55,8 +55,8 @@ func TestQnAService_Answer(t *testing.T) {
 	defer server.Close()
 
 	svc := NewQnAService()
-	// 末尾三个空字符串为 embedding 配置（未配置 → 退化为纯 BM25，行为不变）
-	resp, err := svc.Answer("test-key", server.URL, "model-x", "", "", "", RerankConfig{}, ws, "Go 语言如何做并发编程")
+	// 末尾四个空字符串依次为 protocol / embedding 配置（未配置 → 退化为纯 BM25，行为不变）
+	resp, err := svc.Answer("test-key", server.URL, "model-x", "", "", "", "", RerankConfig{}, ws, "Go 语言如何做并发编程")
 	if err != nil {
 		t.Fatalf("Answer failed: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestQnAService_Answer(t *testing.T) {
 
 func TestQnAService_Answer_NoKey(t *testing.T) {
 	svc := NewQnAService()
-	_, err := svc.Answer("", "http://x", "m", "", "", "", RerankConfig{}, "/tmp", "问题")
+	_, err := svc.Answer("", "http://x", "m", "", "", "", "", RerankConfig{}, "/tmp", "问题")
 	if err == nil {
 		t.Errorf("expected error for empty key")
 	}
@@ -96,7 +96,7 @@ func TestQnAService_Answer_NoKey(t *testing.T) {
 
 func TestQnAService_Answer_EmptyQuestion(t *testing.T) {
 	svc := NewQnAService()
-	_, err := svc.Answer("k", "http://x", "m", "", "", "", RerankConfig{}, "/tmp", "   ")
+	_, err := svc.Answer("k", "http://x", "m", "", "", "", "", RerankConfig{}, "/tmp", "   ")
 	if err == nil {
 		t.Errorf("expected error for empty question")
 	}
@@ -104,7 +104,7 @@ func TestQnAService_Answer_EmptyQuestion(t *testing.T) {
 
 func TestQnAService_Answer_NoWorkspace(t *testing.T) {
 	svc := NewQnAService()
-	_, err := svc.Answer("k", "http://x", "m", "", "", "", RerankConfig{}, "", "问题")
+	_, err := svc.Answer("k", "http://x", "m", "", "", "", "", RerankConfig{}, "", "问题")
 	if err == nil {
 		t.Errorf("expected error for empty workspace")
 	}
@@ -124,7 +124,7 @@ func TestQnAService_Answer_NoMatch(t *testing.T) {
 
 	// 量子物理相关 token 不存在于任何文档，应直接返回提示且不调用 LLM
 	svc := NewQnAService()
-	resp, err := svc.Answer("k", server.URL, "m", "", "", "", RerankConfig{}, ws, "quantum entanglement physics")
+	resp, err := svc.Answer("k", server.URL, "m", "", "", "", "", RerankConfig{}, ws, "quantum entanglement physics")
 	if err != nil {
 		t.Fatalf("Answer failed: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestQnAService_Answer_APIError(t *testing.T) {
 	defer server.Close()
 
 	svc := NewQnAService()
-	_, err := svc.Answer("k", server.URL, "m", "", "", "", RerankConfig{}, ws, "Go 并发")
+	_, err := svc.Answer("k", server.URL, "m", "", "", "", "", RerankConfig{}, ws, "Go 并发")
 	if err == nil || !strings.Contains(err.Error(), "invalid api key") {
 		t.Errorf("expected API error, got %v", err)
 	}
@@ -288,8 +288,8 @@ func TestVectorStore_BuildAndSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVectorStore failed: %v", err)
 	}
-	if err := vs.Build(context.Background(), ws, fs, emb, cfg); err != nil {
-		t.Fatalf("Build failed: %v", err)
+	if err := vs.Sync(context.Background(), ws, fs, emb, cfg); err != nil {
+		t.Fatalf("Sync failed: %v", err)
 	}
 	if vs.Count() == 0 {
 		t.Fatal("expected vectors built")
@@ -377,7 +377,8 @@ func TestQnAService_RetrieveChunksHybrid_DegradesToBM25(t *testing.T) {
 
 // TestQnAService_SemanticRecall_RequiresOllama 是集成测试，验证真实 bge-m3 下
 // 语义召回（跨语言同义）相对纯 BM25 的提升。默认跳过，需本地 Ollama + bge-m3：
-//   NV_OLLAMA_TEST=1 go test ./internal/service/ -run SemanticRecall
+//
+//	NV_OLLAMA_TEST=1 go test ./internal/service/ -run SemanticRecall
 //
 // 2026-09-02 修正两处使本用例形同虚设的问题：
 //  1. embBaseURL 原传空串，normalizeBaseURL 会把它补成 https://api.openai.com/v1，
@@ -449,10 +450,10 @@ func (f *fakeReranker) Rerank(ctx context.Context, cfg RerankConfig, query strin
 	return out, nil
 }
 
-// TestReranker_OllamaRerank 验证 Ollama /api/rerank 响应解析（含 index 乱序）。
-func TestReranker_OllamaRerank(t *testing.T) {
+// TestReranker_CohereRerank_NoKey 验证本机兼容 /rerank 端点无需鉴权即可解析响应。
+func TestReranker_CohereRerank_NoKey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/rerank" {
+		if r.URL.Path != "/rerank" {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -463,7 +464,7 @@ func TestReranker_OllamaRerank(t *testing.T) {
 
 	r := NewReranker()
 	got, err := r.Rerank(context.Background(), RerankConfig{
-		Provider: RerankProviderOllama, BaseURL: server.URL, Model: "bge-reranker-v2-m3",
+		Provider: RerankProviderCohere, BaseURL: server.URL, Model: "bge-reranker-v2-m3",
 	}, "query", []string{"doc-a", "doc-b"})
 	if err != nil {
 		t.Fatalf("Rerank failed: %v", err)
@@ -543,7 +544,7 @@ func TestQnAService_RetrieveChunksHybrid_RerankReorders(t *testing.T) {
 	}
 
 	svc.reranker = &fakeReranker{reverse: true}
-	reranked := svc.retrieveChunksHybrid(ws, q, embCfg, RerankConfig{Provider: RerankProviderOllama, Model: "x"})
+	reranked := svc.retrieveChunksHybrid(ws, q, embCfg, RerankConfig{Provider: RerankProviderCohere, Model: "x"})
 	if len(reranked) != len(rrfOrder) {
 		t.Fatalf("length changed: %d vs %d", len(reranked), len(rrfOrder))
 	}
@@ -574,7 +575,7 @@ func TestQnAService_RetrieveChunksHybrid_RerankDegradesToRRF(t *testing.T) {
 	rffOnly := svcRRF.retrieveChunksHybrid(ws, q, embCfg, RerankConfig{})
 
 	svcErr := NewQnAServiceWithRegistry(fs, nil, &tokenEmbedder{dim: 64}, &fakeReranker{err: true})
-	reranked := svcErr.retrieveChunksHybrid(ws, q, embCfg, RerankConfig{Provider: RerankProviderOllama, Model: "x"})
+	reranked := svcErr.retrieveChunksHybrid(ws, q, embCfg, RerankConfig{Provider: RerankProviderCohere, Model: "x"})
 
 	if len(rffOnly) != len(reranked) {
 		t.Fatalf("length mismatch: %d vs %d", len(rffOnly), len(reranked))
@@ -600,7 +601,7 @@ func TestQnAService_HybridSearch_RerankDegradesToRRF(t *testing.T) {
 	if errOff != nil {
 		t.Fatalf("HybridSearch (rerank off) failed: %v", errOff)
 	}
-	on, errOn := svc.HybridSearch(ws, "Go 并发编程 goroutine", "", "", "", RerankConfig{Provider: RerankProviderOllama, Model: "x"})
+	on, errOn := svc.HybridSearch(ws, "Go 并发编程 goroutine", "", "", "", RerankConfig{Provider: RerankProviderCohere, Model: "x"})
 	if errOn != nil {
 		t.Fatalf("HybridSearch (rerank on) failed: %v", errOn)
 	}

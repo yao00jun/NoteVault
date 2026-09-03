@@ -19,7 +19,7 @@ func TestSummarizeService_Summarize(t *testing.T) {
 	defer server.Close()
 
 	svc := NewSummarizeService()
-	got, err := svc.Summarize("test-key", server.URL, "model-x", "这是一段需要总结的笔记内容")
+	got, err := svc.Summarize("test-key", server.URL, "model-x", "", "这是一段需要总结的笔记内容")
 	if err != nil {
 		t.Fatalf("Summarize failed: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestSummarizeService_Summarize(t *testing.T) {
 
 func TestSummarizeService_Summarize_NoKey(t *testing.T) {
 	svc := NewSummarizeService()
-	_, err := svc.Summarize("", "http://x", "m", "content")
+	_, err := svc.Summarize("", "http://x", "m", "", "content")
 	if err == nil {
 		t.Errorf("expected error for empty key")
 	}
@@ -38,7 +38,7 @@ func TestSummarizeService_Summarize_NoKey(t *testing.T) {
 
 func TestSummarizeService_Summarize_EmptyContent(t *testing.T) {
 	svc := NewSummarizeService()
-	_, err := svc.Summarize("k", "http://x", "m", "   ")
+	_, err := svc.Summarize("k", "http://x", "m", "", "   ")
 	if err == nil {
 		t.Errorf("expected error for empty content")
 	}
@@ -51,7 +51,7 @@ func TestSummarizeService_Summarize_APIError(t *testing.T) {
 	}))
 	defer server.Close()
 	svc := NewSummarizeService()
-	_, err := svc.Summarize("k", server.URL, "m", "c")
+	_, err := svc.Summarize("k", server.URL, "m", "", "c")
 	if err == nil || !strings.Contains(err.Error(), "invalid api key") {
 		t.Errorf("expected API error, got %v", err)
 	}

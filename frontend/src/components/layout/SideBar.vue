@@ -9,6 +9,7 @@ import {
   FolderOpen,
   FileText,
   Tags,
+  BarChart3,
   GitGraph,
   Table2,
   CheckSquare,
@@ -27,6 +28,7 @@ import {
 } from 'lucide-vue-next'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { FileService, WorkspaceService } from '@bindings/github.com/notevault/notevault/index.js'
@@ -45,7 +47,7 @@ const allWorkspaces = ref<{ id: string; name: string; path: string }[]>([])
 async function loadAllWorkspaces() {
   try {
     const list = await WorkspaceService.ListWorkspaces()
-    allWorkspaces.value = (list as any[]) || []
+    allWorkspaces.value = toWorkspaceList(list)
   } catch (e) {
     console.error('Failed to list workspaces:', e)
   }
@@ -63,7 +65,7 @@ async function switchWorkspace(wsId: string) {
     // 然后获取详细信息
     const ws = await WorkspaceService.GetWorkspaceByID(wsId)
     if (ws) {
-      workspaceStore.setCurrentWorkspace(ws as any)
+      workspaceStore.setCurrentWorkspace(toWorkspace(ws))
       workspaceStore.incrementFileTreeVersion()
       // 切换后回到知识库主页
       router.push('/knowledge')
@@ -91,7 +93,7 @@ async function createWorkspace() {
     if (!name) return
     const ws = await WorkspaceService.CreateWorkspace(name, selectedPath)
     if (ws) {
-      workspaceStore.setCurrentWorkspace(ws as any)
+      workspaceStore.setCurrentWorkspace(toWorkspace(ws))
       workspaceStore.incrementFileTreeVersion()
       router.push('/knowledge')
     }
@@ -187,6 +189,7 @@ interface NavItem {
 const navItems = computed<NavItem[]>(() => [
   { id: 'knowledge', label: t('sidebar.nav.knowledge'), icon: Library, route: '/knowledge', group: 'library' },
   { id: 'graph', label: t('sidebar.nav.graph'), icon: GitGraph, route: '/graph', group: 'library' },
+  { id: 'reports', label: t('sidebar.nav.reports'), icon: BarChart3, route: '/reports', group: 'library' },
   { id: 'bases', label: t('sidebar.nav.bases'), icon: Table2, route: '/bases', group: 'library' },
   { id: 'canvas', label: t('sidebar.nav.canvas'), icon: Square, route: '/canvas', group: 'library' },
   { id: 'todos', label: t('sidebar.nav.todos'), icon: CheckSquare, route: '/todos', group: 'tasks' },

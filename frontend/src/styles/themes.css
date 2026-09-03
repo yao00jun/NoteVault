@@ -1,0 +1,262 @@
+/* ============================================================
+   NoteVault 主题结构层 - 让三套主题"长得不一样"，而不只是换色
+   变量在 variables.css，本文件负责各主题的结构性差异：
+   - macOS   ：Liquid Glass —— 桌面渐变打底，毛玻璃标题栏/侧栏，内容区悬浮圆角卡，红绿灯窗控
+   - WinUI   ：Fluent 2   —— 云母底色，导航面板同底，内容区左上圆角卡，导航项左侧强调条
+   - Islands ：JetBrains  —— 深色底板，标题栏/侧栏/内容/状态栏全部是分离的圆角岛屿
+   选择器统一以 html[data-theme=...] 开头抬升优先级，压过组件 scoped 样式。
+   ============================================================ */
+
+/* ============================================================
+   macOS —— Liquid Glass
+   ============================================================ */
+
+/* 桌面渐变透出：容器铺"桌面"，玻璃面板叠其上 */
+html[data-theme="macos"] .app-container {
+  background: var(--bg-desktop);
+}
+
+/* 标题栏融入桌面，搜索框做成玻璃胶囊 */
+html[data-theme="macos"] .titlebar {
+  background: transparent;
+  border-bottom: none;
+}
+html[data-theme="macos"] .titlebar .search-box {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* 侧栏 = 真·毛玻璃，透过它能隐约看到桌面渐变 */
+html[data-theme="macos"] .sidebar {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-right: 1px solid var(--glass-border);
+}
+
+/* 内容区 = Tahoe 标志性的悬浮圆角内容卡 */
+html[data-theme="macos"] .app-main {
+  background: var(--bg-content);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  margin: 6px 10px 8px 0;
+}
+
+/* 状态栏同为玻璃条 */
+html[data-theme="macos"] .statusbar {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-top: none;
+}
+
+/* 导航项：胶囊形，选中即半透明苹果蓝 */
+html[data-theme="macos"] .nav-list .nav-item {
+  border-radius: 999px;
+}
+html[data-theme="macos"] .nav-list .nav-item.active {
+  background: var(--accent-alpha);
+  color: var(--accent);
+}
+
+/* 窗控：红绿灯三圆点，隐藏图标，悬停加深 */
+html[data-theme="macos"] .window-controls {
+  gap: 8px;
+  padding-right: 12px;
+}
+html[data-theme="macos"] .window-controls .win-btn {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border-radius: 50%;
+  color: transparent;
+  background: #d9d9de;
+}
+html[data-theme="macos"] .window-controls .win-btn.minimize {
+  background: #febc2e;
+}
+html[data-theme="macos"] .window-controls .win-btn.maximize {
+  background: #28c840;
+}
+html[data-theme="macos"] .window-controls .win-btn.close {
+  background: #ff5f57;
+}
+html[data-theme="macos"] .window-controls .win-btn:hover {
+  background: #d9d9de;
+  filter: brightness(0.82);
+  color: transparent;
+}
+html[data-theme="macos"] .window-controls .win-btn.minimize:hover {
+  background: #febc2e;
+}
+html[data-theme="macos"] .window-controls .win-btn.maximize:hover {
+  background: #28c840;
+}
+html[data-theme="macos"] .window-controls .win-btn.close:hover {
+  background: #ff5f57;
+}
+
+/* 焦点环与滚动条：细_overlay 风格 */
+html[data-theme="macos"] input:focus,
+html[data-theme="macos"] textarea:focus,
+html[data-theme="macos"] select:focus {
+  box-shadow: var(--focus-ring);
+}
+html[data-theme="macos"] ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+html[data-theme="macos"] ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 3px;
+}
+html[data-theme="macos"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.32);
+}
+
+/* ============================================================
+   WinUI 3 —— Fluent 2 / Mica
+   ============================================================ */
+
+/* Segoe UI Variable 打头，云母底透出 */
+html[data-theme="winui"] body {
+  font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI",
+    -apple-system, "Inter", sans-serif;
+}
+html[data-theme="winui"] .app-container {
+  background: var(--bg-desktop);
+}
+
+/* 标题栏与导航面板都吃 Mica 底，仅发丝线分隔 */
+html[data-theme="winui"] .titlebar {
+  background: transparent;
+  border-bottom: none;
+}
+html[data-theme="winui"] .sidebar {
+  background: transparent;
+  border-right: none;
+}
+
+/* 内容区 = Win11 内容卡：仅左上圆角 + 发丝描边 */
+html[data-theme="winui"] .app-main {
+  background: var(--bg-content);
+  border: 1px solid var(--border);
+  border-right: none;
+  border-bottom: none;
+  border-radius: var(--radius-md) 0 0 0;
+}
+
+/* 导航项：NavigationView 签名 —— 选中态左侧 3px 强调条 */
+html[data-theme="winui"] .nav-list .nav-item {
+  position: relative;
+  border-radius: var(--radius-sm);
+}
+html[data-theme="winui"] .nav-list .nav-item.active {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+html[data-theme="winui"] .nav-list .nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+/* 输入框：Fluent 文本框 —— 下缘强调线 */
+html[data-theme="winui"] input,
+html[data-theme="winui"] textarea {
+  border-radius: var(--radius-sm);
+  border-color: rgba(0, 0, 0, 0.14);
+}
+html[data-theme="winui"] input:focus,
+html[data-theme="winui"] textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 1px 0 0 var(--accent);
+}
+
+/* 焦点指示：Win11 黑色焦点框 */
+html[data-theme="winui"] :focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 1px;
+}
+html[data-theme="winui"] input:focus-visible,
+html[data-theme="winui"] textarea:focus-visible {
+  outline: none;
+}
+
+/* 滚动条：方头浅灰 */
+html[data-theme="winui"] ::-webkit-scrollbar-thumb {
+  background: #c8c8c8;
+  border-radius: 0;
+}
+html[data-theme="winui"] ::-webkit-scrollbar-thumb:hover {
+  background: #a9a9a9;
+}
+
+/* ============================================================
+   JetBrains Islands Dark —— 深色底板 + 悬浮岛屿
+   ============================================================ */
+
+/* 底板色 + 四周留缝，标题栏/侧栏/内容/状态栏成为分离的岛屿 */
+html[data-theme="islands-dark"] .app-container {
+  background: var(--bg-desktop);
+  gap: 8px;
+  padding: 8px;
+}
+html[data-theme="islands-dark"] .app-body {
+  gap: 8px;
+}
+html[data-theme="islands-dark"] .titlebar {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+html[data-theme="islands-dark"] .sidebar {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+html[data-theme="islands-dark"] .app-main {
+  background: var(--bg-content);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+html[data-theme="islands-dark"] .statusbar {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 导航项：岛屿内的小岛，选中态 #43454A + 琥珀文字 */
+html[data-theme="islands-dark"] .nav-list .nav-item {
+  border-radius: var(--radius-sm);
+}
+html[data-theme="islands-dark"] .nav-list .nav-item:hover {
+  background: var(--bg-hover);
+}
+html[data-theme="islands-dark"] .nav-list .nav-item.active {
+  background: var(--bg-active);
+  color: var(--accent);
+}
+
+/* 滚动条：与岛屿描边同阶 */
+html[data-theme="islands-dark"] ::-webkit-scrollbar-thumb {
+  background: #43454a;
+  border-radius: 3px;
+}
+html[data-theme="islands-dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #55575c;
+}

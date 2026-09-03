@@ -220,25 +220,24 @@ type modelsResponse struct {
 }
 
 // Probe 对端点做连通性自检。
-// 用 GET /models 而不是发一次真实的 chat 请求：前者不消耗 token、不产生费用，
-// 且能顺带把可用模型列表带回来给前端做下拉。
-func (s *LLMConfigService) Probe(apiKey, baseURL string) *LLMProbeResult {
-	base := normalizeBaseURL(baseURL)
-	isLocal, _ := resolveLocalEndpoint(baseURL)
-	res := &LLMProbeResult{Endpoint: base + "/models", IsLocal: isLocal}
+// 用协议对应的模型列表端点（通常是 GET /models）而不是发一次真实的 chat 请求：
+// 不消耗 token、不产生费用，且能顺带把可用模型列表带回来给前端做下拉。
+// 若端点不支持列举，只标记为「可达」而非失败。
+func (s *LLMConfigService) Probe(apiKey, baseURL, protocol string) *LLMProbeResult {
+	p := LLMProtocol(strings.ToLower(strings.TrimSpace(protocol)))
+	if p == "" {
+		p = LLMProtocolOpenAIChat
+	}
 
-	key, err := requireCredential(baseURL, apiKey)
+	isLocal, _ := resolveLocalEndpoint(baseURL)
+	res := &LLMProbeResult{IsLocal: isLocal}
+
+	req, endpoint, err := newProbeRequest(apiKey, baseURL, p)
 	if err != nil {
 		res.Message = err.Error()
 		return res
 	}
-
-	req, err := http.NewRequest(http.MethodGet, res.Endpoint, nil)
-	if err != nil {
-		res.Message = fmt.Sprintf("构造请求失败：%v", err)
-		return res
-	}
-	applyAuth(req, key)
+	res.Endpoint = endpoint
 
 	start := time.Now()
 	resp, err := s.client.Do(req)
@@ -259,25 +258,123 @@ func (s *LLMConfigService) Probe(apiKey, baseURL string) *LLMProbeResult {
 		return res
 	}
 	if resp.StatusCode != http.StatusOK {
-		// /models 未实现但 chat 可用的端点是存在的，因此不判定为彻底失败，
-		// 只是无法列出模型 —— 这里明确区分「连不上」与「连上了但不支持列举」。
+		// 模型列举端点未实现但 chat 可用的端点是存在的，因此不判定为彻底失败。
 		res.OK = true
-		res.Message = fmt.Sprintf("端点可达，但 /models 返回 %d（该端点可能未实现模型列举，不影响正常使用）", resp.StatusCode)
+		res.Message = fmt.Sprintf("端点可达，但返回 %d（该端点可能未实现模型列举，不影响正常使用）", resp.StatusCode)
 		return res
 	}
 
-	var mr modelsResponse
-	if err := json.Unmarshal(body, &mr); err == nil {
-		for _, m := range mr.Data {
-			if m.ID != "" {
-				res.Models = append(res.Models, m.ID)
-			}
-		}
-		sort.Strings(res.Models)
-	}
 	res.OK = true
+	switch p {
+	case LLMProtocolOpenAIChat, LLMProtocolOpenAIResponses:
+		var mr modelsResponse
+		if err := json.Unmarshal(body, &mr); err == nil {
+			for _, m := range mr.Data {
+				if m.ID != "" {
+					res.Models = append(res.Models, m.ID)
+				}
+			}
+			sort.Strings(res.Models)
+		}
+	case LLMProtocolAnthropicMessages:
+		var ar anthropicModelsResponse
+		if err := json.Unmarshal(body, &ar); err == nil {
+			for _, m := range ar.Data {
+				if m.ID != "" {
+					res.Models = append(res.Models, m.ID)
+				}
+			}
+			sort.Strings(res.Models)
+		}
+	case LLMProtocolGoogleGemini, LLMProtocolGoogleVertex:
+		var gr geminiModelsResponse
+		if err := json.Unmarshal(body, &gr); err == nil {
+			for _, m := range gr.Models {
+				if m.Name != "" {
+					res.Models = append(res.Models, m.Name)
+				}
+			}
+			sort.Strings(res.Models)
+		}
+	}
 	if len(res.Models) == 0 {
 		res.Message = "端点可达，但未返回模型列表"
 	}
 	return res
+}
+
+// newProbeRequest 按协议构造自检请求与探测地址。
+func newProbeRequest(apiKey, baseURL string, p LLMProtocol) (*http.Request, string, error) {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if baseURL == "" {
+		switch p {
+		case LLMProtocolAnthropicMessages:
+			baseURL = "https://api.anthropic.com/v1"
+		case LLMProtocolGoogleGemini:
+			baseURL = "https://generativelanguage.googleapis.com/v1beta"
+		case LLMProtocolGoogleVertex:
+			return nil, "", fmt.Errorf("Vertex AI 必须填写 Base URL")
+		default:
+			baseURL = "https://api.openai.com/v1"
+		}
+	}
+
+	switch p {
+	case LLMProtocolAnthropicMessages:
+		endpoint := baseURL + "/models"
+		req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, "", err
+		}
+		req.Header.Set("anthropic-version", "2023-06-01")
+		if key := strings.TrimSpace(apiKey); key != "" {
+			req.Header.Set("x-api-key", key)
+		}
+		return req, endpoint, nil
+	case LLMProtocolGoogleGemini:
+		// Key 走请求头（同 llmclient.go 口径），避免 URL 进错误信息泄漏 Key
+		endpoint := baseURL + "/models"
+		req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, "", err
+		}
+		if key := strings.TrimSpace(apiKey); key != "" {
+			req.Header.Set("x-goog-api-key", key)
+		}
+		return req, endpoint, nil
+	case LLMProtocolGoogleVertex:
+		endpoint := baseURL + "/models"
+		req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, "", err
+		}
+		if key := strings.TrimSpace(apiKey); key != "" {
+			req.Header.Set("Authorization", "Bearer "+key)
+		}
+		return req, endpoint, nil
+	default:
+		endpoint := baseURL + "/models"
+		req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, "", err
+		}
+		if key := strings.TrimSpace(apiKey); key != "" {
+			req.Header.Set("Authorization", "Bearer "+key)
+		}
+		return req, endpoint, nil
+	}
+}
+
+// anthropicModelsResponse Anthropic /v1/models 响应（与 OpenAI 同构）。
+type anthropicModelsResponse struct {
+	Data []struct {
+		ID string `json:"id"`
+	} `json:"data"`
+}
+
+// geminiModelsResponse Gemini /v1beta/models 响应。
+type geminiModelsResponse struct {
+	Models []struct {
+		Name string `json:"name"`
+	} `json:"models"`
 }

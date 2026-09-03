@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, watch, nextTick, ref, onMounted, onBeforeUnmount } from 'vue'
 import { marked } from 'marked'
+import { sanitizeHtml } from '@/utils/sanitize'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { FileService } from '@bindings/github.com/notevault/notevault/index.js'
@@ -235,16 +236,32 @@ function preprocessBlockIDs(content: string): string {
   })
 }
 
+// 输入防抖：编辑时每个按键都会触发 props.content 变化，全量
+// 「4 段正则预处理 + marked.parse」在大文档上是可感知的卡顿；
+// 250ms debounce 让渲染只跟随停下来之后的最终内容。
+const debouncedContent = ref(props.content || '')
+let contentDebounceTimer: ReturnType<typeof setTimeout> | null = null
+watch(() => props.content, (val) => {
+  if (contentDebounceTimer) clearTimeout(contentDebounceTimer)
+  contentDebounceTimer = setTimeout(() => {
+    debouncedContent.value = val
+  }, 250)
+})
+onBeforeUnmount(() => {
+  if (contentDebounceTimer) clearTimeout(contentDebounceTimer)
+})
+
 const html = computed(() => {
   try {
-    let s = props.content || ''
+    let s = debouncedContent.value || ''
     // 顺序：嵌入 → wiki-link → 高亮 → 块ID
     // 嵌入必须先于 wiki-link（同后端口径）
     s = preprocessEmbeds(s)
     s = preprocessWikiLinks(s)
     s = preprocessHighlights(s)
     s = preprocessBlockIDs(s)
-    return marked.parse(s) as string
+    // XSS 防线：marked 透传原始 HTML，笔记里的 onerror 等会在此执行
+    return sanitizeHtml(marked.parse(s) as string)
   } catch (e) {
     return '<p style="color:red">Markdown 解析错误</p>'
   }
@@ -504,7 +521,7 @@ async function loadEmbeds(root: HTMLElement, depth = 0) {
       s = preprocessWikiLinks(s)
       s = preprocessHighlights(s)
       s = preprocessBlockIDs(s)
-      const inner = marked.parse(s) as string
+      const inner = sanitizeHtml(marked.parse(s) as string)
       el.classList.remove('nv-embed-loading')
       el.classList.add('nv-embed-loaded')
       el.innerHTML = `<div class="nv-embed-header"><span class="nv-embed-link">${escapeHtml(file)}${anchor ? '#' + escapeHtml(anchor) : ''}</span></div><div class="nv-embed-body">${inner}</div>`
@@ -897,7 +914,7 @@ onBeforeUnmount(() => {
 }
 
 /* 嵌入内段落缩进减半，视觉上区分 */
-.markdown-preview :deep(.nv-embed-body :deep(p)) {
+.markdown-preview :deep(.nv-embed-body p) {
   margin: var(--space-2) 0;
 }
 

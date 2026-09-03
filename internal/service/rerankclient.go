@@ -21,20 +21,18 @@ import (
 // 与 EmbeddingClient 同模式：Reranker 是无状态组件，端点配置（provider/baseURL/
 // model/apiKey）在每次调用时传入，便于与 LLM / Embedding 配置各自独立（P1-6 #2）。
 //
-// 默认实现 defaultReranker 按 provider 分发到不同厂商的 /rerank 端点：
-//   - ollama：本机 Ollama 的 /api/rerank（bge-reranker-v2-m3 自托管，localhost 免鉴权）
-//   - cohere：Cohere 的 /v1/rerank（需 API Key）
-// 两者响应同构（results[].index + relevance_score），共用一套解析。
+// 默认实现 defaultReranker 按 provider 分发到兼容的 /rerank 端点：
+//   - cohere：Cohere / 硅基流动等 /v1/rerank（需 API Key）
+// 响应同构（results[].index + relevance_score），共用一套解析。
 // 未配置时由 NoopReranker 返回错误，触发检索降级为纯 RRF（红线 #1）。
 // ---------------------------------------------------------------------------
 
 // RerankProvider 标识重排序服务的厂商/协议。
+// Ollama 已从选项中移除（原生不支持 /api/rerank，上游 PR 未合并）。
 type RerankProvider string
 
 const (
-	// RerankProviderOllama 本机 Ollama /api/rerank 端点（默认，免鉴权）。
-	RerankProviderOllama RerankProvider = "ollama"
-	// RerankProviderCohere Cohere /v1/rerank 端点（需 API Key）。
+	// RerankProviderCohere Cohere / 硅基流动等兼容 /v1/rerank 端点（需 API Key）。
 	RerankProviderCohere RerankProvider = "cohere"
 )
 
@@ -81,12 +79,10 @@ func rerankEndpointURL(cfg RerankConfig) (string, error) {
 		base += "/"
 	}
 	switch RerankProvider(strings.ToLower(strings.TrimSpace(string(cfg.Provider)))) {
-	case RerankProviderOllama:
-		return base + "api/rerank", nil
 	case RerankProviderCohere:
 		return base + "rerank", nil
 	default:
-		return "", fmt.Errorf("不支持的 Rerank provider: %q（仅支持 ollama / cohere）", cfg.Provider)
+		return "", fmt.Errorf("不支持的 Rerank provider: %q（仅支持 cohere）", cfg.Provider)
 	}
 }
 
@@ -164,12 +160,7 @@ func (s *LLMConfigService) ProbeRerank(cfg RerankConfig) *RerankProbeResult {
 		res.Message = fmt.Sprintf("鉴权被拒绝（%d）：请检查 API Key", resp.StatusCode)
 		return res
 	case http.StatusNotFound:
-		if RerankProvider(strings.ToLower(strings.TrimSpace(string(cfg.Provider)))) == RerankProviderOllama {
-			res.Message = "Ollama 不提供 /api/rerank 端点（Ollama 原生不支持重排，上游 PR 未合并）。" +
-				"请改用 Cohere，或关闭重排——否则检索会静默降级为纯 RRF，你不会看到任何报错。"
-		} else {
-			res.Message = fmt.Sprintf("端点返回 404，请检查 baseURL 是否指向 rerank 服务（当前探测 %s）", url)
-		}
+		res.Message = fmt.Sprintf("端点返回 404，请检查 baseURL 是否指向 rerank 服务（当前探测 %s）", url)
 		return res
 	default:
 		res.Message = fmt.Sprintf("端点返回 %d：%s", resp.StatusCode, string(respData))
@@ -196,7 +187,7 @@ type defaultReranker struct {
 	client *http.Client
 }
 
-// NewReranker 创建默认重排客户端（分发 ollama / cohere）。
+// NewReranker 创建默认重排客户端（仅分发 cohere 兼容端点）。
 func NewReranker() Reranker {
 	return &defaultReranker{
 		client: &http.Client{Timeout: 30 * time.Second},
@@ -212,46 +203,14 @@ func (c *defaultReranker) Rerank(ctx context.Context, cfg RerankConfig, query st
 		return nil, fmt.Errorf("未配置 Rerank（provider/model 为空），重排序不可用（已降级为纯 RRF 融合）")
 	}
 	switch RerankProvider(strings.ToLower(strings.TrimSpace(string(cfg.Provider)))) {
-	case RerankProviderOllama:
-		return c.rerankOllama(ctx, cfg, query, documents)
 	case RerankProviderCohere:
 		return c.rerankCohere(ctx, cfg, query, documents)
 	default:
-		return nil, fmt.Errorf("不支持的 Rerank provider: %q（仅支持 ollama / cohere）", cfg.Provider)
+		return nil, fmt.Errorf("不支持的 Rerank provider: %q（仅支持 cohere）", cfg.Provider)
 	}
 }
 
-// rerankOllama 调用本机 Ollama 的 /api/rerank。
-// 本机端点（localhost / 127.0.0.1）免鉴权，requireCredential 会放行。
-func (c *defaultReranker) rerankOllama(ctx context.Context, cfg RerankConfig, query string, documents []string) ([]RerankResult, error) {
-	url, err := rerankEndpointURL(cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	body, err := json.Marshal(map[string]any{
-		"model":     cfg.Model,
-		"query":     query,
-		"documents": documents,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("构造 rerank 请求失败：%w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("构造 rerank 请求失败：%w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	credential, err := requireCredential(cfg.BaseURL, cfg.APIKey)
-	if err != nil {
-		return nil, err
-	}
-	applyAuth(req, credential)
-
-	return c.doRerank(req)
-}
-
-// rerankCohere 调用 Cohere 的 /v1/rerank（需 API Key，走 Bearer）。
+// rerankCohere 调用 Cohere 兼容的 /v1/rerank（需 API Key，走 Bearer）。
 func (c *defaultReranker) rerankCohere(ctx context.Context, cfg RerankConfig, query string, documents []string) ([]RerankResult, error) {
 	url, err := rerankEndpointURL(cfg)
 	if err != nil {

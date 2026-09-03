@@ -118,7 +118,7 @@ func TestLLMConfigService_Probe_Success(t *testing.T) {
 
 	s := NewLLMConfigService()
 	// httptest 监听 127.0.0.1，因此会被判定为本机端点
-	res := s.Probe("", srv.URL+"/v1")
+	res := s.Probe("", srv.URL+"/v1", "")
 	if !res.OK {
 		t.Fatalf("expected OK, got message=%q", res.Message)
 	}
@@ -137,7 +137,7 @@ func TestLLMConfigService_Probe_Unauthorized(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	res := NewLLMConfigService().Probe("sk-bad", srv.URL+"/v1")
+	res := NewLLMConfigService().Probe("sk-bad", srv.URL+"/v1", "")
 	if res.OK {
 		t.Fatal("401 不应判定为成功")
 	}
@@ -155,7 +155,7 @@ func TestLLMConfigService_Probe_ModelsNotImplemented(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	res := NewLLMConfigService().Probe("", srv.URL+"/v1")
+	res := NewLLMConfigService().Probe("", srv.URL+"/v1", "")
 	if !res.OK {
 		t.Fatalf("端点可达但未实现 /models，应仍判定为可用，message=%q", res.Message)
 	}
@@ -170,7 +170,7 @@ func TestLLMConfigService_Probe_ConnectionRefused(t *testing.T) {
 	url := srv.URL
 	srv.Close()
 
-	res := NewLLMConfigService().Probe("", url+"/v1")
+	res := NewLLMConfigService().Probe("", url+"/v1", "")
 	if res.OK {
 		t.Fatal("连接被拒不应判定为成功")
 	}

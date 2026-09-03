@@ -7,6 +7,7 @@ import { useSettingsStore } from './stores/settings'
 import { installErrorReporter } from './composables/useErrorReporter'
 import './styles/variables.css'
 import './styles/global.css'
+import './styles/themes.css'
 
 const app = createApp(App)
 
