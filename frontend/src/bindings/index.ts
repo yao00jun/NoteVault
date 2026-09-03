@@ -34,6 +34,7 @@ export {
   LLMConfigService,
   QnAService,
   ReminderService,
+  ReportService,
   SearchService,
   SnapshotService,
   StatsService,

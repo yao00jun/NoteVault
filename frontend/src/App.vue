@@ -123,7 +123,11 @@ function handleNewFileFromPalette() {
             name="fade"
             mode="out-in"
           >
-            <component :is="Component" />
+            <!-- 仅保活编辑器：标签页与未保存内容在路由切换时不丢。
+                 其余视图保持原样销毁重建，避免图谱/报表等大对象常驻内存。 -->
+            <keep-alive include="EditorView">
+              <component :is="Component" />
+            </keep-alive>
           </transition>
         </RouterView>
       </main>

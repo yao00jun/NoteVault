@@ -11,13 +11,15 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { BarChart3, Flame, Link2, CalendarRange, Activity } from 'lucide-vue-next'
-import { StatsService, GraphService } from '@bindings/github.com/notevault/notevault/index.js'
+import { BarChart3, Flame, Link2, CalendarRange, Activity, FileText, History, Loader2 } from 'lucide-vue-next'
+import { StatsService, GraphService, ReportService } from '@bindings/github.com/notevault/notevault/index.js'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useSettingsStore } from '@/stores/settings'
 
 const { t } = useI18n()
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
+const settingsStore = useSettingsStore()
 
 interface DayActivity {
   date: string
@@ -40,8 +42,13 @@ const HEATMAP_DAYS = 91 // 13 周 × 7 天，与 GitHub 首页卡片同规格
 
 const activity = ref<WritingActivity | null>(null)
 const topLinked = ref<TopLinked[]>([])
+const onThisDay = ref<string[]>([])
 const loading = ref(false)
 const errorMsg = ref('')
+
+const generating = ref(false)
+const generateMsg = ref('')
+const generateOk = ref(false)
 
 async function load() {
   const ws = workspaceStore.currentWorkspace
@@ -49,11 +56,13 @@ async function load() {
   loading.value = true
   errorMsg.value = ''
   try {
-    const [act, graph] = await Promise.all([
+    const [act, graph, memory] = await Promise.all([
       StatsService.GetWritingActivity(ws.path, HEATMAP_DAYS) as Promise<WritingActivity | null>,
       GraphService.GetGraph(ws.path) as Promise<{ nodes: Array<{ id: string; title: string; path: string; resolved: boolean }>; edges: Array<{ source: string; target: string }> } | null>,
+      StatsService.GetOnThisDay(ws.path) as Promise<string[] | null>,
     ])
     activity.value = act
+    onThisDay.value = memory ?? []
 
     // 入度统计：一条边指向某笔记就记一次被链接
     const inDegree = new Map<string, number>()
@@ -107,6 +116,33 @@ function openFile(path: string) {
   workspaceStore.incrementFileTreeVersion()
   router.push('/editor')
 }
+
+// 生成本周知识周报：AI 配置了就走 LLM 回顾，没配置/失败自动降级纯统计版
+async function generateWeeklyReport() {
+  if (generating.value) return
+  const ws = workspaceStore.currentWorkspace
+  if (!ws?.path) return
+  generating.value = true
+  generateMsg.value = ''
+  try {
+    const ai = settingsStore.settings.ai
+    const result = (await ReportService.GenerateWeeklyReport(ws.path, {
+      baseURL: ai.baseURL,
+      model: ai.model,
+      apiKey: ai.apiKey,
+      protocol: ai.protocol,
+    })) as { path: string; aiUsed: boolean; notes: number; message: string }
+    generateOk.value = result.aiUsed
+    generateMsg.value = result.message
+    await load()
+    openFile(result.path)
+  } catch (e) {
+    generateOk.value = false
+    generateMsg.value = (e as Error).message
+  } finally {
+    generating.value = false
+  }
+}
 </script>
 
 <template>
@@ -115,7 +151,7 @@ function openFile(path: string) {
       <div class="rp-banner-icon">
         <BarChart3 :size="24" />
       </div>
-      <div>
+      <div class="rp-banner-text">
         <h1 class="rp-title">
           {{ t('reports.title') }}
         </h1>
@@ -123,7 +159,32 @@ function openFile(path: string) {
           {{ t('reports.subtitle') }}
         </p>
       </div>
+      <div class="rp-banner-actions">
+        <button
+          class="rp-generate-btn"
+          :disabled="generating"
+          @click="generateWeeklyReport"
+        >
+          <Loader2
+            v-if="generating"
+            :size="14"
+            class="spin"
+          />
+          <FileText
+            v-else
+            :size="14"
+          />
+          <span>{{ generating ? t('reports.generating') : t('reports.generateWeekly') }}</span>
+        </button>
+      </div>
     </header>
+    <div
+      v-if="generateMsg"
+      class="rp-generate-msg"
+      :class="{ ok: generateOk }"
+    >
+      {{ generateMsg }}
+    </div>
 
     <div
       v-if="errorMsg"
@@ -287,6 +348,28 @@ function openFile(path: string) {
             </button>
           </li>
         </ol>
+      </section>
+
+      <!-- 那年今日 -->
+      <section
+        v-if="onThisDay.length"
+        class="rp-section"
+      >
+        <h2 class="rp-section-title">
+          <History :size="15" />
+          {{ t('reports.onThisDay') }}
+        </h2>
+        <div class="rp-memory-list">
+          <button
+            v-for="f in onThisDay"
+            :key="f"
+            class="rp-memory-chip"
+            :title="f"
+            @click="openFile(f)"
+          >
+            {{ f.split('/').pop()?.replace(/\.md$/i, '') }}
+          </button>
+        </div>
       </section>
     </template>
   </div>
@@ -472,5 +555,74 @@ function openFile(path: string) {
   font-size: var(--text-xs);
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+.rp-banner-text {
+  flex: 1;
+  min-width: 0;
+}
+.rp-banner-actions {
+  flex-shrink: 0;
+}
+.rp-generate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  transition: opacity var(--transition-fast);
+}
+.rp-generate-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+.rp-generate-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.rp-generate-msg {
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-md);
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--warning);
+  font-size: var(--text-sm);
+}
+.rp-generate-msg.ok {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--success);
+}
+.rp-memory-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.rp-memory-chip {
+  padding: var(--space-1) var(--space-3);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.rp-memory-chip:hover {
+  color: var(--accent);
+  border-color: var(--border-accent);
+}
+.spin {
+  animation: rp-spin 1s linear infinite;
+}
+@keyframes rp-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>

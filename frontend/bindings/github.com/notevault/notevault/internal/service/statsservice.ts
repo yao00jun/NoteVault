@@ -15,6 +15,15 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * GetOnThisDay 返回「那年今日」：往年同月同日有改动的笔记（按时间倒序，最多 5 篇）。
+ * 注意基于文件 modtime：笔记今年若被改过，modtime 已变，旧年份的那次改动
+ * 就不再出现在这里——这是纯文件存储下不维护创建时间索引的合理取舍。
+ */
+export function GetOnThisDay(workspacePath: string): $CancellablePromise<string[] | null> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.StatsService.GetOnThisDay", workspacePath);
+}
+
+/**
  * GetTodayStats 汇总今日工作台数据。
  * 待办与提醒复用各自服务的既有接口；子项失败降级为零值不阻塞。
  */

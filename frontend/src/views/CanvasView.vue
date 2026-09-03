@@ -445,6 +445,10 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
+  // 卸载时可能正处于拖拽中：window 级 mousemove/mouseup 监听器带闭包，
+  // 不摘除会连着 drag 状态一起泄漏
+  window.removeEventListener('mousemove', onWindowMove)
+  window.removeEventListener('mouseup', onWindowUp)
   flushSave()
 })
 

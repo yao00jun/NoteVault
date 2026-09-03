@@ -6,12 +6,13 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 
 vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
-  StatsService: { GetWritingActivity: vi.fn() },
+  StatsService: { GetWritingActivity: vi.fn(), GetOnThisDay: vi.fn(async () => []) },
   GraphService: { GetGraph: vi.fn() },
+  ReportService: { GenerateWeeklyReport: vi.fn() },
 }))
 
 import ReportsView from './ReportsView.vue'
-import { StatsService, GraphService } from '@bindings/github.com/notevault/notevault/index.js'
+import { StatsService, GraphService, ReportService } from '@bindings/github.com/notevault/notevault/index.js'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const mockedActivity = vi.mocked(StatsService.GetWritingActivity)
@@ -121,5 +122,51 @@ describe('ReportsView（写作报表中心）', () => {
 
     expect(wrapper.find('.rp-error').exists()).toBe(true)
     expect(wrapper.find('.rp-error').text()).toContain('bridge down')
+  })
+
+  it('点击生成周报按钮调用后端并打开生成的笔记', async () => {
+    mockedActivity.mockResolvedValue(makeActivity(91, {}) as any)
+    mockedGraph.mockResolvedValue({ nodes: [], edges: [] } as any)
+    const mockedGenerate = vi.mocked(ReportService.GenerateWeeklyReport)
+    mockedGenerate.mockReset()
+    mockedGenerate.mockResolvedValue({
+      path: 'Reports/2026-W36.md',
+      aiUsed: true,
+      notes: 3,
+      todos: 1,
+      message: '',
+    } as any)
+
+    const { wrapper } = mountReports()
+    await flushPromises()
+
+    await wrapper.find('.rp-generate-btn').trigger('click')
+    await flushPromises()
+
+    expect(mockedGenerate).toHaveBeenCalledTimes(1)
+    // 断言透传的是设置页的 AI 配置（默认值来自 settings store）
+    expect(mockedGenerate.mock.calls[0][1]).toMatchObject({
+      baseURL: 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+      protocol: 'openai-chat',
+    })
+  })
+
+  it('周报生成失败时展示后端错误信息', async () => {
+    mockedActivity.mockResolvedValue(makeActivity(91, {}) as any)
+    mockedGraph.mockResolvedValue({ nodes: [], edges: [] } as any)
+    const mockedGenerate = vi.mocked(ReportService.GenerateWeeklyReport)
+    mockedGenerate.mockReset()
+    mockedGenerate.mockRejectedValue(new Error('写入周报失败'))
+
+    const { wrapper } = mountReports()
+    await flushPromises()
+
+    await wrapper.find('.rp-generate-btn').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.rp-generate-msg').exists()).toBe(true)
+    expect(wrapper.find('.rp-generate-msg').text()).toContain('写入周报失败')
+    expect(wrapper.find('.rp-generate-msg').classes()).not.toContain('ok')
   })
 })

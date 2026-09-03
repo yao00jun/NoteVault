@@ -981,6 +981,46 @@ export interface TrashedFile {
 }
 
 /**
+ * WeeklyReportAIConfig 生成周报时的可选 AI 配置（与设置页 AI 总结同源）。
+ */
+export interface WeeklyReportAIConfig {
+    "baseURL": string;
+    "model": string;
+    "apiKey": string;
+    "protocol": string;
+}
+
+/**
+ * WeeklyReportResult 周报生成结果。
+ */
+export interface WeeklyReportResult {
+    /**
+     * 生成的周报相对路径（正斜杠）
+     */
+    "path": string;
+
+    /**
+     * AI 段落是否生成成功
+     */
+    "aiUsed": boolean;
+
+    /**
+     * 本周改动笔记数
+     */
+    "notes": number;
+
+    /**
+     * 当前未完成待办数
+     */
+    "todos": number;
+
+    /**
+     * Message 降级说明：AI 失败/未配置时非空，前端据此提示（空=完全成功）
+     */
+    "message": string;
+}
+
+/**
  * Workspace 表示一个知识库工作区
  */
 export interface Workspace {

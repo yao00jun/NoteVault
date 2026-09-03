@@ -757,6 +757,9 @@ export default {
     links: '条链接',
     noData: '还没有写作记录，去写第一篇笔记吧',
     emptyGraph: '还没有双向链接，用 [[链接]] 把笔记连起来',
+    generateWeekly: '生成本周周报',
+    generating: '正在生成…',
+    onThisDay: '那年今日',
   },
   knowledge: {
     defaultTitle: 'NoteVault 知识库',

@@ -236,9 +236,24 @@ function preprocessBlockIDs(content: string): string {
   })
 }
 
+// 输入防抖：编辑时每个按键都会触发 props.content 变化，全量
+// 「4 段正则预处理 + marked.parse」在大文档上是可感知的卡顿；
+// 250ms debounce 让渲染只跟随停下来之后的最终内容。
+const debouncedContent = ref(props.content || '')
+let contentDebounceTimer: ReturnType<typeof setTimeout> | null = null
+watch(() => props.content, (val) => {
+  if (contentDebounceTimer) clearTimeout(contentDebounceTimer)
+  contentDebounceTimer = setTimeout(() => {
+    debouncedContent.value = val
+  }, 250)
+})
+onBeforeUnmount(() => {
+  if (contentDebounceTimer) clearTimeout(contentDebounceTimer)
+})
+
 const html = computed(() => {
   try {
-    let s = props.content || ''
+    let s = debouncedContent.value || ''
     // 顺序：嵌入 → wiki-link → 高亮 → 块ID
     // 嵌入必须先于 wiki-link（同后端口径）
     s = preprocessEmbeds(s)

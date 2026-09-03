@@ -150,11 +150,17 @@ async function migrateLegacyApiKey(): Promise<void> {
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>(loadSettings())
 
+  // 恢复门闩：restoreApiKey 把同一个 Key 写回 settings 会触发下方三个
+  // apiKey watch，把恢复值再 SaveCredential 一遍（幂等但多余的往返）。
+  // 恢复期间挂上门闩，watch 直接跳过。
+  let restoringKeys = false
+
   /**
    * P2-5：从系统凭据库恢复 apiKey / embedding apiKey（应用启动路径，异步不阻塞首屏）。
    * 凭据库不可用（如未授权访问）时不阻塞：用户在设置页重填一次即可。
    */
   async function restoreApiKey(): Promise<void> {
+    restoringKeys = true
     try {
       const key = await CredentialService.GetCredential(API_KEY_CREDENTIAL)
       if (typeof key === 'string' && key !== '' && settings.value.ai.apiKey === '') {
@@ -178,6 +184,8 @@ export const useSettingsStore = defineStore('settings', () => {
       }
     } catch (e) {
       console.warn('[settings] 从系统凭据库恢复 Rerank Key 失败:', e)
+    } finally {
+      restoringKeys = false
     }
   }
 
@@ -207,6 +215,7 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(
     () => settings.value.ai.apiKey,
     (key) => {
+      if (restoringKeys) return
       void CredentialService.SaveCredential(API_KEY_CREDENTIAL, key ?? '').catch((e) => {
         console.warn('[settings] 保存 API Key 到系统凭据库失败:', e)
       })
@@ -217,6 +226,7 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(
     () => settings.value.embedding.apiKey,
     (key) => {
+      if (restoringKeys) return
       void CredentialService.SaveCredential(EMBEDDING_API_KEY_CREDENTIAL, key ?? '').catch((e) => {
         console.warn('[settings] 保存 Embedding Key 到系统凭据库失败:', e)
       })
@@ -227,6 +237,7 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(
     () => settings.value.rerank.apiKey,
     (key) => {
+      if (restoringKeys) return
       void CredentialService.SaveCredential(RERANK_API_KEY_CREDENTIAL, key ?? '').catch((e) => {
         console.warn('[settings] 保存 Rerank Key 到系统凭据库失败:', e)
       })

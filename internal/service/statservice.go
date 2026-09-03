@@ -210,6 +210,32 @@ func (s *StatsService) GetWritingActivity(workspacePath string, days int) (*Writ
 	return activity, nil
 }
 
+// GetOnThisDay 返回「那年今日」：往年同月同日有改动的笔记（按时间倒序，最多 5 篇）。
+// 注意基于文件 modtime：笔记今年若被改过，modtime 已变，旧年份的那次改动
+// 就不再出现在这里——这是纯文件存储下不维护创建时间索引的合理取舍。
+func (s *StatsService) GetOnThisDay(workspacePath string) ([]string, error) {
+	_, recents, err := scanEditActivity(workspacePath)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	var hits []editRecent
+	for _, r := range recents {
+		if r.mod.Year() < now.Year() && r.mod.Month() == now.Month() && r.mod.Day() == now.Day() {
+			hits = append(hits, r)
+		}
+	}
+	sort.Slice(hits, func(i, j int) bool { return hits[i].mod.After(hits[j].mod) })
+	out := make([]string, 0, 5)
+	for i, h := range hits {
+		if i >= 5 {
+			break
+		}
+		out = append(out, h.rel)
+	}
+	return out, nil
+}
+
 // truncateDay 去掉时分秒（本地时区），得到当天 0 点。
 func truncateDay(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())

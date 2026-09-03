@@ -757,6 +757,9 @@ export default {
     links: 'links',
     noData: 'No writing activity yet — go write your first note',
     emptyGraph: 'No backlinks yet — connect notes with [[links]]',
+    generateWeekly: 'Generate weekly report',
+    generating: 'Generating…',
+    onThisDay: 'On this day',
   },
   knowledge: {
     defaultTitle: 'NoteVault Knowledge Hub',

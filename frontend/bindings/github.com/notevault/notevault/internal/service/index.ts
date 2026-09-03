@@ -13,6 +13,7 @@ import * as ImportService from "./importservice.js";
 import * as LLMConfigService from "./llmconfigservice.js";
 import * as QnAService from "./qnaservice.js";
 import * as ReminderService from "./reminderservice.js";
+import * as ReportService from "./reportservice.js";
 import * as SearchService from "./searchservice.js";
 import * as SnapshotService from "./snapshotservice.js";
 import * as StatsService from "./statsservice.js";
@@ -36,6 +37,7 @@ export {
     LLMConfigService,
     QnAService,
     ReminderService,
+    ReportService,
     SearchService,
     SnapshotService,
     StatsService,
@@ -104,6 +106,8 @@ export type {
     TodayStats,
     TodoItem,
     TrashedFile,
+    WeeklyReportAIConfig,
+    WeeklyReportResult,
     Workspace,
     WritingActivity
 } from "./models.js";
