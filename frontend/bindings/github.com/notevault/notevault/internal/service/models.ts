@@ -482,7 +482,12 @@ export interface LLMProbeResult {
     "isLocal": boolean;
 
     /**
-     * 端点声明可用的模型（拉取失败则为空）
+     * 本次真实请求的模型（空 = 未填，仅罗列清单）
+     */
+    "model": string;
+
+    /**
+     * 端点声明可用的模型（辅助排查）
      */
     "models": string[] | null;
 

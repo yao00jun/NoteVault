@@ -29,9 +29,16 @@ export function Presets(): $CancellablePromise<$models.LLMEndpointPreset[] | nul
  * 用协议对应的模型列表端点（通常是 GET /models）而不是发一次真实的 chat 请求：
  * 不消耗 token、不产生费用，且能顺带把可用模型列表带回来给前端做下拉。
  * 若端点不支持列举，只标记为「可达」而非失败。
+ * Probe 连通性自检：用用户实际填写的模型发一次最小生成请求。
+ * 
+ * 语义约定（2026-09 与产品确认）：「测试」的对象是用户填的配置本身——
+ * 端点 + 模型 + Key 组合能不能真正出活。早期实现只罗列端点上的模型清单，
+ * 用户填的模型压根没被请求过，"自检通过"却实际问答失败，语义是错的。
+ * 端点的模型清单仍会附带拉取（辅助排查：填的模型名 vs 端点实际有的），
+ * 但判定成败的唯一标准是本次真实请求。
  */
-export function Probe(apiKey: string, baseURL: string, protocol: string): $CancellablePromise<$models.LLMProbeResult | null> {
-    return $Call.ByName("github.com/notevault/notevault/internal/service.LLMConfigService.Probe", apiKey, baseURL, protocol);
+export function Probe(apiKey: string, baseURL: string, protocol: string, model: string): $CancellablePromise<$models.LLMProbeResult | null> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.LLMConfigService.Probe", apiKey, baseURL, protocol, model);
 }
 
 /**

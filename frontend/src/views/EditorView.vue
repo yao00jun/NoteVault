@@ -18,6 +18,7 @@ import { FileService, WorkspaceService, SearchService, TagService, ArchiveServic
 import { arrayBufferToBase64, generateMarkdownImage } from '@/utils/image'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
+import { isLocalBaseURL } from '@/utils/localEndpoint'
 import { useToast } from '@/composables/useToast'
 
 const workspaceStore = useWorkspaceStore()
@@ -682,7 +683,7 @@ async function handleCompile() {
     return
   }
   const ai = settingsStore.settings.ai
-  if (!ai.apiKey || !ai.apiKey.trim()) {
+  if (!isLocalBaseURL(ai.baseURL) && (!ai.apiKey || !ai.apiKey.trim())) {
     toast.warning(t('editor.compileNoKey'))
     return
   }
@@ -728,7 +729,7 @@ async function handleSummarize() {
     return
   }
   const ai = settingsStore.settings.ai
-  if (!ai.apiKey || !ai.apiKey.trim()) {
+  if (!isLocalBaseURL(ai.baseURL) && (!ai.apiKey || !ai.apiKey.trim())) {
     alert(t('editor.apiKeyMissing'))
     return
   }

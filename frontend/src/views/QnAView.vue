@@ -10,6 +10,7 @@ import type { QnACitation } from '@bindings/github.com/notevault/notevault/model
 import type { RerankProvider } from '@bindings/github.com/notevault/notevault/internal/service/models.js'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
+import { isLocalBaseURL } from '@/utils/localEndpoint'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -43,7 +44,9 @@ async function ask() {
   const ai = settingsStore.settings.ai
   const emb = settingsStore.settings.embedding
   const rerank = settingsStore.settings.rerank
-  if (!ai.apiKey || !ai.apiKey.trim()) {
+  // 本机端点（Ollama / LM Studio）免 Key——与后端 requireCredential 同口径；
+  // 云端端点仍必须填 Key
+  if (!isLocalBaseURL(ai.baseURL) && (!ai.apiKey || !ai.apiKey.trim())) {
     messages.value.push({ role: 'assistant', content: t('qna.noApiKey'), error: true })
     return
   }

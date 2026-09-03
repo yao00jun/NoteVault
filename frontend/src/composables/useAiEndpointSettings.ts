@@ -124,12 +124,14 @@ export function useAiEndpointSettings() {
         settingsStore.settings.ai.apiKey ?? '',
         settingsStore.settings.ai.baseURL ?? '',
         settingsStore.settings.ai.protocol ?? 'openai-chat',
+        settingsStore.settings.ai.model ?? '',
       ) as LLMProbeResult
     } catch (e) {
       probeResult.value = {
         ok: false,
         endpoint: '',
         isLocal: false,
+        model: '',
         models: [],
         latencyMs: 0,
         message: e instanceof Error ? e.message : String(e),

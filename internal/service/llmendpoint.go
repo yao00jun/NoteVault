@@ -155,7 +155,8 @@ type LLMProbeResult struct {
 	OK        bool     `json:"ok"`
 	Endpoint  string   `json:"endpoint"`  // 实际探测的地址
 	IsLocal   bool     `json:"isLocal"`   // 是否判定为本机端点（免鉴权）
-	Models    []string `json:"models"`    // 端点声明可用的模型（拉取失败则为空）
+	Model     string   `json:"model"`     // 本次真实请求的模型（空 = 未填，仅罗列清单）
+	Models    []string `json:"models"`    // 端点声明可用的模型（辅助排查）
 	LatencyMS int64    `json:"latencyMs"` // 往返耗时
 	Message   string   `json:"message"`   // 失败原因或补充说明
 }
@@ -223,22 +224,54 @@ type modelsResponse struct {
 // 用协议对应的模型列表端点（通常是 GET /models）而不是发一次真实的 chat 请求：
 // 不消耗 token、不产生费用，且能顺带把可用模型列表带回来给前端做下拉。
 // 若端点不支持列举，只标记为「可达」而非失败。
-func (s *LLMConfigService) Probe(apiKey, baseURL, protocol string) *LLMProbeResult {
+// Probe 连通性自检：用用户实际填写的模型发一次最小生成请求。
+//
+// 语义约定（2026-09 与产品确认）：「测试」的对象是用户填的配置本身——
+// 端点 + 模型 + Key 组合能不能真正出活。早期实现只罗列端点上的模型清单，
+// 用户填的模型压根没被请求过，"自检通过"却实际问答失败，语义是错的。
+// 端点的模型清单仍会附带拉取（辅助排查：填的模型名 vs 端点实际有的），
+// 但判定成败的唯一标准是本次真实请求。
+func (s *LLMConfigService) Probe(apiKey, baseURL, protocol, model string) *LLMProbeResult {
 	p := LLMProtocol(strings.ToLower(strings.TrimSpace(protocol)))
 	if p == "" {
 		p = LLMProtocolOpenAIChat
 	}
 
 	isLocal, _ := resolveLocalEndpoint(baseURL)
-	res := &LLMProbeResult{IsLocal: isLocal}
+	res := &LLMProbeResult{IsLocal: isLocal, Model: strings.TrimSpace(model)}
 
+	// 主判定：真实调用一次 chat（max_tokens 压到最小，测连通不烧 token）。
+	// 空模型名时退回模型列举（没有可测对象，罗列仍有价值）。
+	if res.Model != "" {
+		start := time.Now()
+		_, chatErr := llmChatComplete(context.Background(), s.client,
+			apiKey, baseURL, res.Model, protocol,
+			"你是连通性探测器。只回复两个字：正常", "ping")
+		res.LatencyMS = time.Since(start).Milliseconds()
+		res.Endpoint = baseURL
+		if chatErr != nil {
+			res.OK = false
+			res.Message = fmt.Sprintf("用模型 %s 发送测试请求失败：%v\n（模型名拼写、端点是否支持该模型、Key 权限都会导致此错误）", res.Model, chatErr)
+			// 附加模型清单帮助定位"名字填错"这类最常见问题
+			res.Models = s.listModels(apiKey, baseURL, p)
+			if len(res.Models) > 0 {
+				res.Message += "\n该端点上的可用模型：" + strings.Join(res.Models, "、")
+			}
+			return res
+		}
+		res.OK = true
+		res.Message = fmt.Sprintf("模型 %s 可正常生成（%d ms）", res.Model, res.LatencyMS)
+		return res
+	}
+
+	// 未填模型：退回旧行为（罗列端点模型），提示用户填模型才能完整自检
+	res.Models = s.listModels(apiKey, baseURL, p)
 	req, endpoint, err := newProbeRequest(apiKey, baseURL, p)
 	if err != nil {
 		res.Message = err.Error()
 		return res
 	}
 	res.Endpoint = endpoint
-
 	start := time.Now()
 	resp, err := s.client.Do(req)
 	res.LatencyMS = time.Since(start).Milliseconds()
@@ -251,56 +284,64 @@ func (s *LLMConfigService) Probe(apiKey, baseURL, protocol string) *LLMProbeResu
 		return res
 	}
 	defer func() { _ = resp.Body.Close() }()
-
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		res.Message = fmt.Sprintf("鉴权被拒绝（%d）：请检查 API Key", resp.StatusCode)
-		return res
-	}
-	if resp.StatusCode != http.StatusOK {
-		// 模型列举端点未实现但 chat 可用的端点是存在的，因此不判定为彻底失败。
+	if resp.StatusCode == http.StatusOK {
 		res.OK = true
-		res.Message = fmt.Sprintf("端点可达，但返回 %d（该端点可能未实现模型列举，不影响正常使用）", resp.StatusCode)
-		return res
 	}
+	if len(res.Models) == 0 {
+		res.Message = "端点可达，但未返回模型列表；请填写模型后再次检测以验证完整链路"
+	} else {
+		res.Message = "端点可达；未填模型，已列出可用模型供选择"
+	}
+	return res
+}
 
-	res.OK = true
+// listModels 拉取端点的模型清单（辅助信息，不影响成败判定）。
+func (s *LLMConfigService) listModels(apiKey, baseURL string, p LLMProtocol) []string {
+	req, _, err := newProbeRequest(apiKey, baseURL, p)
+	if err != nil {
+		return nil
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	var out []string
 	switch p {
 	case LLMProtocolOpenAIChat, LLMProtocolOpenAIResponses:
 		var mr modelsResponse
 		if err := json.Unmarshal(body, &mr); err == nil {
 			for _, m := range mr.Data {
 				if m.ID != "" {
-					res.Models = append(res.Models, m.ID)
+					out = append(out, m.ID)
 				}
 			}
-			sort.Strings(res.Models)
 		}
 	case LLMProtocolAnthropicMessages:
 		var ar anthropicModelsResponse
 		if err := json.Unmarshal(body, &ar); err == nil {
 			for _, m := range ar.Data {
 				if m.ID != "" {
-					res.Models = append(res.Models, m.ID)
+					out = append(out, m.ID)
 				}
 			}
-			sort.Strings(res.Models)
 		}
 	case LLMProtocolGoogleGemini, LLMProtocolGoogleVertex:
 		var gr geminiModelsResponse
 		if err := json.Unmarshal(body, &gr); err == nil {
 			for _, m := range gr.Models {
 				if m.Name != "" {
-					res.Models = append(res.Models, m.Name)
+					out = append(out, m.Name)
 				}
 			}
-			sort.Strings(res.Models)
 		}
 	}
-	if len(res.Models) == 0 {
-		res.Message = "端点可达，但未返回模型列表"
-	}
-	return res
+	sort.Strings(out)
+	return out
 }
 
 // newProbeRequest 按协议构造自检请求与探测地址。

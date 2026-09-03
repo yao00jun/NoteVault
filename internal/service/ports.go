@@ -179,7 +179,7 @@ type Summarizer interface {
 // 若挂在其中任一功能接口上，另一个就得反向依赖它。
 type LLMConfigurator interface {
 	Presets() []LLMEndpointPreset
-	Probe(apiKey, baseURL, protocol string) *LLMProbeResult
+	Probe(apiKey, baseURL, protocol, model string) *LLMProbeResult
 	ProbeRerank(cfg RerankConfig) *RerankProbeResult
 	ProbeEmbedding(apiKey, baseURL, model string) *EmbeddingProbeResult
 }

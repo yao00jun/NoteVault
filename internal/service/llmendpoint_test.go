@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -118,7 +119,7 @@ func TestLLMConfigService_Probe_Success(t *testing.T) {
 
 	s := NewLLMConfigService()
 	// httptest 监听 127.0.0.1，因此会被判定为本机端点
-	res := s.Probe("", srv.URL+"/v1", "")
+	res := s.Probe("", srv.URL+"/v1", "", "")
 	if !res.OK {
 		t.Fatalf("expected OK, got message=%q", res.Message)
 	}
@@ -137,12 +138,72 @@ func TestLLMConfigService_Probe_Unauthorized(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	res := NewLLMConfigService().Probe("sk-bad", srv.URL+"/v1", "")
+	// 填了模型 → 走真实 chat 判定，401 必须失败并指向 Key
+	res := NewLLMConfigService().Probe("sk-bad", srv.URL+"/v1", "", "gpt-4o-mini")
 	if res.OK {
 		t.Fatal("401 不应判定为成功")
 	}
-	if !strings.Contains(res.Message, "API Key") {
-		t.Errorf("401 提示应指向 API Key，got %q", res.Message)
+	if !strings.Contains(res.Message, "API Key") && !strings.Contains(res.Message, "失败") {
+		t.Errorf("401 提示应指向 Key/失败，got %q", res.Message)
+	}
+}
+
+// TestLLMConfigService_Probe_RealModelChat 核心新语义：检测 = 用用户填的
+// 模型真实发一次生成请求，而不是罗列端点清单。
+func TestLLMConfigService_Probe_RealModelChat(t *testing.T) {
+	var gotModel string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 只接受 chat completions；/models 不应被作为主判定
+		if strings.HasSuffix(r.URL.Path, "/chat/completions") {
+			var req struct {
+				Model string `json:"model"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			gotModel = req.Model
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"正常"}}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	res := NewLLMConfigService().Probe("", srv.URL+"/v1", "openai-chat", "qwen2.5:7b")
+	if !res.OK {
+		t.Fatalf("填的模型可正常生成时应判定成功，message=%q", res.Message)
+	}
+	if gotModel != "qwen2.5:7b" {
+		t.Fatalf("检测应真实请求用户填的模型，got %q", gotModel)
+	}
+	if res.Model != "qwen2.5:7b" {
+		t.Fatalf("结果应回显被测模型，got %q", res.Model)
+	}
+}
+
+// TestLLMConfigService_Probe_WrongModelFails 填了端点上不存在的模型 →
+// 判定失败，并附上可用清单帮用户定位拼写问题。
+func TestLLMConfigService_Probe_WrongModelFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/chat/completions") {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"model 'nope' not found"}}`))
+			return
+		}
+		// /models 正常返回清单
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"llama3.2"},{"id":"qwen2.5:7b"}]}`))
+	}))
+	defer srv.Close()
+
+	res := NewLLMConfigService().Probe("", srv.URL+"/v1", "openai-chat", "nope")
+	if res.OK {
+		t.Fatal("模型不存在时不应判定成功")
+	}
+	if !strings.Contains(res.Message, "nope") {
+		t.Errorf("失败信息应包含被测模型名，got %q", res.Message)
+	}
+	if len(res.Models) != 2 {
+		t.Errorf("失败时应附端点可用清单辅助排查，got %v", res.Models)
 	}
 }
 
@@ -155,12 +216,20 @@ func TestLLMConfigService_Probe_ModelsNotImplemented(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	res := NewLLMConfigService().Probe("", srv.URL+"/v1", "")
-	if !res.OK {
-		t.Fatalf("端点可达但未实现 /models，应仍判定为可用，message=%q", res.Message)
+	res := NewLLMConfigService().Probe("", srv.URL+"/v1", "", "")
+	// 新语义：没填模型 + /models 也 404 → 没有任何东西被验证，不判成功
+	if res.OK {
+		t.Fatalf("未填模型且无法列举时不应判定成功，message=%q", res.Message)
 	}
-	if !strings.Contains(res.Message, "不影响正常使用") {
-		t.Errorf("提示应说明不影响使用，got %q", res.Message)
+	// 但填了模型后走真实 chat → 不依赖 /models，应当成功
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`))
+	}))
+	defer srv2.Close()
+	res2 := NewLLMConfigService().Probe("", srv2.URL+"/v1", "openai-chat", "any-model")
+	if !res2.OK {
+		t.Fatalf("chat 可用时应判定成功（不依赖 /models），message=%q", res2.Message)
 	}
 }
 
@@ -170,7 +239,7 @@ func TestLLMConfigService_Probe_ConnectionRefused(t *testing.T) {
 	url := srv.URL
 	srv.Close()
 
-	res := NewLLMConfigService().Probe("", url+"/v1", "")
+	res := NewLLMConfigService().Probe("", url+"/v1", "", "")
 	if res.OK {
 		t.Fatal("连接被拒不应判定为成功")
 	}
