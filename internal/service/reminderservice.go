@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/notevault/notevault/internal/infra/schema"
@@ -23,7 +24,11 @@ type Reminder struct {
 }
 
 // ReminderService 提供提醒管理功能
-type ReminderService struct{}
+type ReminderService struct {
+	// mu 串行化对 reminders.json 的读-改-写：并发 Add/Toggle/Delete
+	// 各自 load→改→save 会互相覆盖丢更新。
+	mu sync.Mutex
+}
 
 // NewReminderService 创建提醒服务实例
 func NewReminderService() *ReminderService {
@@ -113,6 +118,8 @@ func (s *ReminderService) GetAllReminders(workspacePath string) ([]*Reminder, er
 
 // AddReminder 添加新提醒
 func (s *ReminderService) AddReminder(workspacePath string, filePath string, content string, remindAt string) (*Reminder, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	reminders, err := s.loadReminders(workspacePath)
 	if err != nil {
 		return nil, err
@@ -139,6 +146,8 @@ func (s *ReminderService) AddReminder(workspacePath string, filePath string, con
 
 // DeleteReminder 删除提醒
 func (s *ReminderService) DeleteReminder(workspacePath string, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	reminders, err := s.loadReminders(workspacePath)
 	if err != nil {
 		return err
@@ -156,6 +165,8 @@ func (s *ReminderService) DeleteReminder(workspacePath string, id string) error 
 
 // ToggleReminder 切换提醒完成状态
 func (s *ReminderService) ToggleReminder(workspacePath string, id string) (*Reminder, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	reminders, err := s.loadReminders(workspacePath)
 	if err != nil {
 		return nil, err

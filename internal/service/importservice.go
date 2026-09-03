@@ -42,6 +42,13 @@ type ImportOptions struct {
 }
 
 // ImportService 负责从外部来源导入笔记数据
+// zip bomb 防护上限：单条目 50MB，全包累计 200MB。
+// 条目头声明的 UncompressedSize64 可伪造，必须靠读取端硬截断兜底。
+const (
+	maxZipEntryBytes = 50 << 20
+	maxZipTotalBytes = 200 << 20
+)
+
 type ImportService struct {
 	// tasks 异步任务框架（E-5）。nil 时异步导入不可用，
 	// 但同步导入照常工作——不能让任务框架变成导入功能的硬依赖。
@@ -222,6 +229,8 @@ func (s *ImportService) ImportZip(zipPath, workspacePath string, opts ImportOpti
 		return nil, core.WrapError(core.ErrInvalidInput, "无法打开 zip 文件", err)
 	}
 	defer zr.Close()
+	// 累计写入量（zip bomb 熔断）
+	var totalWritten int
 
 	strategy := normalizeStrategy(opts.ConflictStrategy)
 	includeSubdirs := opts.IncludeSubdirs
@@ -250,11 +259,21 @@ func (s *ImportService) ImportZip(zipPath, workspacePath string, opts ImportOpti
 			result.Errors = append(result.Errors, "读取 zip 条目失败: "+f.Name)
 			continue
 		}
-		content, err := io.ReadAll(rc)
+		// zip bomb 防护：条目声明的解压大小不可信（可伪造），用 LimitReader
+		// 硬截断单条目体积；全包累计写入量超限即终止导入。
+		content, err := io.ReadAll(io.LimitReader(rc, maxZipEntryBytes+1))
 		rc.Close()
 		if err != nil {
 			result.Errors = append(result.Errors, "读取 zip 条目失败: "+f.Name)
 			continue
+		}
+		if len(content) > maxZipEntryBytes {
+			result.Errors = append(result.Errors, "跳过超大条目（上限 "+strconv.Itoa(maxZipEntryBytes/1024/1024)+"MB）: "+f.Name)
+			continue
+		}
+		totalWritten += len(content)
+		if totalWritten > maxZipTotalBytes {
+			return nil, core.WrapError(core.ErrInvalidInput, "zip 解压总量超出上限（"+strconv.Itoa(maxZipTotalBytes/1024/1024)+"MB），已终止导入", nil)
 		}
 		if err := s.writeToWorkspace(workspacePath, targetRel, content, strategy, visited, result); err != nil {
 			result.Errors = append(result.Errors, err.Error())
