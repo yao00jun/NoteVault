@@ -1,6 +1,7 @@
 /* ============================================================
    NoteVault 主题系统 - 3 套主题
    切换方式：<html data-theme="macos|winui|islands-dark">
+   结构性差异（玻璃侧栏 / Fluent 强调条 / 岛屿布局）见 themes.css
    ============================================================ */
 
 /* ---------- 通用变量（所有主题共享） ---------- */
@@ -40,17 +41,19 @@
 }
 
 /* ============================================================
-   主题一：macOS - 通透、毛玻璃、细腻优雅
+   主题一：macOS Tahoe - Liquid Glass 通透材质、悬浮内容卡
+   窗口底是渐变"桌面"，标题栏与侧栏为毛玻璃，内容区是圆角悬浮卡
    ============================================================ */
 [data-theme="macos"] {
-  /* 背景层 */
-  --bg-window: rgba(245, 245, 247, 0.92);
-  --bg-sidebar: rgba(236, 236, 238, 0.7);
+  /* 背景层：--bg-desktop 是透出毛玻璃的"桌面"渐变，--bg-window 供普通面板用 */
+  --bg-desktop: linear-gradient(150deg, #f2f3f7 0%, #e4e7ee 48%, #dcdfe9 100%);
+  --bg-window: #f5f5f7;
+  --bg-sidebar: rgba(255, 255, 255, 0.42);
   --bg-content: #ffffff;
-  --bg-card: rgba(255, 255, 255, 0.75);
-  --bg-hover: rgba(0, 0, 0, 0.05);
-  --bg-active: rgba(0, 122, 255, 0.12);
-  --bg-input: rgba(255, 255, 255, 0.8);
+  --bg-card: rgba(255, 255, 255, 0.72);
+  --bg-hover: rgba(0, 0, 0, 0.045);
+  --bg-active: rgba(0, 122, 255, 0.14);
+  --bg-input: rgba(255, 255, 255, 0.72);
 
   /* 文字 */
   --text-primary: #1d1d1f;
@@ -62,6 +65,8 @@
   --accent: #007aff;
   --accent-hover: #0a84ff;
   --accent-active: #0066cc;
+  --accent-alpha: rgba(0, 122, 255, 0.12);
+  --accent-contrast: #ffffff;
 
   /* 功能色 */
   --success: #34c759;
@@ -74,21 +79,24 @@
   --border-light: rgba(0, 0, 0, 0.04);
   --border-accent: rgba(0, 122, 255, 0.4);
 
-  /* 圆角 */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 18px;
+  /* 圆角 - Tahoe 更饱满的曲率 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
 
-  /* 阴影 */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+  /* 阴影 - 大而柔的弥散影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.07), 0 12px 32px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.12), 0 24px 64px rgba(0, 0, 0, 0.1);
 
-  /* 毛玻璃 */
-  --glass-bg: rgba(255, 255, 255, 0.72);
-  --glass-blur: blur(20px) saturate(180%);
-  --glass-border: rgba(255, 255, 255, 0.5);
+  /* 毛玻璃 - Liquid Glass：高饱和折射感 */
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-blur: blur(28px) saturate(190%);
+  --glass-border: rgba(255, 255, 255, 0.6);
+
+  /* 焦点环 */
+  --focus-ring: 0 0 0 3px rgba(0, 122, 255, 0.28);
 
   /* 侧边栏宽度 */
   --sidebar-width: 240px;
@@ -97,17 +105,19 @@
 }
 
 /* ============================================================
-   主题二：WinUI - Fluent Design、云母效果、现代紧凑
+   主题二：WinUI 3 - Fluent 2、云母底、左侧强调条、发丝线分层
+   窗口底是云母质感渐变，导航面板同底，内容区是带发丝边的内容卡
    ============================================================ */
 [data-theme="winui"] {
-  /* 背景层 */
+  /* 背景层：Mica 是不透明材质，带轻微冷灰蓝的底色渐变 */
+  --bg-desktop: linear-gradient(135deg, #f5f6f8 0%, #eef0f4 60%, #e9ecf2 100%);
   --bg-window: #f3f3f3;
-  --bg-sidebar: #eaeaea;
+  --bg-sidebar: transparent;
   --bg-content: #ffffff;
   --bg-card: #ffffff;
-  --bg-hover: rgba(0, 0, 0, 0.04);
-  --bg-active: rgba(0, 120, 212, 0.08);
-  --bg-input: #ffffff;
+  --bg-hover: rgba(0, 0, 0, 0.037);
+  --bg-active: rgba(0, 0, 0, 0.055);
+  --bg-input: rgba(255, 255, 255, 0.9);
 
   /* 文字 */
   --text-primary: #1a1a1a;
@@ -119,6 +129,8 @@
   --accent: #0078d4;
   --accent-hover: #106ebe;
   --accent-active: #005a9e;
+  --accent-alpha: rgba(0, 120, 212, 0.08);
+  --accent-contrast: #ffffff;
 
   /* 功能色 */
   --success: #107c10;
@@ -126,26 +138,29 @@
   --error: #c42b1c;
   --info: #0078d4;
 
-  /* 边框 */
-  --border: #e5e5e5;
-  --border-light: #f0f0f0;
+  /* 边框 - Fluent 发丝线（card stroke） */
+  --border: #e1e1e1;
+  --border-light: #ebebeb;
   --border-accent: rgba(0, 120, 212, 0.4);
 
-  /* 圆角 - Win11 风格 */
+  /* 圆角 - Win11 克制的曲率 */
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
 
-  /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.08);
+  /* 阴影 - Fluent 阴影极轻，靠发丝线分层 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.04), 0 1px 8px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.06);
 
-  /* 亚克力/云母 */
+  /* 亚克力（瞬态层用，如菜单/弹层） */
   --glass-bg: rgba(249, 249, 249, 0.85);
   --glass-blur: blur(30px) saturate(150%);
   --glass-border: rgba(0, 0, 0, 0.06);
+
+  /* 焦点指示 - Win11 黑色双线焦点框 */
+  --focus-ring: 0 0 0 2px #1a1a1a;
 
   /* 侧边栏宽度 */
   --sidebar-width: 260px;
@@ -154,28 +169,32 @@
 }
 
 /* ============================================================
-   主题三：JetBrains Islands Dark - 深灰、岛屿卡片、橙色强调
+   主题三：JetBrains Islands Dark - 深色底板、悬浮岛屿、琥珀强调
+   窗口底是深色底板，标题栏/侧栏/内容/状态栏都是互相分离的圆角岛屿
    ============================================================ */
 [data-theme="islands-dark"] {
-  /* 背景层 */
-  --bg-window: #1e1f22;
+  /* 背景层：底板比岛屿更深，岛屿靠色阶与描边浮起 */
+  --bg-desktop: #17181b;
+  --bg-window: #17181b;
   --bg-sidebar: #2b2d30;
   --bg-content: #1e1f22;
-  --bg-card: #323437;
-  --bg-hover: #3c3f41;
-  --bg-active: #4b4e51;
+  --bg-card: #2b2d30;
+  --bg-hover: #393b40;
+  --bg-active: #43454a;
   --bg-input: #323437;
 
   /* 文字 */
   --text-primary: #e6e6e6;
   --text-secondary: #a9a9a9;
   --text-muted: #6c6c6c;
-  --text-inverse: #1e1f22;
+  --text-inverse: #17181b;
 
-  /* 强调色 - JetBrains 橙 */
+  /* 强调色 - JetBrains 琥珀 */
   --accent: #f0a732;
   --accent-hover: #ffb84d;
   --accent-active: #d4922a;
+  --accent-alpha: rgba(240, 167, 50, 0.14);
+  --accent-contrast: #17181b;
 
   /* 功能色 */
   --success: #6aab73;
@@ -183,26 +202,29 @@
   --error: #bc3f3c;
   --info: #5e81ac;
 
-  /* 边框 */
-  --border: #3c3f41;
-  --border-light: #4b4e51;
+  /* 边框 - 岛屿描边 */
+  --border: #43454a;
+  --border-light: #393b40;
   --border-accent: rgba(240, 167, 50, 0.4);
 
-  /* 圆角 */
+  /* 圆角 - 岛屿圆角 */
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
   --radius-xl: 18px;
 
-  /* 阴影 */
-  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+  /* 阴影 - 深色底上的黑影 */
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
 
-  /* 毛玻璃（深色） */
-  --glass-bg: rgba(50, 52, 55, 0.85);
+  /* 毛玻璃（深色，弹层用） */
+  --glass-bg: rgba(43, 45, 48, 0.88);
   --glass-blur: blur(20px) saturate(150%);
-  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.08);
+
+  /* 焦点环 */
+  --focus-ring: 0 0 0 3px rgba(240, 167, 50, 0.25);
 
   /* 侧边栏宽度 */
   --sidebar-width: 240px;

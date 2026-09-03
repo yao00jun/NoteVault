@@ -73,7 +73,8 @@ describe('SettingsView · P1-6 LLM 端点配置', () => {
     const { wrapper } = mountSettings()
     await flushPromises()
 
-    const btns = wrapper.findAll('.preset-btn')
+    // 选择器必须限定在 AI 区块内：Embedding / Rerank 区块各有一组同名 .preset-btn
+    const btns = wrapper.findAll('#settings-section-ai .preset-btn')
     expect(btns).toHaveLength(2)
     expect(btns[0].text()).toContain('Ollama')
     // 免鉴权的预设要显式打标，否则用户不知道 Key 能留空
@@ -86,7 +87,7 @@ describe('SettingsView · P1-6 LLM 端点配置', () => {
     await flushPromises()
 
     settingsStore.settings.ai.apiKey = 'sk-cloud-leftover'
-    await wrapper.findAll('.preset-btn')[0].trigger('click')
+    await wrapper.findAll('#settings-section-ai .preset-btn')[0].trigger('click')
 
     expect(settingsStore.settings.ai.baseURL).toBe('http://localhost:11434/v1')
     expect(settingsStore.settings.ai.model).toBe('qwen2.5:7b')
@@ -99,7 +100,7 @@ describe('SettingsView · P1-6 LLM 端点配置', () => {
     await flushPromises()
 
     settingsStore.settings.ai.apiKey = 'sk-keep-me'
-    await wrapper.findAll('.preset-btn')[1].trigger('click')
+    await wrapper.findAll('#settings-section-ai .preset-btn')[1].trigger('click')
 
     expect(settingsStore.settings.ai.baseURL).toBe('https://api.openai.com/v1')
     expect(settingsStore.settings.ai.apiKey).toBe('sk-keep-me')
@@ -176,7 +177,7 @@ describe('SettingsView · P1-6 LLM 端点配置', () => {
     const { wrapper } = mountSettings()
     await flushPromises()
 
-    expect(wrapper.findAll('.preset-btn')).toHaveLength(0)
+    expect(wrapper.findAll('#settings-section-ai .preset-btn')).toHaveLength(0)
     // 手填输入框必须还在，否则拉取失败就等于功能不可用
     expect(wrapper.find('.setting-input').exists()).toBe(true)
   })
