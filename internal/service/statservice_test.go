@@ -141,3 +141,49 @@ func TestStats_DueReminders(t *testing.T) {
 		t.Fatalf("expected DueReminders=1, got %d", stats.DueReminders)
 	}
 }
+
+func TestStats_GetWritingActivity(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+
+	// 今天 2 篇、昨天 1 篇、3 天前 1 篇 → 周改动 4、最长连续 2
+	mustWriteStats(t, filepath.Join(dir, "a.md"), "# a\n", now.Add(-1*time.Hour))
+	mustWriteStats(t, filepath.Join(dir, "b.md"), "# b\n", now.Add(-2*time.Hour))
+	mustWriteStats(t, filepath.Join(dir, "c.md"), "# c\n", now.AddDate(0, 0, -1))
+	mustWriteStats(t, filepath.Join(dir, "d.md"), "# d\n", now.AddDate(0, 0, -3))
+
+	s := NewStatsService(nil, nil)
+	activity, err := s.GetWritingActivity(dir, 91)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(activity.Days) != 91 {
+		t.Fatalf("expected 91 day cells, got %d", len(activity.Days))
+	}
+	if activity.Days[len(activity.Days)-1].Date != now.Format("2006-01-02") {
+		t.Fatalf("last cell should be today, got %s", activity.Days[len(activity.Days)-1].Date)
+	}
+	if activity.Days[len(activity.Days)-1].Edited != 2 {
+		t.Fatalf("today cell should count 2 edits, got %d", activity.Days[len(activity.Days)-1].Edited)
+	}
+	if activity.WeekEdited != 4 {
+		t.Fatalf("expected WeekEdited=4, got %d", activity.WeekEdited)
+	}
+	if activity.MonthEdited != 4 {
+		t.Fatalf("expected MonthEdited=4, got %d", activity.MonthEdited)
+	}
+	if activity.ActiveDays != 3 {
+		t.Fatalf("expected ActiveDays=3, got %d", activity.ActiveDays)
+	}
+	if activity.LongestStreak != 2 {
+		t.Fatalf("expected LongestStreak=2, got %d", activity.LongestStreak)
+	}
+	// 全部为零的窗口不产生连续
+	empty, err := s.GetWritingActivity(t.TempDir(), 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty.LongestStreak != 0 || empty.ActiveDays != 0 {
+		t.Fatalf("empty workspace should have zero activity, got %+v", empty)
+	}
+}

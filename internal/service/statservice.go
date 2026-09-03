@@ -19,7 +19,22 @@ type TodayStats struct {
 	RecentFiles       []string `json:"recentFiles"`       // 最近改动的笔记相对路径（正斜杠，最多 5 篇）
 }
 
-// StatsService 提供今日工作台聚合统计
+// DayActivity 是某一天的笔记改动量（报表热力图的最小单元）。
+type DayActivity struct {
+	Date   string `json:"date"`   // YYYY-MM-DD（本地时区）
+	Edited int    `json:"edited"` // 当日有改动的 .md 笔记数
+}
+
+// WritingActivity 是报表中心的写作活跃数据。
+type WritingActivity struct {
+	Days          []DayActivity `json:"days"`          // 按天序列（含无改动的天，前端直接画热力图）
+	ActiveDays    int           `json:"activeDays"`    // 窗口内有改动的天数
+	WeekEdited    int           `json:"weekEdited"`    // 近 7 天有改动的笔记次数
+	MonthEdited   int           `json:"monthEdited"`   // 近 30 天有改动的笔记次数
+	LongestStreak int           `json:"longestStreak"` // 窗口内最长连续写作天数
+}
+
+// StatsService 提供今日工作台与报表中心聚合统计
 type StatsService struct {
 	todos     *TodoService
 	reminders *ReminderService
@@ -41,21 +56,17 @@ var statsSkipDirs = map[string]bool{
 	"assets":       true,
 }
 
-// GetTodayStats 汇总今日工作台数据。
-// 单次遍历工作区取 modtime（沿用搜索索引的隐藏目录口径），待办与提醒
-// 复用各自服务的既有接口；遍历失败返回错误，子项失败降级为零值不阻塞。
-func (s *StatsService) GetTodayStats(workspacePath string) (*TodayStats, error) {
-	now := time.Now()
-	today := now.Format("2006-01-02")
+// editRecent 是一次遍历中收集的文件改动记录。
+type editRecent struct {
+	rel string
+	mod time.Time
+}
 
-	stats := &TodayStats{RecentFiles: []string{}}
-	// editDays 记录"哪些天有笔记改动"（近一年窗口内足够算连续记录）
-	editDays := map[string]bool{}
-	type recent struct {
-		rel string
-		mod time.Time
-	}
-	var recents []recent
+// scanEditActivity 单次遍历工作区，返回「每天的改动笔记数」与文件改动记录。
+// 隐藏目录口径与搜索索引一致；读不了的条目跳过不阻塞整体。
+func scanEditActivity(workspacePath string) (map[string]int, []editRecent, error) {
+	editCounts := map[string]int{}
+	var recents []editRecent
 
 	err := filepath.Walk(workspacePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -73,24 +84,37 @@ func (s *StatsService) GetTodayStats(workspacePath string) (*TodayStats, error) 
 			return nil
 		}
 		mod := info.ModTime()
-		day := mod.Format("2006-01-02")
-		if mod.After(now.AddDate(0, 0, -366)) {
-			editDays[day] = true
-		}
-		if day == today {
-			stats.EditedToday++
-		}
+		editCounts[mod.Format("2006-01-02")]++
 		rel, rerr := filepath.Rel(workspacePath, path)
 		if rerr != nil {
 			return nil
 		}
-		recents = append(recents, recent{rel: filepath.ToSlash(rel), mod: mod})
+		recents = append(recents, editRecent{rel: filepath.ToSlash(rel), mod: mod})
 		return nil
 	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return editCounts, recents, nil
+}
+
+// GetTodayStats 汇总今日工作台数据。
+// 待办与提醒复用各自服务的既有接口；子项失败降级为零值不阻塞。
+func (s *StatsService) GetTodayStats(workspacePath string) (*TodayStats, error) {
+	now := time.Now()
+	today := now.Format("2006-01-02")
+
+	stats := &TodayStats{RecentFiles: []string{}}
+	editCounts, recents, err := scanEditActivity(workspacePath)
 	if err != nil {
 		return nil, err
 	}
 
+	stats.EditedToday = editCounts[today]
+	editDays := make(map[string]bool, len(editCounts))
+	for day := range editCounts {
+		editDays[day] = true
+	}
 	stats.StreakDays = computeStreak(editDays, now)
 
 	sort.Slice(recents, func(i, j int) bool {
@@ -134,6 +158,61 @@ func (s *StatsService) GetTodayStats(workspacePath string) (*TodayStats, error) 
 	}
 
 	return stats, nil
+}
+
+// GetWritingActivity 返回报表中心的写作活跃数据（GitHub 风格热力图 +
+// 周/月汇总）。窗口为「含今天在内的最近 days 天」，days 越界收敛到 30..366。
+func (s *StatsService) GetWritingActivity(workspacePath string, days int) (*WritingActivity, error) {
+	if days < 30 {
+		days = 30
+	}
+	if days > 366 {
+		days = 366
+	}
+
+	editCounts, _, err := scanEditActivity(workspacePath)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	today := truncateDay(now)
+	activity := &WritingActivity{Days: make([]DayActivity, 0, days)}
+
+	// 从窗口首日走到今天，无改动的天也要补零，前端才能直接铺热力图
+	first := today.AddDate(0, 0, -(days - 1))
+	for d := first; !d.After(today); d = d.AddDate(0, 0, 1) {
+		key := d.Format("2006-01-02")
+		activity.Days = append(activity.Days, DayActivity{Date: key, Edited: editCounts[key]})
+	}
+
+	// 窗口内汇总：活跃天数、最长连续、近 7/30 天改动量
+	longest, cur := 0, 0
+	for i, day := range activity.Days {
+		if day.Edited > 0 {
+			activity.ActiveDays++
+			cur++
+			if cur > longest {
+				longest = cur
+			}
+		} else {
+			cur = 0
+		}
+		if i >= len(activity.Days)-7 {
+			activity.WeekEdited += day.Edited
+		}
+		if i >= len(activity.Days)-30 {
+			activity.MonthEdited += day.Edited
+		}
+	}
+	activity.LongestStreak = longest
+
+	return activity, nil
+}
+
+// truncateDay 去掉时分秒（本地时区），得到当天 0 点。
+func truncateDay(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 }
 
 // computeStreak 连续写作天数：从今天起往回数有改动的天；今天还没写则

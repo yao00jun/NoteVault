@@ -288,8 +288,8 @@ func TestVectorStore_BuildAndSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewVectorStore failed: %v", err)
 	}
-	if err := vs.Build(context.Background(), ws, fs, emb, cfg); err != nil {
-		t.Fatalf("Build failed: %v", err)
+	if err := vs.Sync(context.Background(), ws, fs, emb, cfg); err != nil {
+		t.Fatalf("Sync failed: %v", err)
 	}
 	if vs.Count() == 0 {
 		t.Fatal("expected vectors built")

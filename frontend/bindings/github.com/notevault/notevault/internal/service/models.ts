@@ -243,6 +243,21 @@ export interface CompileResult {
 }
 
 /**
+ * DayActivity 是某一天的笔记改动量（报表热力图的最小单元）。
+ */
+export interface DayActivity {
+    /**
+     * YYYY-MM-DD（本地时区）
+     */
+    "date": string;
+
+    /**
+     * 当日有改动的 .md 笔记数
+     */
+    "edited": number;
+}
+
+/**
  * DiffOp 表示 diff 中的一行操作
  */
 export interface DiffOp {
@@ -974,4 +989,34 @@ export interface Workspace {
     "path": string;
     "createdAt": string;
     "lastOpenedAt": string;
+}
+
+/**
+ * WritingActivity 是报表中心的写作活跃数据。
+ */
+export interface WritingActivity {
+    /**
+     * 按天序列（含无改动的天，前端直接画热力图）
+     */
+    "days": DayActivity[] | null;
+
+    /**
+     * 窗口内有改动的天数
+     */
+    "activeDays": number;
+
+    /**
+     * 近 7 天有改动的笔记次数
+     */
+    "weekEdited": number;
+
+    /**
+     * 近 30 天有改动的笔记次数
+     */
+    "monthEdited": number;
+
+    /**
+     * 窗口内最长连续写作天数
+     */
+    "longestStreak": number;
 }

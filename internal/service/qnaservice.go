@@ -83,19 +83,23 @@ type QnAService struct {
 	// 检索融合退化为纯 BM25 + 向量 RRF，行为与 P1-3 结束态一致（红线 #1）。
 	reranker Reranker
 
-	// vectorMu 保护 vectorCache。向量索引构建/加载较重，按工作区缓存避免每次重建。
-	vectorMu    sync.Mutex
-	vectorCache map[string]*VectorStore
+	// vectorMu 只保护 vectorCache 与 buildLocks 的 map 操作本身。
+	// 构建/增量同步持 per-key 锁（buildLocks 按「工作区|模型」分锁）：
+	// 全局锁会让某个工作区首次建索引（分钟级 embed）卡死其它工作区的问答。
+	vectorMu     sync.Mutex
+	vectorCache  map[string]*VectorStore
+	vectorBuilds map[string]*sync.Mutex
 }
 
 // NewQnAService 创建问答服务实例（索引走包级默认注册表，未配置 embedding/rerank 降级）。
 // 仅用于测试与零值场景；生产装配请用 NewQnAServiceWithRegistry。
 func NewQnAService() *QnAService {
 	return &QnAService{
-		client:      &http.Client{Timeout: 120 * time.Second},
-		embedder:    &NoopEmbedder{},
-		reranker:    &NoopReranker{},
-		vectorCache: make(map[string]*VectorStore),
+		client:       &http.Client{Timeout: 120 * time.Second},
+		embedder:     &NoopEmbedder{},
+		reranker:     &NoopReranker{},
+		vectorCache:  make(map[string]*VectorStore),
+		vectorBuilds: make(map[string]*sync.Mutex),
 	}
 }
 
@@ -113,12 +117,13 @@ func NewQnAServiceWithRegistry(fileService *FileService, indexes *SearchIndexReg
 		reranker = &NoopReranker{}
 	}
 	return &QnAService{
-		client:      &http.Client{Timeout: 120 * time.Second},
-		indexes:     indexes,
-		fileService: fileService,
-		embedder:    embedder,
-		reranker:    reranker,
-		vectorCache: make(map[string]*VectorStore),
+		client:       &http.Client{Timeout: 120 * time.Second},
+		indexes:      indexes,
+		fileService:  fileService,
+		embedder:     embedder,
+		reranker:     reranker,
+		vectorCache:  make(map[string]*VectorStore),
+		vectorBuilds: make(map[string]*sync.Mutex),
 	}
 }
 
@@ -278,9 +283,15 @@ func rrf(rank, k int) float64 {
 	return 1.0 / float64(k+rank)
 }
 
-// ensureVectorStore 返回（按需构建/加载）工作区对应的向量索引。
+// ensureVectorStore 返回（按需构建/增量同步）工作区对应的向量索引。
 //
-// 缓存按「工作区 + 模型」键；首次会同步全库 embed（较重，但持久化后后续秒加载）。
+// 缓存按「工作区 + 模型」键。构建与增量同步都持 per-key 构建锁：
+//   - 不同工作区互不阻塞（旧实现的全局锁会让一个工作区的首次全量 embed
+//     卡死所有其它工作区的问答）；
+//   - 同一工作区的并发请求串行化，避免重复构建/并发写集合；
+//   - 命中缓存的请求也会做一次增量对齐（modtime 未变的文件零成本跳过，
+//     新增/修改的笔记在此进入向量索引），不再"建一次永不更新"。
+//
 // 未配置 embedding（embedder 为 nil 或模型名为空）或 fileService 缺失时返回错误，
 // 由调用方据此退化纯 BM25，不阻断问答。
 func (s *QnAService) ensureVectorStore(workspacePath string, cfg EmbeddingConfig) (*VectorStore, error) {
@@ -291,20 +302,53 @@ func (s *QnAService) ensureVectorStore(workspacePath string, cfg EmbeddingConfig
 		return nil, fmt.Errorf("缺少文件服务，无法构建向量索引")
 	}
 	key := workspacePath + "|" + strings.TrimSpace(cfg.Model)
+
+	// 取（或创建）该 key 的构建锁
 	s.vectorMu.Lock()
-	defer s.vectorMu.Unlock()
 	if vs, ok := s.vectorCache[key]; ok {
+		lk := s.vectorBuilds[key]
+		s.vectorMu.Unlock()
+		// 命中缓存：持构建锁做一次增量同步（通常只是 stat 一遍全库，毫秒级）
+		lk.Lock()
+		defer lk.Unlock()
+		if err := vs.Sync(context.Background(), workspacePath, s.fileService, s.embedder, cfg); err != nil {
+			// 增量同步失败不阻断问答：索引里还有上一轮的完整数据
+			return vs, nil
+		}
 		return vs, nil
 	}
+	lk := s.vectorBuilds[key]
+	if lk == nil {
+		lk = &sync.Mutex{}
+		s.vectorBuilds[key] = lk
+	}
+	s.vectorMu.Unlock()
+
+	lk.Lock()
+	defer lk.Unlock()
+
+	// 双检：排队等锁期间可能已有前一个请求建好
+	s.vectorMu.Lock()
+	if vs, ok := s.vectorCache[key]; ok {
+		s.vectorMu.Unlock()
+		if err := vs.Sync(context.Background(), workspacePath, s.fileService, s.embedder, cfg); err != nil {
+			return vs, nil
+		}
+		return vs, nil
+	}
+	s.vectorMu.Unlock()
+
 	persistDir := persistDirForWorkspace(workspacePath, cfg.Model)
 	vs, err := NewVectorStore(persistDir, s.embedder, cfg)
 	if err != nil {
 		return nil, err
 	}
-	if err := vs.Build(context.Background(), workspacePath, s.fileService, s.embedder, cfg); err != nil {
+	if err := vs.Sync(context.Background(), workspacePath, s.fileService, s.embedder, cfg); err != nil {
 		return nil, err
 	}
+	s.vectorMu.Lock()
 	s.vectorCache[key] = vs
+	s.vectorMu.Unlock()
 	return vs, nil
 }
 

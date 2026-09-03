@@ -87,7 +87,7 @@ describe('SideBar', () => {
     const { wrapper } = mountSideBar()
     await flushPromises()
     const navItems = wrapper.findAll('.nav-item')
-    expect(navItems.length).toBe(16)
+    expect(navItems.length).toBe(17)
   })
 
   it('应包含四个分组标题', async () => {
@@ -102,10 +102,10 @@ describe('SideBar', () => {
     await flushPromises()
     const navItems = wrapper.findAll('.nav-item')
 
-    // 当前顺序：knowledge/graph/bases/canvas/todos/reminders/files/search/tags/...
-    // index 7 = search（bases、canvas 在 library 组插入，使 search 后移两位；
-    // compile 追加在 manage 组末尾，不影响 search 的索引位置）
-    await navItems[7].trigger('click')
+    // 按文案定位而不是下标：导航项顺序还会继续演进，位置断言已经两次被新入口挤歪
+    const searchItem = navItems.find((w) => w.text().includes('搜索'))
+    expect(searchItem).toBeDefined()
+    await searchItem!.trigger('click')
     await flushPromises()
     await nextTick()
     expect(router.currentRoute.value.path).toBe('/search')

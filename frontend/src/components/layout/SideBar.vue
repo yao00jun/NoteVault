@@ -9,6 +9,7 @@ import {
   FolderOpen,
   FileText,
   Tags,
+  BarChart3,
   GitGraph,
   Table2,
   CheckSquare,
@@ -187,6 +188,7 @@ interface NavItem {
 const navItems = computed<NavItem[]>(() => [
   { id: 'knowledge', label: t('sidebar.nav.knowledge'), icon: Library, route: '/knowledge', group: 'library' },
   { id: 'graph', label: t('sidebar.nav.graph'), icon: GitGraph, route: '/graph', group: 'library' },
+  { id: 'reports', label: t('sidebar.nav.reports'), icon: BarChart3, route: '/reports', group: 'library' },
   { id: 'bases', label: t('sidebar.nav.bases'), icon: Table2, route: '/bases', group: 'library' },
   { id: 'canvas', label: t('sidebar.nav.canvas'), icon: Square, route: '/canvas', group: 'library' },
   { id: 'todos', label: t('sidebar.nav.todos'), icon: CheckSquare, route: '/todos', group: 'tasks' },

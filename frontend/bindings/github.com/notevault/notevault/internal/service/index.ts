@@ -71,6 +71,7 @@ export type {
     CompileErrorItem,
     CompileOutput,
     CompileResult,
+    DayActivity,
     DiffOp,
     EmbeddingProbeResult,
     FileNode,
@@ -103,5 +104,6 @@ export type {
     TodayStats,
     TodoItem,
     TrashedFile,
-    Workspace
+    Workspace,
+    WritingActivity
 } from "./models.js";
