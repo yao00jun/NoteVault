@@ -125,6 +125,10 @@ export interface AppSettings {
   autoSaveInterval: number
   editorMode: 'split' | 'editor' | 'preview'
   fontSize: number
+  /** 界面字体：'theme' 跟随主题，或预设 key（system / inter / segoe / yahei） */
+  uiFont: string
+  /** 编辑器与代码块等宽字体：'theme' 跟随主题，或预设 key（jetbrains / cascadia / fira / consolas） */
+  monoFont: string
   defaultWorkspace?: string
   ai: AISettings
   embedding: EmbeddingSettings

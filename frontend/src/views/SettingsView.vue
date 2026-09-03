@@ -183,6 +183,46 @@ async function scrollToSection(id: string) {
           >
           <span class="range-value">{{ settingsStore.settings.fontSize }}px</span>
         </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.appearance.uiFont') }}</span>
+            <span class="setting-desc">{{ t('settings.appearance.uiFontDesc') }}</span>
+          </div>
+          <select
+            v-model="settingsStore.settings.uiFont"
+            class="setting-select"
+          >
+            <option value="theme">
+              {{ t('settings.appearance.fontFollowTheme') }}
+            </option>
+            <option value="system">
+              {{ t('settings.appearance.fontSystem') }}
+            </option>
+            <option value="inter">Inter</option>
+            <option value="segoe">Segoe UI</option>
+            <option value="yahei">Microsoft YaHei UI</option>
+          </select>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.appearance.monoFont') }}</span>
+            <span class="setting-desc">{{ t('settings.appearance.monoFontDesc') }}</span>
+          </div>
+          <select
+            v-model="settingsStore.settings.monoFont"
+            class="setting-select"
+          >
+            <option value="theme">
+              {{ t('settings.appearance.fontFollowTheme') }}
+            </option>
+            <option value="jetbrains">JetBrains Mono</option>
+            <option value="cascadia">Cascadia Code</option>
+            <option value="fira">Fira Code</option>
+            <option value="consolas">Consolas</option>
+          </select>
+        </div>
       </div>
 
       <!-- 2. 编辑器 -->
@@ -964,7 +1004,7 @@ async function scrollToSection(id: string) {
 }
 
 .settings-section {
-  max-width: 640px;
+  max-width: 900px;
   margin-bottom: var(--space-6);
 }
 
@@ -981,8 +1021,11 @@ async function scrollToSection(id: string) {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--border-light);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-2);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
 }
 
 .setting-info {

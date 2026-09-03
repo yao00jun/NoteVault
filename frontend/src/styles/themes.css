@@ -260,3 +260,377 @@ html[data-theme="islands-dark"] ::-webkit-scrollbar-thumb {
 html[data-theme="islands-dark"] ::-webkit-scrollbar-thumb:hover {
   background: #55575c;
 }
+
+/* ============================================================
+   主题性格层（2026-09-04 增强）
+   三套主题不再只是"换色 + 骨架不同"，而是对卡片 / 按钮 / 标签页 /
+   弹层 / 编辑器 / 状态栏做系统性的性格区分：
+   - macOS   ：一切皆可玻璃——胶囊按钮、悬浮药丸标签、玻璃弹层、呼吸式悬停
+   - WinUI   ：一切靠发丝线——零阴影卡片、直角按钮、下划线标签、黑色焦点框
+   - Islands ：一切皆为代码——等宽元信息、琥珀光标、抬升式标签、硬朗岛屿
+   ============================================================ */
+
+/* ============================================================
+   macOS · Liquid Glass —— 玻璃与呼吸感
+   ============================================================ */
+
+/* 桌面：在灰渐变上叠两层彩色光斑，毛玻璃侧栏能透出色彩 */
+html[data-theme="macos"] .app-container {
+  background:
+    radial-gradient(ellipse 60% 50% at 12% -10%, rgba(120, 170, 255, 0.22), transparent 60%),
+    radial-gradient(ellipse 55% 45% at 95% 110%, rgba(190, 140, 255, 0.18), transparent 60%),
+    var(--bg-desktop);
+}
+
+/* SF 字体打头 */
+html[data-theme="macos"] {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter",
+    "PingFang SC", "Microsoft YaHei UI", sans-serif;
+}
+
+/* 按钮：胶囊化 + 主按钮发光，悬停轻微上浮 */
+html[data-theme="macos"] .btn-primary,
+html[data-theme="macos"] .kv-btn-primary {
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast),
+    background var(--transition-fast);
+}
+html[data-theme="macos"] .btn-primary:hover,
+html[data-theme="macos"] .kv-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 122, 255, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+html[data-theme="macos"] .btn-primary:active,
+html[data-theme="macos"] .kv-btn-primary:active {
+  transform: translateY(0);
+}
+html[data-theme="macos"] .btn-secondary,
+html[data-theme="macos"] .kv-btn-secondary,
+html[data-theme="macos"] .btn-ghost,
+html[data-theme="macos"] .kv-btn-ghost {
+  border-radius: 999px;
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+html[data-theme="macos"] .btn-secondary:hover,
+html[data-theme="macos"] .kv-btn-secondary:hover,
+html[data-theme="macos"] .btn-ghost:hover,
+html[data-theme="macos"] .kv-btn-ghost:hover {
+  transform: translateY(-1px);
+}
+
+/* 卡片：全是玻璃——半透明 + 模糊 + 内高光描边 + 大弥散影 */
+html[data-theme="macos"] .card,
+html[data-theme="macos"] .kv-card,
+html[data-theme="macos"] .stat,
+html[data-theme="macos"] .kv-banner,
+html[data-theme="macos"] .setting-item {
+  background: var(--bg-card);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+html[data-theme="macos"] .kv-card:hover,
+html[data-theme="macos"] .stat:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+/* 标签页：segmented control —— 活动页是浮起的白色药丸 */
+html[data-theme="macos"] .tab-bar {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+html[data-theme="macos"] .tab-item {
+  border-radius: 999px;
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+}
+html[data-theme="macos"] .tab-item.active,
+html[data-theme="macos"] .tab-item[aria-selected="true"] {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 3px 10px rgba(0, 0, 0, 0.08);
+}
+
+/* 弹层：命令面板 / 对话框整体玻璃化 */
+html[data-theme="macos"] .command-palette,
+html[data-theme="macos"] .exit-confirm,
+html[data-theme="macos"] .dropdown-menu {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+/* 侧栏二级面板（设置侧导航等）同吃玻璃 */
+html[data-theme="macos"] .settings-sidebar,
+html[data-theme="macos"] .sidebar-footer {
+  background: transparent;
+}
+
+/* 图标按钮：悬停出玻璃圆底 */
+html[data-theme="macos"] .icon-btn {
+  border-radius: 999px;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+html[data-theme="macos"] .icon-btn:hover {
+  background: rgba(255, 255, 255, 0.55);
+  transform: scale(1.06);
+}
+
+/* 状态栏项：胶囊 */
+html[data-theme="macos"] .status-item {
+  border-radius: 999px;
+  padding: 1px 10px;
+}
+html[data-theme="macos"] .status-item:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* ============================================================
+   WinUI · Fluent —— 发丝线与下划线
+   ============================================================ */
+
+/* 卡片：零阴影，1px card-stroke 分层（Fluent 的分层哲学） */
+html[data-theme="winui"] .card,
+html[data-theme="winui"] .kv-card,
+html[data-theme="winui"] .stat,
+html[data-theme="winui"] .kv-banner,
+html[data-theme="winui"] .setting-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+html[data-theme="winui"] .kv-card:hover,
+html[data-theme="winui"] .stat:hover,
+html[data-theme="winui"] .setting-item:hover {
+  background: #fafafa;
+  border-color: #d6d6d6;
+}
+
+/* 按钮：4px 直角克制；主按钮实色，次按钮描边，悬停只换底色不位移 */
+html[data-theme="winui"] .btn-primary,
+html[data-theme="winui"] .kv-btn-primary {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-active);
+  box-shadow: none;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+html[data-theme="winui"] .btn-secondary,
+html[data-theme="winui"] .kv-btn-secondary,
+html[data-theme="winui"] .btn-ghost,
+html[data-theme="winui"] .kv-btn-ghost {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  box-shadow: none;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+html[data-theme="winui"] .btn-secondary:hover,
+html[data-theme="winui"] .kv-btn-secondary:hover,
+html[data-theme="winui"] .btn-ghost:hover,
+html[data-theme="winui"] .kv-btn-ghost:hover {
+  background: var(--bg-hover);
+  border-color: #c8c8c8;
+}
+
+/* 标签页：Win11 文件资源管理器 —— 活动页底部 2px 强调下划线 */
+html[data-theme="winui"] .tab-bar {
+  background: transparent;
+  border-bottom: 1px solid var(--border-light);
+}
+html[data-theme="winui"] .tab-item {
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  position: relative;
+}
+html[data-theme="winui"] .tab-item.active,
+html[data-theme="winui"] .tab-item[aria-selected="true"] {
+  background: var(--bg-content);
+  box-shadow: none;
+}
+html[data-theme="winui"] .tab-item.active::after,
+html[data-theme="winui"] .tab-item[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+/* 设置侧导航：NavigationView 同款左侧强调条 */
+html[data-theme="winui"] .settings-nav-item {
+  position: relative;
+  border-radius: var(--radius-sm);
+}
+html[data-theme="winui"] .settings-nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+/* 弹层：亚克力 + 发丝描边 */
+html[data-theme="winui"] .command-palette,
+html[data-theme="winui"] .exit-confirm,
+html[data-theme="winui"] .dropdown-menu {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+/* 图标按钮：方角，悬停底色 */
+html[data-theme="winui"] .icon-btn {
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+html[data-theme="winui"] .icon-btn:hover {
+  background: var(--bg-hover);
+}
+
+/* 状态栏项：方角 */
+html[data-theme="winui"] .status-item {
+  border-radius: var(--radius-sm);
+}
+
+/* ============================================================
+   Islands Dark · JetBrains —— 代码感与琥珀
+   ============================================================ */
+
+/* 元信息全部等宽：IDE 里路径/时间/状态从来都不是比例字体 */
+html[data-theme="islands-dark"] .app-name,
+html[data-theme="islands-dark"] .status-item,
+html[data-theme="islands-dark"] .kv-doc-meta,
+html[data-theme="islands-dark"] .kv-doc-time,
+html[data-theme="islands-dark"] .kv-doc-path,
+html[data-theme="islands-dark"] .save-status,
+html[data-theme="islands-dark"] .tab-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+/* 按钮：硬朗 6px 方角；主按钮琥珀实色深字，悬停提亮 */
+html[data-theme="islands-dark"] .btn-primary,
+html[data-theme="islands-dark"] .kv-btn-primary {
+  border-radius: var(--radius-sm);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+}
+html[data-theme="islands-dark"] .btn-primary:hover,
+html[data-theme="islands-dark"] .kv-btn-primary:hover {
+  box-shadow: 0 2px 10px rgba(240, 167, 50, 0.35);
+}
+html[data-theme="islands-dark"] .btn-secondary,
+html[data-theme="islands-dark"] .kv-btn-secondary,
+html[data-theme="islands-dark"] .btn-ghost,
+html[data-theme="islands-dark"] .kv-btn-ghost {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+html[data-theme="islands-dark"] .btn-secondary:hover,
+html[data-theme="islands-dark"] .kv-btn-secondary:hover,
+html[data-theme="islands-dark"] .btn-ghost:hover,
+html[data-theme="islands-dark"] .kv-btn-ghost:hover {
+  border-color: var(--border-accent);
+}
+
+/* 卡片：小岛嵌大岛，悬停抬高一层 */
+html[data-theme="islands-dark"] .card,
+html[data-theme="islands-dark"] .kv-card,
+html[data-theme="islands-dark"] .stat,
+html[data-theme="islands-dark"] .kv-banner,
+html[data-theme="islands-dark"] .setting-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: background var(--transition-fast), border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+html[data-theme="islands-dark"] .kv-card:hover,
+html[data-theme="islands-dark"] .stat:hover {
+  border-color: var(--border);
+  box-shadow: var(--shadow-md);
+}
+
+/* 标签页：活动页抬升为更高色阶的岛，顶部 2px 琥珀条 */
+html[data-theme="islands-dark"] .tab-bar {
+  background: var(--bg-desktop);
+}
+html[data-theme="islands-dark"] .tab-item {
+  border-radius: var(--radius-sm);
+  position: relative;
+}
+html[data-theme="islands-dark"] .tab-item.active,
+html[data-theme="islands-dark"] .tab-item[aria-selected="true"] {
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+}
+html[data-theme="islands-dark"] .tab-item.active::before,
+html[data-theme="islands-dark"] .tab-item[aria-selected="true"]::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+/* 编辑器：琥珀光标 + 琥珀选区，IDE 灵魂 */
+html[data-theme="islands-dark"] .cm-editor .cm-content {
+  caret-color: var(--accent);
+}
+html[data-theme="islands-dark"] .cm-editor .cm-selectionBackground,
+html[data-theme="islands-dark"] .cm-editor ::selection {
+  background: rgba(240, 167, 50, 0.25) !important;
+}
+
+/* 弹层：深色玻璃 + 强描边 */
+html[data-theme="islands-dark"] .command-palette,
+html[data-theme="islands-dark"] .exit-confirm,
+html[data-theme="islands-dark"] .dropdown-menu {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+/* 图标按钮：悬停岛屿底色 */
+html[data-theme="islands-dark"] .icon-btn {
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+html[data-theme="islands-dark"] .icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+/* 状态栏项：迷你岛屿 */
+html[data-theme="islands-dark"] .status-item {
+  border-radius: var(--radius-sm);
+}
+html[data-theme="islands-dark"] .status-item:hover {
+  background: var(--bg-hover);
+}

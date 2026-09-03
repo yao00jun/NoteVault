@@ -429,6 +429,12 @@ export default {
       langEn: 'English',
       fontSize: 'Font Size',
       fontSizeDesc: 'Editor and interface font size',
+      uiFont: 'Interface Font',
+      uiFontDesc: 'App-wide UI font (Follow theme uses the theme default)',
+      monoFont: 'Code Font',
+      monoFontDesc: 'Monospace font for the editor and code blocks',
+      fontFollowTheme: 'Follow theme',
+      fontSystem: 'System default',
     },
     editor: {
       title: 'Editor',

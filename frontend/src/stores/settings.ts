@@ -22,6 +22,8 @@ const defaultSettings: AppSettings = {
   autoSaveInterval: 500,
   editorMode: 'split',
   fontSize: 13,
+  uiFont: 'theme',
+  monoFont: 'theme',
   ai: {
     protocol: 'openai-chat',
     baseURL: 'https://api.openai.com/v1',
@@ -147,6 +149,20 @@ async function migrateLegacyApiKey(): Promise<void> {
   }
 }
 
+// 字体预设：'theme' 表示跟随主题（不写内联覆盖，由各主题的 --font-sans / --font-mono 决定）
+const UI_FONT_PRESETS: Record<string, string> = {
+  system: 'system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", sans-serif',
+  inter: '"Inter", "PingFang SC", "Microsoft YaHei UI", sans-serif',
+  segoe: '"Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif',
+  yahei: '"Microsoft YaHei UI", "PingFang SC", sans-serif',
+}
+const MONO_FONT_PRESETS: Record<string, string> = {
+  jetbrains: '"JetBrains Mono", "Fira Code", Consolas, monospace',
+  cascadia: '"Cascadia Code", "JetBrains Mono", Consolas, monospace',
+  fira: '"Fira Code", "JetBrains Mono", Consolas, monospace',
+  consolas: 'Consolas, "Courier New", monospace',
+}
+
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>(loadSettings())
 
@@ -254,6 +270,23 @@ export const useSettingsStore = defineStore('settings', () => {
     document.documentElement.setAttribute('data-theme', theme)
   }
 
+  // 字体应用：预设命中就内联覆盖 CSS 变量（内联优先级压过主题样式表），
+  // 'theme' 则移除覆盖，回落到主题自己的 --font-sans / --font-mono。
+  function applyFont() {
+    const root = document.documentElement
+    const ui = UI_FONT_PRESETS[settings.value.uiFont]
+    if (ui) root.style.setProperty('--font-sans', ui)
+    else root.style.removeProperty('--font-sans')
+    const mono = MONO_FONT_PRESETS[settings.value.monoFont]
+    if (mono) root.style.setProperty('--font-mono', mono)
+    else root.style.removeProperty('--font-mono')
+  }
+
+  watch(
+    () => [settings.value.uiFont, settings.value.monoFont],
+    applyFont,
+  )
+
   function toggleSidebar() {
     settings.value.sidebarCollapsed = !settings.value.sidebarCollapsed
   }
@@ -268,8 +301,9 @@ export const useSettingsStore = defineStore('settings', () => {
     setLocale(language)
   }
 
-  // 初始化时应用主题
+  // 初始化时应用主题与字体
   applyTheme(settings.value.theme)
+  applyFont()
 
   return {
     settings,

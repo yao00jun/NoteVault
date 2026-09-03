@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
+import { nextTick } from 'vue'
 import { useSettingsStore } from './settings'
 
 // P2-5：settings store 会把 apiKey 同步进系统凭据库（经 Wails 服务），
@@ -35,17 +36,25 @@ class MemoryStorage {
 beforeAll(() => {
   ;(globalThis as any).localStorage = new MemoryStorage()
   // Node 环境下没有 document，提供最小桩以便 setTheme 写入 data-theme
-  ;(globalThis as any).document = {
-    documentElement: {
-      _attrs: {} as Record<string, string>,
-      setAttribute(key: string, value: string) {
-        this._attrs[key] = value
-      },
-      getAttribute(key: string) {
-        return this._attrs[key] ?? null
-      },
+  const docEl: any = {
+    _attrs: {} as Record<string, string>,
+    _style: {} as Record<string, string>,
+    setAttribute(key: string, value: string) {
+      this._attrs[key] = value
+    },
+    getAttribute(key: string) {
+      return this._attrs[key] ?? null
     },
   }
+  docEl.style = {
+    setProperty: (key: string, value: string) => {
+      docEl._style[key] = value
+    },
+    removeProperty: (key: string) => {
+      delete docEl._style[key]
+    },
+  }
+  ;(globalThis as any).document = { documentElement: docEl }
 })
 
 beforeEach(() => {
@@ -85,6 +94,24 @@ describe('useSettingsStore', () => {
     const store = useSettingsStore()
     store.setEditorMode('preview')
     expect(store.settings.editorMode).toBe('preview')
+  })
+
+  it('字体预设应内联覆盖 CSS 变量，theme 应移除覆盖', async () => {
+    const store = useSettingsStore()
+    const root: any = document.documentElement
+    // 默认值是跟随主题：不产生内联覆盖
+    expect(store.settings.uiFont).toBe('theme')
+    expect(store.settings.monoFont).toBe('theme')
+    store.settings.uiFont = 'inter'
+    store.settings.monoFont = 'cascadia'
+    await nextTick()
+    expect(root._style['--font-sans']).toContain('Inter')
+    expect(root._style['--font-mono']).toContain('Cascadia Code')
+    store.settings.uiFont = 'theme'
+    store.settings.monoFont = 'theme'
+    await nextTick()
+    expect(root._style['--font-sans']).toBeUndefined()
+    expect(root._style['--font-mono']).toBeUndefined()
   })
 
   it('修改 AI 设置应在内存中生效并触发持久化', async () => {

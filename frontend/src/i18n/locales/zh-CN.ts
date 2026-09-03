@@ -429,6 +429,12 @@ export default {
       langEn: 'English',
       fontSize: '字体大小',
       fontSizeDesc: '编辑器和界面字体大小',
+      uiFont: '界面字体',
+      uiFontDesc: '应用界面整体字体（跟随主题则使用主题默认字体）',
+      monoFont: '代码字体',
+      monoFontDesc: '编辑器与代码块的等宽字体',
+      fontFollowTheme: '跟随主题',
+      fontSystem: '系统默认',
     },
     editor: {
       title: '编辑器',

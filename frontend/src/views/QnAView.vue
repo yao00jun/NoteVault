@@ -249,7 +249,7 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
   justify-content: space-between;
   gap: 12px;
   padding: 16px 24px 12px;
-  border-bottom: 1px solid var(--border-color, #2d2d30);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -280,7 +280,7 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  border: 1px solid var(--border-color, #2d2d30);
+  border: 1px solid var(--border);
   border-radius: 6px;
   background: transparent;
   color: var(--text-secondary, #9d9d9d);
@@ -310,7 +310,7 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
   gap: 6px;
   margin: 0 24px;
   padding: 8px 12px;
-  border: 1px solid var(--warning-border, var(--warning, #f59e0b));
+  border: 1px solid color-mix(in srgb, var(--warning, #f59e0b) 45%, transparent);
   border-radius: var(--radius-sm, 6px);
   background: color-mix(in srgb, var(--warning, #f59e0b) 12%, transparent);
   color: var(--text-secondary, #c8c8c8);
@@ -363,16 +363,16 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
 }
 
 .msg.user .msg-bubble {
-  background: var(--accent-color, #4f7cf7);
+  background: var(--accent);
   color: #fff;
   border-bottom-right-radius: 4px;
   white-space: pre-wrap;
 }
 
 .msg.assistant .msg-bubble {
-  background: var(--bg-secondary, #252526);
+  background: var(--bg-card);
   color: var(--text-primary, #e8e8e8);
-  border: 1px solid var(--border-color, #2d2d30);
+  border: 1px solid var(--border);
   border-bottom-left-radius: 4px;
 }
 
@@ -428,7 +428,7 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
 .msg-citations {
   margin-top: 10px;
   padding-top: 8px;
-  border-top: 1px dashed var(--border-color, #2d2d30);
+  border-top: 1px dashed var(--border);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -446,7 +446,7 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
   align-self: flex-start;
   max-width: 100%;
   padding: 4px 10px;
-  border: 1px solid var(--border-color, #2d2d30);
+  border: 1px solid var(--border);
   border-radius: 999px;
   background: transparent;
   color: var(--text-secondary, #9d9d9d);
@@ -457,11 +457,11 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
 
 .citation-chip:hover {
   color: var(--text-primary, #e8e8e8);
-  border-color: var(--accent-color, #4f7cf7);
+  border-color: var(--accent);
 }
 
 .cite-index {
-  color: var(--accent-color, #4f7cf7);
+  color: var(--accent);
   font-weight: 600;
 }
 
@@ -478,16 +478,16 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
   align-items: flex-end;
   gap: 10px;
   padding: 14px 24px 18px;
-  border-top: 1px solid var(--border-color, #2d2d30);
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .qna-input textarea {
   flex: 1;
   padding: 10px 14px;
-  border: 1px solid var(--border-color, #2d2d30);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--bg-secondary, #252526);
+  background: var(--bg-card);
   color: var(--text-primary, #e8e8e8);
   font-size: 14px;
   font-family: inherit;
@@ -498,7 +498,7 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
 }
 
 .qna-input textarea:focus {
-  border-color: var(--accent-color, #4f7cf7);
+  border-color: var(--accent);
 }
 
 .btn-ask {
@@ -508,7 +508,7 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
   padding: 10px 18px;
   border: none;
   border-radius: 10px;
-  background: var(--accent-color, #4f7cf7);
+  background: var(--accent);
   color: #fff;
   font-size: 14px;
   cursor: pointer;
