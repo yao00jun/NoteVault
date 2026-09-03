@@ -377,7 +377,8 @@ func TestQnAService_RetrieveChunksHybrid_DegradesToBM25(t *testing.T) {
 
 // TestQnAService_SemanticRecall_RequiresOllama 是集成测试，验证真实 bge-m3 下
 // 语义召回（跨语言同义）相对纯 BM25 的提升。默认跳过，需本地 Ollama + bge-m3：
-//   NV_OLLAMA_TEST=1 go test ./internal/service/ -run SemanticRecall
+//
+//	NV_OLLAMA_TEST=1 go test ./internal/service/ -run SemanticRecall
 //
 // 2026-09-02 修正两处使本用例形同虚设的问题：
 //  1. embBaseURL 原传空串，normalizeBaseURL 会把它补成 https://api.openai.com/v1，

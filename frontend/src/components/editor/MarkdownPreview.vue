@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, watch, nextTick, ref, onMounted, onBeforeUnmount } from 'vue'
 import { marked } from 'marked'
+import { sanitizeHtml } from '@/utils/sanitize'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { FileService } from '@bindings/github.com/notevault/notevault/index.js'
@@ -244,7 +245,8 @@ const html = computed(() => {
     s = preprocessWikiLinks(s)
     s = preprocessHighlights(s)
     s = preprocessBlockIDs(s)
-    return marked.parse(s) as string
+    // XSS 防线：marked 透传原始 HTML，笔记里的 onerror 等会在此执行
+    return sanitizeHtml(marked.parse(s) as string)
   } catch (e) {
     return '<p style="color:red">Markdown 解析错误</p>'
   }
@@ -504,7 +506,7 @@ async function loadEmbeds(root: HTMLElement, depth = 0) {
       s = preprocessWikiLinks(s)
       s = preprocessHighlights(s)
       s = preprocessBlockIDs(s)
-      const inner = marked.parse(s) as string
+      const inner = sanitizeHtml(marked.parse(s) as string)
       el.classList.remove('nv-embed-loading')
       el.classList.add('nv-embed-loaded')
       el.innerHTML = `<div class="nv-embed-header"><span class="nv-embed-link">${escapeHtml(file)}${anchor ? '#' + escapeHtml(anchor) : ''}</span></div><div class="nv-embed-body">${inner}</div>`

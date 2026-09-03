@@ -274,13 +274,12 @@ func (s *ImportService) importOneFile(srcFull, workspacePath, targetRel string, 
 
 // writeToWorkspace 将内容写入工作区，处理冲突
 func (s *ImportService) writeToWorkspace(workspacePath, targetRel string, content []byte, strategy ConflictStrategy, visited map[string]bool, result *ImportResult) error {
-	// 路径穿越防护
-	clean := filepath.Clean(targetRel)
-	if filepath.IsAbs(clean) || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == ".." {
+	// 路径穿越防护（与 FileService.confineToWorkspace 同一口径，zip 条目名不可信）
+	if _, err := confineToWorkspace(workspacePath, targetRel); err != nil {
 		return core.WrapError(core.ErrInvalidInput, "非法目标路径: "+targetRel, nil)
 	}
 
-	finalRel := clean
+	finalRel := filepath.Clean(targetRel)
 	exists := false
 	if _, err := os.Stat(filepath.Join(workspacePath, finalRel)); err == nil {
 		exists = true

@@ -122,8 +122,10 @@ function loadSettings(): AppSettings {
 /**
  * P2-5 迁移：把旧版本遗留在 localStorage 里的明文 apiKey 搬进系统凭据库，
  * 然后从 localStorage 中彻底清除。只需执行一次（搬完即从存储里消失）。
+ * 必须 await 写入成功后才清除：迁移失败就保留明文 Key，下次启动重试——
+ * 否则一次凭据库瞬时故障会永久丢 Key。
  */
-function migrateLegacyApiKey(): void {
+async function migrateLegacyApiKey(): Promise<void> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return
@@ -132,11 +134,14 @@ function migrateLegacyApiKey(): void {
     if (!ai) return
     const legacy = ai.apiKey
     if (typeof legacy !== 'string' || legacy === '') return
-    void CredentialService.SaveCredential(API_KEY_CREDENTIAL, legacy).catch((e) => {
-      console.warn('[settings] 迁移 API Key 到系统凭据库失败:', e)
-    })
-    ai.apiKey = ''
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(stored))
+    try {
+      await CredentialService.SaveCredential(API_KEY_CREDENTIAL, legacy)
+      ai.apiKey = ''
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored))
+    } catch (e) {
+      // 保留 localStorage 里的 Key，下次启动重试
+      console.warn('[settings] 迁移 API Key 到系统凭据库失败，保留原文待重试:', e)
+    }
   } catch (e) {
     console.warn('[settings] API Key 迁移检查失败:', e)
   }

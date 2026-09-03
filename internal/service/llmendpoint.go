@@ -332,10 +332,14 @@ func newProbeRequest(apiKey, baseURL string, p LLMProtocol) (*http.Request, stri
 		}
 		return req, endpoint, nil
 	case LLMProtocolGoogleGemini:
-		endpoint := fmt.Sprintf("%s/models?key=%s", baseURL, apiKey)
+		// Key 走请求头（同 llmclient.go 口径），避免 URL 进错误信息泄漏 Key
+		endpoint := baseURL + "/models"
 		req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 		if err != nil {
 			return nil, "", err
+		}
+		if key := strings.TrimSpace(apiKey); key != "" {
+			req.Header.Set("x-goog-api-key", key)
 		}
 		return req, endpoint, nil
 	case LLMProtocolGoogleVertex:

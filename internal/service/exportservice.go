@@ -90,7 +90,11 @@ func (s *ExportService) ExportWorkspaceMarkdown(workspacePath, destPath string) 
 
 // ExportNoteMarkdown 将单个笔记（按相对路径）复制导出到 destPath
 func (s *ExportService) ExportNoteMarkdown(workspacePath, relPath, destPath string) error {
-	src := filepath.Join(workspacePath, filepath.FromSlash(relPath))
+	// relPath 含 ".." 时会读出工作区外任意文件，必须先收敛
+	src, err := confineToWorkspace(workspacePath, filepath.FromSlash(relPath))
+	if err != nil {
+		return err
+	}
 	data, err := os.ReadFile(src)
 	if err != nil {
 		return fmt.Errorf("读取源文件失败：%w", err)

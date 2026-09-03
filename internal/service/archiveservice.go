@@ -31,7 +31,12 @@ func (s *ArchiveService) getArchiveDir(workspacePath string) string {
 
 // ArchiveFile 归档文件（移动到 .archive 目录）
 func (s *ArchiveService) ArchiveFile(workspacePath string, relativePath string) (*ArchivedFile, error) {
-	srcPath := filepath.Join(workspacePath, relativePath)
+	// 源路径必须在工作区内；目标路径必须在 .archive 内，
+	// 否则 relativePath 含 ".." 时归档变成任意文件移动原语
+	srcPath, err := confineToWorkspace(workspacePath, relativePath)
+	if err != nil {
+		return nil, err
+	}
 	archiveDir := s.getArchiveDir(workspacePath)
 
 	// 确保归档目录存在
@@ -40,7 +45,10 @@ func (s *ArchiveService) ArchiveFile(workspacePath string, relativePath string) 
 	}
 
 	// 目标路径：保留原始目录结构
-	destPath := filepath.Join(archiveDir, relativePath)
+	destPath, err := confineToWorkspace(archiveDir, relativePath)
+	if err != nil {
+		return nil, err
+	}
 	destDir := filepath.Dir(destPath)
 	if err := os.MkdirAll(destDir, 0750); err != nil {
 		return nil, err
@@ -68,8 +76,14 @@ func (s *ArchiveService) ArchiveFile(workspacePath string, relativePath string) 
 // UnarchiveFile 取消归档（移回原位置）
 func (s *ArchiveService) UnarchiveFile(workspacePath string, relativePath string) error {
 	archiveDir := s.getArchiveDir(workspacePath)
-	srcPath := filepath.Join(archiveDir, relativePath)
-	destPath := filepath.Join(workspacePath, relativePath)
+	srcPath, err := confineToWorkspace(archiveDir, relativePath)
+	if err != nil {
+		return err
+	}
+	destPath, err := confineToWorkspace(workspacePath, relativePath)
+	if err != nil {
+		return err
+	}
 
 	// 确保目标目录存在
 	destDir := filepath.Dir(destPath)
@@ -125,7 +139,10 @@ func (s *ArchiveService) GetArchivedFiles(workspacePath string) ([]*ArchivedFile
 // IsArchived 检查文件是否已归档
 func (s *ArchiveService) IsArchived(workspacePath string, relativePath string) bool {
 	archiveDir := s.getArchiveDir(workspacePath)
-	archivedPath := filepath.Join(archiveDir, relativePath)
-	_, err := os.Stat(archivedPath)
+	archivedPath, err := confineToWorkspace(archiveDir, relativePath)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(archivedPath)
 	return err == nil
 }

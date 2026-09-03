@@ -243,10 +243,10 @@ type evalRow struct {
 
 // evalReport 是一个分组（arm）的评测结果。
 type evalReport struct {
-	name        string
-	recallAtK   float64
-	mrrAtK      float64
-	rows        []evalRow
+	name         string
+	recallAtK    float64
+	mrrAtK       float64
+	rows         []evalRow
 	recallByKind map[string]float64
 }
 
@@ -443,8 +443,8 @@ func TestQnAService_HybridSearch_VectorOnlyRecall(t *testing.T) {
 		dim: 3,
 		aliases: [][]string{
 			{"缓存失效", "invalidate cache", "cache invalidation"}, // dim 0
-			{"goroutine"},                                          // dim 1
-			{"牛奶"},                                                 // dim 2
+			{"goroutine"}, // dim 1
+			{"牛奶"},        // dim 2
 		},
 	}
 	svc := NewQnAServiceWithRegistry(fs, nil, emb, nil)

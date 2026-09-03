@@ -73,9 +73,9 @@ type openAIChatMessage struct {
 }
 
 type openAIChatRequest struct {
-	Model    string            `json:"model"`
+	Model    string              `json:"model"`
 	Messages []openAIChatMessage `json:"messages"`
-	Stream   bool              `json:"stream"`
+	Stream   bool                `json:"stream"`
 }
 
 type openAIChatResponse struct {
@@ -138,7 +138,7 @@ type openAIResponseInput struct {
 }
 
 type openAIResponsesRequest struct {
-	Model string              `json:"model"`
+	Model string                `json:"model"`
 	Input []openAIResponseInput `json:"input"`
 }
 
@@ -281,12 +281,12 @@ type geminiPart struct {
 }
 
 type geminiContent struct {
-	Role  string        `json:"role,omitempty"`
+	Role  string       `json:"role,omitempty"`
 	Parts []geminiPart `json:"parts"`
 }
 
 type geminiRequest struct {
-	SystemInstruction *geminiContent `json:"systemInstruction,omitempty"`
+	SystemInstruction *geminiContent  `json:"systemInstruction,omitempty"`
 	Contents          []geminiContent `json:"contents"`
 }
 
@@ -304,7 +304,7 @@ func llmChatGoogleGemini(ctx context.Context, client *http.Client, apiKey, baseU
 	if baseURL == "" {
 		baseURL = "https://generativelanguage.googleapis.com/v1beta"
 	}
-	url := fmt.Sprintf("%s/models/%s:generateContent?key=%s", baseURL, model, apiKey)
+	url := fmt.Sprintf("%s/models/%s:generateContent", baseURL, model)
 	reqBody := geminiRequest{
 		SystemInstruction: &geminiContent{
 			Parts: []geminiPart{{Text: systemPrompt}},
@@ -322,6 +322,9 @@ func llmChatGoogleGemini(ctx context.Context, client *http.Client, apiKey, baseU
 		return "", fmt.Errorf("构造请求失败：%w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	// Key 走请求头而不是 URL：http 客户端的错误信息内嵌完整 URL，
+	// 拼 URL 会让一次 DNS 失败就把 Key 泄漏到前端错误提示/日志里
+	req.Header.Set("x-goog-api-key", apiKey)
 
 	respData, status, err := doLLMRequest(client, req)
 	if err != nil {

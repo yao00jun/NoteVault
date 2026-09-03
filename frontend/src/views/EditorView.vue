@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import EditorTabBar from '@/components/editor/EditorTabBar.vue'
 import EditorBacklinks from '@/components/editor/EditorBacklinks.vue'
@@ -16,6 +16,7 @@ import { useI18n } from 'vue-i18n'
 import { FileService, WorkspaceService, SearchService, TagService, ArchiveService, TrashService, SummarizeService, ExportService, CompileService } from '@bindings/github.com/notevault/notevault/index.js'
 import { arrayBufferToBase64, generateMarkdownImage } from '@/utils/image'
 import { marked } from 'marked'
+import { sanitizeHtml } from '@/utils/sanitize'
 import { useToast } from '@/composables/useToast'
 
 const workspaceStore = useWorkspaceStore()
@@ -226,12 +227,13 @@ async function saveCurrentTab() {
   }
 }
 
-// 自动保存（debounce）
+// 自动保存（debounce；间隔读用户设置，不再硬编码）
 function scheduleAutoSave() {
   if (saveTimer) clearTimeout(saveTimer)
+  const delay = Math.max(200, settingsStore.settings.autoSaveInterval || 500)
   saveTimer = setTimeout(() => {
     saveCurrentTab()
-  }, 1000)
+  }, delay)
 }
 
 // 新建文件
@@ -812,7 +814,7 @@ async function exportSingleHTML() {
 
 // 把 Markdown 渲染为内联样式的独立 HTML 文件
 function buildStandaloneHTML(title: string, markdown: string): string {
-  const body = marked.parse(markdown) as string
+  const body = sanitizeHtml(marked.parse(markdown) as string)
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -850,6 +852,19 @@ function escapeHtml(s: string): string {
 }
 
 // 初始化
+// 卸载时兜底：清掉挂起的自动保存定时器，并对未保存的当前标签页立即 flush。
+// 否则路由切换/关窗前最后 1 秒（一个 debounce 窗口）的编辑会静默丢失。
+onBeforeUnmount(() => {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
+  const tab = tabs.value[activeTabIndex.value]
+  if (tab?.isDirty) {
+    void saveTab(activeTabIndex.value)
+  }
+})
+
 onMounted(async () => {
   if (!currentWorkspace.value) {
     try {

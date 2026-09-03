@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { MessageCircle, Send, Trash2, FileText, Loader2, Sparkles } from 'lucide-vue-next'
 import { marked } from 'marked'
+import { sanitizeHtml } from '@/utils/sanitize'
 import { QnAService } from '@bindings/github.com/notevault/notevault/index.js'
 import type { QnACitation } from '@bindings/github.com/notevault/notevault/models.js'
 import type { RerankProvider } from '@bindings/github.com/notevault/notevault/internal/service/models.js'
@@ -104,7 +105,8 @@ function openCitation(path: string) {
 }
 
 function renderMarkdown(content: string): string {
-  return marked.parse(content, { async: false }) as string
+  // AI 回答同样经过清洗：模型输出也可能带注入 HTML
+  return sanitizeHtml(marked.parse(content, { async: false }) as string)
 }
 
 async function scrollToBottom() {
