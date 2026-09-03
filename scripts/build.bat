@@ -31,7 +31,7 @@ REM --- Step 3: Build ---
 echo [3/3] Building NoteVault...
 echo   (This may take 1-2 minutes, please wait...)
 echo.
-cd /d "%~dp0"
+cd /d "%~dp0.."
 call wails3 build
 set BUILD_ERROR=%errorlevel%
 echo.
@@ -48,7 +48,8 @@ if %BUILD_ERROR% neq 0 (
 
 echo ========================================
 echo   Build successful!
-echo   Output: %~dp0bin\notevault.exe
+echo   Output: %~dp0bin
+otevault.exe
 echo ========================================
 echo.
 pause

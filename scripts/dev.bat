@@ -70,7 +70,7 @@ REM --- Step 3: Build ---
 echo [3/4] Building NoteVault...
 echo   (This may take 1-2 minutes, please wait...)
 echo.
-cd /d "%~dp0"
+cd /d "%~dp0.."
 call wails3 build
 set BUILD_ERROR=%errorlevel%
 echo.
@@ -90,11 +90,14 @@ echo.
 
 REM --- Step 4: Run ---
 echo [4/4] Launching NoteVault...
-if exist "%~dp0bin\notevault.exe" (
-    start "" "%~dp0bin\notevault.exe"
+if exist "%~dp0bin
+otevault.exe" (
+    start "" "%~dp0bin
+otevault.exe"
     echo   App launched!
 ) else (
-    echo   [ERROR] exe not found: %~dp0bin\notevault.exe
+    echo   [ERROR] exe not found: %~dp0bin
+otevault.exe
     pause
     exit /b 1
 )
