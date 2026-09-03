@@ -15,6 +15,7 @@ import * as QnAService from "./qnaservice.js";
 import * as ReminderService from "./reminderservice.js";
 import * as SearchService from "./searchservice.js";
 import * as SnapshotService from "./snapshotservice.js";
+import * as StatsService from "./statsservice.js";
 import * as SummarizeService from "./summarizeservice.js";
 import * as TagService from "./tagservice.js";
 import * as TaskService from "./taskservice.js";
@@ -37,6 +38,7 @@ export {
     ReminderService,
     SearchService,
     SnapshotService,
+    StatsService,
     SummarizeService,
     TagService,
     TaskService,
@@ -98,6 +100,7 @@ export type {
     TagInfo,
     TaskInfo,
     TemplateInfo,
+    TodayStats,
     TodoItem,
     TrashedFile,
     Workspace

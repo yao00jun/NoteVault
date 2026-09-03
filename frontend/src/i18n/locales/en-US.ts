@@ -757,6 +757,14 @@ export default {
     newFromTemplate: 'New from Template',
     exportWorkspace: 'Export Workspace',
     goToSelect: 'Go to workspace selection',
+    today: {
+      edited: 'Edited today',
+      streak: 'Day streak',
+      todos: 'Open todos',
+      highTodos: '{count} high priority',
+      dueReminders: 'Due reminders',
+      continue: 'Continue where you left off',
+    },
     stats: {
       docs: 'Documents',
       starred: 'Pinned',

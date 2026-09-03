@@ -30,6 +30,7 @@ import {
   Loader2,
 } from 'lucide-vue-next'
 import KnowledgeStats from '@/components/knowledge/KnowledgeStats.vue'
+import TodayPanel from '@/components/knowledge/TodayPanel.vue'
 import KnowledgeTodoPanel from '@/components/knowledge/KnowledgeTodoPanel.vue'
 import KnowledgeTagCloud from '@/components/knowledge/KnowledgeTagCloud.vue'
 import TemplateCreateDialog from '@/components/knowledge/TemplateCreateDialog.vue'
@@ -612,6 +613,9 @@ watch(() => workspaceStore.fileTreeVersion, () => {
         {{ t('knowledge.goToSelect') }}
       </router-link>
     </div>
+
+    <!-- 今日工作台条带：今日编辑/连续记录/待办/到期提醒 + 继续上次 -->
+    <TodayPanel />
 
     <!-- 统计卡片 -->
     <KnowledgeStats :stats="stats" />

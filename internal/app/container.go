@@ -51,6 +51,7 @@ type Container struct {
 	Todo         *service.TodoService
 	Base         *service.BaseService
 	Reminder     *service.ReminderService
+	Stats        *service.StatsService
 	Archive      *service.ArchiveService
 	Trash        *service.TrashService
 	Graph        *service.GraphService
@@ -99,6 +100,11 @@ func NewContainer(cfg ContainerConfig) *Container {
 	// E-5：任务框架必须先于 Import 构造——导入要在它上面提交异步任务。
 	taskService := service.NewTaskService(wailsTaskEmitter{})
 
+	// Todo / Reminder 抽成本地变量：StatsService 聚合今日统计时
+	// 复用同一实例，保证与待办面板 / 提醒页读到的口径一致
+	todoService := service.NewTodoService()
+	reminderService := service.NewReminderService()
+
 	return &Container{
 		App:          &AppService{},
 		Workspace:    service.NewWorkspaceServiceWithRegistryAndSink(indexRegistry, wailsFileChangeEmitter{}),
@@ -106,9 +112,10 @@ func NewContainer(cfg ContainerConfig) *Container {
 		File:         fileService,
 		Search:       service.NewSearchServiceWithRegistry(fileService, indexRegistry),
 		Tag:          service.NewTagService(),
-		Todo:         service.NewTodoService(),
+		Todo:         todoService,
 		Base:         service.NewBaseService(),
-		Reminder:     service.NewReminderService(),
+		Reminder:     reminderService,
+		Stats:        service.NewStatsService(todoService, reminderService),
 		Archive:      service.NewArchiveService(),
 		Trash:        service.NewTrashService(),
 		Graph:        service.NewGraphService(),
@@ -154,6 +161,7 @@ func (c *Container) WailsServices() []application.Service {
 		application.NewService(c.Todo),
 		application.NewService(c.Base),
 		application.NewService(c.Reminder),
+		application.NewService(c.Stats),
 		application.NewService(c.Archive),
 		application.NewService(c.Trash),
 		application.NewService(c.Snapshot),

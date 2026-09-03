@@ -757,6 +757,14 @@ export default {
     newFromTemplate: '从模板新建',
     exportWorkspace: '导出工作区',
     goToSelect: '前往选择工作区',
+    today: {
+      edited: '今日编辑',
+      streak: '连续记录（天）',
+      todos: '未完成待办',
+      highTodos: '含 {count} 条高优先级',
+      dueReminders: '到期提醒',
+      continue: '继续上次',
+    },
     stats: {
       docs: '文档',
       starred: '已固定',

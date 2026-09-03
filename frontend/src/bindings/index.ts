@@ -36,6 +36,7 @@ export {
   ReminderService,
   SearchService,
   SnapshotService,
+  StatsService,
   SummarizeService,
   TagService,
   TemplateService,

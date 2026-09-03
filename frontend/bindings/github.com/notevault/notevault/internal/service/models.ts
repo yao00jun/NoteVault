@@ -901,6 +901,42 @@ export interface TemplateInfo {
 }
 
 /**
+ * TodayStats 今日工作台统计。
+ * 所有数字都从工作区文件与既有索引派生，用户不需要为仪表盘维护任何数据。
+ */
+export interface TodayStats {
+    /**
+     * 今天有改动的 .md 笔记数
+     */
+    "editedToday": number;
+
+    /**
+     * 连续有笔记改动的天数（今天没写则从昨天回溯）
+     */
+    "streakDays": number;
+
+    /**
+     * 未完成待办总数
+     */
+    "pendingTodos": number;
+
+    /**
+     * 未完成中带 !! 的高优先级数量
+     */
+    "highPriorityTodos": number;
+
+    /**
+     * 已到期未完成的提醒数
+     */
+    "dueReminders": number;
+
+    /**
+     * 最近改动的笔记相对路径（正斜杠，最多 5 篇）
+     */
+    "recentFiles": string[] | null;
+}
+
+/**
  * TodoItem 表示一个待办事项
  */
 export interface TodoItem {
