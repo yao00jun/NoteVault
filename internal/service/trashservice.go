@@ -275,19 +275,25 @@ func (s *TrashService) EmptyTrash(workspacePath string) error {
 
 	trashDir := s.getTrashDir(workspacePath)
 
-	// 删除所有文件（删除失败则返回错误，索引保留以便重试）
+	// 逐条删除，只把确认删掉的条目移出索引。
+	// confine 校验失败（索引被篡改）或删除失败的条目必须留在索引里：
+	// 若无条件清空索引，文件还躺在 .trash/ 却从 UI 永久消失，变成孤儿。
+	remaining := make([]*TrashedFile, 0, len(files))
 	for _, f := range files {
-		filePath, err := confineToWorkspace(trashDir, f.Path)
-		if err != nil {
+		filePath, cerr := confineToWorkspace(trashDir, f.Path)
+		if cerr != nil {
+			remaining = append(remaining, f)
 			continue
 		}
 		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("删除回收站文件失败：%w", err)
+			remaining = append(remaining, f)
+			continue
 		}
 	}
-
-	// 清空索引
-	return s.saveTrashIndex(workspacePath, []*TrashedFile{})
+	if len(remaining) < len(files) {
+		return s.saveTrashIndex(workspacePath, remaining)
+	}
+	return nil
 }
 
 // GetTrashStats 获取回收站统计

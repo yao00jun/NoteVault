@@ -149,8 +149,7 @@ func (s *StatsService) GetTodayStats(workspacePath string) (*TodayStats, error) 
 				if rm.Completed {
 					continue
 				}
-				at, perr := time.Parse(time.RFC3339, rm.RemindAt)
-				if perr == nil && !at.After(now) {
+				if reminderIsDue(rm.RemindAt, now) {
 					stats.DueReminders++
 				}
 			}
@@ -208,6 +207,23 @@ func (s *StatsService) GetWritingActivity(workspacePath string, days int) (*Writ
 	activity.LongestStreak = longest
 
 	return activity, nil
+}
+
+// reminderIsDue 判断提醒时间是否已到。
+// 提醒的写入入口有两个口径：前端 <input type="datetime-local"> 存的是
+// "2006-01-02T15:04"（无时区），后端历史数据是 RFC3339。两种都必须能读，
+// 否则今日工作台的「到期提醒」会静默恒为 0。
+func reminderIsDue(remindAt string, now time.Time) bool {
+	layouts := []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02T15:04"}
+	var at time.Time
+	var err error
+	for _, layout := range layouts {
+		at, err = time.ParseInLocation(layout, remindAt, time.Local)
+		if err == nil {
+			return !at.After(now)
+		}
+	}
+	return false
 }
 
 // GetOnThisDay 返回「那年今日」：往年同月同日有改动的笔记（按时间倒序，最多 5 篇）。

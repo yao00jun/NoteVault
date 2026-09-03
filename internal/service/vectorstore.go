@@ -249,12 +249,14 @@ func (vs *VectorStore) Sync(ctx context.Context, workspacePath string, fileServi
 	}
 
 	// 已删除的文件：在 manifest 里但不在磁盘上 → 整篇移除
+	deleted := 0
 	for rel := range vs.manifest {
 		if _, ok := onDisk[rel]; !ok {
 			if err := vs.coll.Delete(ctx, map[string]string{"relPath": rel}, nil); err != nil {
 				return fmt.Errorf("删除已消失文档的向量失败（%s）：%w", rel, err)
 			}
 			delete(vs.manifest, rel)
+			deleted++
 		}
 	}
 
@@ -278,7 +280,9 @@ func (vs *VectorStore) Sync(ctx context.Context, workspacePath string, fileServi
 		vs.manifest[f.rel] = f.modNano
 	}
 
-	if len(changed) > 0 || len(files) != len(vs.manifest) {
+	// 仅删除时 files == manifest 也必须落盘，否则 stale manifest 会让
+	// 每次重启后的第一次同步都对已删文档重跑 Delete 扫描，永不收敛
+	if len(changed) > 0 || deleted > 0 || len(files) != len(vs.manifest) {
 		return vs.saveManifestLocked()
 	}
 	return nil

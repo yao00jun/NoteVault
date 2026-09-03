@@ -157,6 +157,46 @@ func TestPathConfinement_ExportRejectsEscape(t *testing.T) {
 	}
 }
 
+// TestTrash_EmptyTrashKeepsUnconfined 孤儿护栏：索引被篡改出越界条目时，
+// EmptyTrash 必须把该条目留在索引里，而不是清空索引留下物理孤儿文件。
+func TestTrash_EmptyTrashKeepsUnconfined(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".trash"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".notevault"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	// 一条合法待删 + 一条越界条目（模拟被篡改的索引）
+	okRel := "1735689600_ok.md"
+	if err := os.WriteFile(filepath.Join(dir, ".trash", okRel), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	files := []*TrashedFile{
+		{ID: "t1", Path: okRel, Name: "ok.md", OriginalPath: "ok.md"},
+		{ID: "t2", Path: "../outside.md", Name: "outside.md", OriginalPath: "outside.md"},
+	}
+	s := NewTrashService()
+	if err := s.saveTrashIndex(dir, files); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.EmptyTrash(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	left, err := s.GetTrashedFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 1 || left[0].ID != "t2" {
+		t.Fatalf("越界条目应留在索引中等待处理, got %+v", left)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".trash", okRel)); !os.IsNotExist(err) {
+		t.Fatal("合法文件应被物理删除")
+	}
+}
+
 // TestPathConfinement_ImportRejectsEscape 导入目标不得越出工作区
 func TestPathConfinement_ImportRejectsEscape(t *testing.T) {
 	dir := t.TempDir()

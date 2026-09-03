@@ -72,16 +72,19 @@ func (s *ReportService) GenerateWeeklyReport(workspacePath string, ai WeeklyRepo
 	now := time.Now()
 	year, week := now.ISOWeek()
 	relPath := fmt.Sprintf("Reports/%d-W%02d.md", year, week)
+	// 数据窗口取本周一 0 点起，与 ISO 周文件名对齐：
+	// 若用滚动 7 天，周一上午生成的"周报"装的是上一周的数据却写进本周文件
+	weekday := (int(now.Weekday()) + 6) % 7 // 周一=0 … 周日=6
+	weekStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -weekday)
 
 	// 近 7 天改动笔记（按改动时间倒序）
 	editCounts, recents, err := scanEditActivity(workspacePath)
 	if err != nil {
 		return nil, err
 	}
-	weekAgo := now.AddDate(0, 0, -7)
 	var changed []editRecent
 	for _, r := range recents {
-		if r.mod.After(weekAgo) {
+		if !r.mod.Before(weekStart) {
 			changed = append(changed, r)
 		}
 	}
@@ -115,7 +118,7 @@ func (s *ReportService) GenerateWeeklyReport(workspacePath string, ai WeeklyRepo
 	sb.WriteString(fmt.Sprintf("# 知识周报 %d-W%02d\n\n", year, week))
 	sb.WriteString(fmt.Sprintf("> 生成于 %s · 覆盖 %s 至 %s\n\n",
 		now.Format("2006-01-02 15:04"),
-		weekAgo.Format("2006-01-02"), now.Format("2006-01-02")))
+		weekStart.Format("2006-01-02"), now.Format("2006-01-02")))
 
 	sb.WriteString("## 本周数据\n\n")
 	sb.WriteString(fmt.Sprintf("- 改动笔记：%d 篇\n", len(changed)))
@@ -160,9 +163,9 @@ func (s *ReportService) GenerateWeeklyReport(workspacePath string, ai WeeklyRepo
 	}
 
 	// 底部固定统计块：即使 AI 段失败也有完整数据落盘
-	sb.WriteString("## 附：近 7 天逐日改动\n\n")
-	for i := 6; i >= 0; i-- {
-		day := now.AddDate(0, 0, -i)
+	sb.WriteString("## 附：本周逐日改动\n\n")
+	for d := weekStart; !d.After(now); d = d.AddDate(0, 0, 1) {
+		day := d
 		sb.WriteString(fmt.Sprintf("- %s：%d 篇\n", day.Format("01-02"), editCounts[day.Format("2006-01-02")]))
 	}
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import EditorTabBar from '@/components/editor/EditorTabBar.vue'
 import EditorBacklinks from '@/components/editor/EditorBacklinks.vue'
@@ -852,16 +852,47 @@ function escapeHtml(s: string): string {
 }
 
 // 初始化
-// 卸载时兜底：清掉挂起的自动保存定时器，并对未保存的当前标签页立即 flush。
-// 否则路由切换/关窗前最后 1 秒（一个 debounce 窗口）的编辑会静默丢失。
+// flushDirtyTab：清掉挂起的自动保存定时器，并对未保存的当前标签页立即保存。
+// keep-alive 下路由切换触发的是 deactivated 而非 unmount，flush 必须挂在
+// onDeactivated 才能覆盖"切页面前最后 1 秒（一个 debounce 窗口）的编辑"；
+// onBeforeUnmount 保留作真卸载时的兜底。注意 deactivated 时不能清 saveTimer：
+// 组件仍保活，用户可能切回来继续编辑，定时器要照常工作。
+function flushDirtyTab() {
+  const tab = tabs.value[activeTabIndex.value]
+  if (tab?.isDirty) {
+    void saveTab(activeTabIndex.value)
+  }
+}
+onDeactivated(flushDirtyTab)
 onBeforeUnmount(() => {
   if (saveTimer) {
     clearTimeout(saveTimer)
     saveTimer = null
   }
-  const tab = tabs.value[activeTabIndex.value]
-  if (tab?.isDirty) {
-    void saveTab(activeTabIndex.value)
+  flushDirtyTab()
+})
+
+// 打开请求的文件：优先 route.query.file（欢迎页"新建文档"经此跳转），
+// 其次 store 里的 activeFile。keep-alive 下 onMounted 只跑一次，
+// 第二次从欢迎页带 query 跳转必须由 watcher 接住，否则新文件静默不打开。
+async function openRequestedFile() {
+  const requestedPath = route.query.file
+  if (typeof requestedPath === 'string' && requestedPath.trim()) {
+    await openFileByPath(decodeURIComponent(requestedPath))
+  } else if (workspaceStore.activeFile) {
+    await openFileByPath(workspaceStore.activeFile)
+  }
+}
+
+// 同一个 query 值连续两次跳转（如重复打开同一文件）不会再触发 watch，
+// 用 activated 钩子兜底：每次回到编辑器页都检查一次
+onActivated(() => {
+  void openRequestedFile()
+})
+
+watch(() => route.query.file, (val) => {
+  if (typeof val === 'string' && val.trim()) {
+    void openFileByPath(decodeURIComponent(val))
   }
 })
 
@@ -877,13 +908,7 @@ onMounted(async () => {
     }
   }
   await loadFileTree()
-
-  const requestedPath = route.query.file
-  if (typeof requestedPath === 'string' && requestedPath.trim()) {
-    await openFileByPath(decodeURIComponent(requestedPath))
-  } else if (workspaceStore.activeFile) {
-    await openFileByPath(workspaceStore.activeFile)
-  }
+  await openRequestedFile()
 })
 
 // 工作区变化时重新加载文件树并清空标签页

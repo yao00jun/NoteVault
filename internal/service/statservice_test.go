@@ -115,6 +115,30 @@ func TestStats_StreakSurvivesQuietMorning(t *testing.T) {
 	}
 }
 
+func TestStats_DueRemindersDatetimeLocal(t *testing.T) {
+	// RemindersView 的 <input type="datetime-local"> 存的是无时区格式，
+	// 早期实现只认 RFC3339 → 今日工作台"到期提醒"恒为 0。回归护栏。
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".notevault"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	pastLocal := now.Add(-1 * time.Hour).Format("2006-01-02T15:04")
+	content := `[{"id":"r1","filePath":"a.md","fileName":"a","content":"过期","remindAt":"` + pastLocal + `","createdAt":"","completed":false}]`
+	if err := os.WriteFile(filepath.Join(dir, ".notevault", "reminders.json"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s := NewStatsService(nil, NewReminderService())
+	stats, err := s.GetTodayStats(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.DueReminders != 1 {
+		t.Fatalf("datetime-local reminder should count as due, got %d", stats.DueReminders)
+	}
+}
+
 func TestStats_DueReminders(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, ".notevault"), 0750); err != nil {
