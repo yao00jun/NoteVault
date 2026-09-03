@@ -266,7 +266,19 @@ func (s *WorkspaceService) startWatcherFor(workspacePath string) {
 	if s.fileChangeSink == nil {
 		return
 	}
-	w, err := NewWorkspaceWatcher(workspacePath, s.fileChangeSink)
+	// 组合出口：Wails 前端事件之外，再接入搜索索引的精确失效——
+	// watcher 事件到达时改写/标记索引，Search 的 refresh 即可跳过全量 walk
+	// （否则实时搜索每键 stat 一遍全库）。索引随工作区 Evict，watchActive
+	// 标记随索引一起消失，重建索引后首搜仍走 walk 兜底，无一致性问题。
+	if s.indexes != nil {
+		if idx := s.indexes.Get(workspacePath); idx != nil {
+			idx.MarkWatchActive()
+		}
+	}
+	w, err := NewWorkspaceWatcher(workspacePath, &fanoutFileChangeSink{
+		first: s.fileChangeSink,
+		next:  &searchIndexSink{workspacePath: workspacePath, indexes: s.indexes},
+	})
 	if err != nil {
 		log.Printf("[workspace] 启动文件监控失败 %s: %v", workspacePath, err)
 		return
@@ -275,6 +287,38 @@ func (s *WorkspaceService) startWatcherFor(workspacePath string) {
 	s.watcherMu.Lock()
 	s.watcher = w
 	s.watcherMu.Unlock()
+}
+
+// fanoutFileChangeSink 把一个事件转发给多个 sink。
+type fanoutFileChangeSink struct {
+	first FileChangeSink
+	next  FileChangeSink
+}
+
+func (f *fanoutFileChangeSink) OnFileChange(event FileChangeEvent) {
+	f.first.OnFileChange(event)
+	f.next.OnFileChange(event)
+}
+
+// searchIndexSink 把 watcher 事件转成搜索索引的精确失效。
+type searchIndexSink struct {
+	workspacePath string
+	indexes       *SearchIndexRegistry
+}
+
+func (s *searchIndexSink) OnFileChange(event FileChangeEvent) {
+	if s.indexes == nil {
+		return
+	}
+	ext := strings.ToLower(filepath.Ext(event.Path))
+	if ext != ".md" && ext != ".markdown" {
+		return
+	}
+	idx := s.indexes.Get(s.workspacePath)
+	if idx == nil {
+		return
+	}
+	idx.InvalidatePath(event.Path, event.Type == FileChangeDelete)
 }
 
 // ensureFileWatcherFor 确保指定工作区的文件监控在运行（E-6，懒启动入口）。

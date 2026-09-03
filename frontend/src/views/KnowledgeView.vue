@@ -30,12 +30,14 @@ import {
   Loader2,
 } from 'lucide-vue-next'
 import KnowledgeStats from '@/components/knowledge/KnowledgeStats.vue'
+import KnowledgeFileBrowser from '@/components/knowledge/KnowledgeFileBrowser.vue'
 import TodayPanel from '@/components/knowledge/TodayPanel.vue'
 import KnowledgeTodoPanel from '@/components/knowledge/KnowledgeTodoPanel.vue'
 import KnowledgeTagCloud from '@/components/knowledge/KnowledgeTagCloud.vue'
 import TemplateCreateDialog from '@/components/knowledge/TemplateCreateDialog.vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useI18n } from 'vue-i18n'
 import {
   FileService,
@@ -295,7 +297,7 @@ async function ensureWorkspace(): Promise<boolean> {
     try {
       const ws = await WorkspaceService.GetCurrentWorkspace()
       if (ws) {
-        workspaceStore.setCurrentWorkspace(ws as any)
+        workspaceStore.setCurrentWorkspace(toWorkspace(ws))
       } else {
         router.push('/')
         return false
@@ -623,218 +625,29 @@ watch(() => workspaceStore.fileTreeVersion, () => {
     <!-- 双列内容区 -->
     <div class="kv-grid">
       <!-- 主区：文档列表 -->
-      <section class="kv-section kv-section-main">
-        <div class="kv-section-header">
-          <h2>
-            <FileText :size="16" />
-            <span>{{ t('knowledge.myDocs') }}</span>
-            <span class="kv-section-count">{{ filteredFiles.length }}</span>
-          </h2>
-          <div class="kv-section-tools">
-            <div class="kv-search">
-              <Search :size="14" />
-              <input
-                v-model="searchKeyword"
-                :placeholder="t('knowledge.searchPlaceholder')"
-              >
-            </div>
-            <select
-              v-model="sortBy"
-              class="kv-sort"
-            >
-              <option value="modified">
-                {{ t('knowledge.sortRecent') }}
-              </option>
-              <option value="name">
-                {{ t('knowledge.sortName') }}
-              </option>
-              <option value="created">
-                {{ t('knowledge.sortCreated') }}
-              </option>
-            </select>
-            <button
-              class="kv-icon-toggle"
-              :class="{ active: showOnlyStarred }"
-              :title="t('knowledge.onlyStarred')"
-              @click="showOnlyStarred = !showOnlyStarred"
-            >
-              <Star :size="14" />
-            </button>
-          </div>
-        </div>
-
-        <div
-          v-if="isLoading"
-          class="kv-loading"
-        >
-          <div class="kv-spinner" />
-          {{ t('common.loading') }}
-        </div>
-
-        <div
-          v-else-if="filteredFiles.length === 0"
-          class="kv-empty"
-        >
-          <Sparkles :size="32" />
-          <h3>{{ searchKeyword ? t('knowledge.noMatchTitle') : t('knowledge.emptyTitle') }}</h3>
-          <p v-if="!searchKeyword">
-            {{ t('knowledge.emptyDescCreate') }}
-          </p>
-          <p v-else>
-            {{ t('knowledge.emptyDescSearch') }}
-          </p>
-          <button
-            v-if="!searchKeyword"
-            class="kv-btn-primary"
-            @click="handleCreateNewDoc"
-          >
-            <FilePlus :size="14" />
-            <span>{{ t('knowledge.newDoc') }}</span>
-          </button>
-        </div>
-
-        <div
-          v-else
-          class="kv-library-layout"
-        >
-          <aside class="kv-folder-nav">
-            <div class="kv-folder-nav-header">
-              <span>{{ t('knowledge.folderNav') }}</span>
-              <button
-                class="kv-folder-action"
-                :title="t('knowledge.newFolder')"
-                @click="createFolder"
-              >
-                <FolderPlus :size="14" />
-              </button>
-            </div>
-            <button
-              class="kv-folder-item"
-              :class="{ active: selectedFolder === '' }"
-              @click="selectFolder('')"
-            >
-              <Library :size="14" />
-              <span class="kv-folder-name">{{ t('knowledge.allDocs') }}</span>
-              <span class="kv-folder-count">{{ folderDocumentCounts[''] || 0 }}</span>
-            </button>
-            <div class="kv-folder-list">
-              <div
-                v-for="folder in visibleFolderEntries"
-                :key="folder.path"
-                class="kv-folder-row"
-              >
-                <button
-                  class="kv-folder-toggle"
-                  :title="expandedFolders[folder.path] === false ? t('knowledge.expandFolder') : t('knowledge.collapseFolder')"
-                  @click.stop="toggleFolder(folder.path)"
-                >
-                  <ChevronRight
-                    v-if="expandedFolders[folder.path] === false"
-                    :size="12"
-                  />
-                  <ChevronDown
-                    v-else
-                    :size="12"
-                  />
-                </button>
-                <button
-                  class="kv-folder-item"
-                  data-testid="folder-item"
-                  :class="{ active: selectedFolder === folder.path }"
-                  :style="{ paddingLeft: `${folder.depth * 12 + 4}px` }"
-                  @click="selectFolder(folder.path)"
-                >
-                  <FolderOpen
-                    v-if="selectedFolder === folder.path"
-                    :size="14"
-                  />
-                  <Folder
-                    v-else
-                    :size="14"
-                  />
-                  <span class="kv-folder-name">{{ folder.name }}</span>
-                  <span class="kv-folder-count">{{ folderDocumentCounts[folder.path] || 0 }}</span>
-                </button>
-              </div>
-            </div>
-          </aside>
-
-          <div class="kv-document-pane">
-            <div class="kv-document-context">
-              <div>
-                <FolderOpen :size="15" />
-                <strong>{{ selectedFolderLabel }}</strong>
-                <span>{{ filteredFiles.length }} {{ t('knowledge.stats.docs') }}</span>
-              </div>
-              <button
-                class="kv-context-new"
-                :title="t('knowledge.newDocInFolder')"
-                @click="handleCreateNewDoc"
-              >
-                <FilePlus :size="14" />
-                <span>{{ t('knowledge.newDocInFolder') }}</span>
-              </button>
-            </div>
-            <div
-              v-for="group in groupedFiles"
-              :key="group.path || 'root'"
-              class="kv-doc-group"
-            >
-              <button
-                v-if="group.path !== selectedFolder"
-                class="kv-doc-group-header"
-                @click="selectFolder(group.path)"
-              >
-                <FolderOpen :size="14" />
-                <span>{{ group.name }}</span>
-                <span class="kv-folder-count">{{ group.files.length }}</span>
-              </button>
-              <div class="kv-doc-list">
-                <div
-                  v-for="file in group.files"
-                  :key="file.path"
-                  class="kv-doc-item"
-                  data-testid="document-item"
-                  @click="openFile(file)"
-                >
-                  <FileText
-                    :size="16"
-                    class="kv-doc-icon"
-                  />
-                  <div class="kv-doc-body">
-                    <div class="kv-doc-title">
-                      {{ file.name.replace(/\.(md|markdown)$/, '') }}
-                    </div>
-                    <div class="kv-doc-meta">
-                      <span class="kv-doc-path">{{ file.path }}</span>
-                      <span class="kv-doc-time">{{ formatRelativeTime(file.modTime) }}</span>
-                    </div>
-                  </div>
-                  <button
-                    class="kv-doc-star"
-                    :class="{ active: isStarred(file.path) }"
-                    :title="isStarred(file.path) ? t('knowledge.unstar') : t('knowledge.star')"
-                    @click.stop="toggleStar(file.path)"
-                  >
-                    <Star
-                      v-if="isStarred(file.path)"
-                      :size="14"
-                    />
-                    <StarOff
-                      v-else
-                      :size="14"
-                    />
-                  </button>
-                  <ChevronRight
-                    :size="14"
-                    class="kv-doc-arrow"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <KnowledgeFileBrowser
+        :filtered-files="filteredFiles"
+        :grouped-files="groupedFiles"
+        :folder-document-counts="folderDocumentCounts"
+        :visible-folder-entries="visibleFolderEntries"
+        :selected-folder="selectedFolder"
+        :selected-folder-label="selectedFolderLabel"
+        :expanded-folders="expandedFolders"
+        :is-loading="isLoading"
+        :search-keyword="searchKeyword"
+        :show-only-starred="showOnlyStarred"
+        :is-starred="isStarred"
+        :format-relative-time="formatRelativeTime"
+        @update:search-keyword="searchKeyword = $event"
+        @update:show-only-starred="showOnlyStarred = $event"
+        @update:sort-by="sortBy = $event as any"
+        @select-folder="selectFolder"
+        @toggle-folder="toggleFolder"
+        @open-file="openFile"
+        @toggle-star="toggleStar"
+        @create-new="handleCreateNewDoc"
+        @create-folder="createFolder"
+      />
 
       <!-- 侧栏：待办 + 标签 -->
       <aside class="kv-section kv-section-side">
@@ -932,7 +745,13 @@ watch(() => workspaceStore.fileTreeVersion, () => {
 
 // 标签字体大小计算在 setup script 内
 
-<style scoped>
+<!--
+  样式说明：本视图的样式类全部 kv- 前缀命名，且文件浏览器已拆为
+  components/knowledge/KnowledgeFileBrowser.vue（纯 props/emit 子组件）。
+  Vue scoped 样式不穿透子组件，因此本块用非 scoped + 前缀命名约定代替
+  scoped 隔离（等价于 BEM 约定），子组件内的 .kv-* class 才能命中。
+-->
+<style>
 .knowledge-view {
   flex: 1;
   display: flex;

@@ -20,6 +20,7 @@ import {
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { BaseService, WorkspaceService } from '@bindings/github.com/notevault/notevault/index.js'
 import type {
   BaseDef,
@@ -107,7 +108,7 @@ async function ensureWorkspace(): Promise<boolean> {
   try {
     const ws = await WorkspaceService.GetCurrentWorkspace()
     if (ws) {
-      workspaceStore.setCurrentWorkspace(ws as any)
+      workspaceStore.setCurrentWorkspace(toWorkspace(ws))
       return true
     }
   } catch (e) {

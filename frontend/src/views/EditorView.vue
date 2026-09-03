@@ -11,6 +11,7 @@ import MarkdownPreview from '@/components/editor/MarkdownPreview.vue'
 import DocumentPropertiesPanel from '@/components/editor/DocumentPropertiesPanel.vue'
 import { buildContent, extractTags, splitFrontMatter } from '@/utils/frontmatter'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
 import { FileService, WorkspaceService, SearchService, TagService, ArchiveService, TrashService, SummarizeService, ExportService, CompileService } from '@bindings/github.com/notevault/notevault/index.js'
@@ -901,7 +902,7 @@ onMounted(async () => {
     try {
       const ws = await WorkspaceService.GetCurrentWorkspace()
       if (ws) {
-        workspaceStore.setCurrentWorkspace(ws as any)
+        workspaceStore.setCurrentWorkspace(toWorkspace(ws))
       }
     } catch (e) {
       console.error('Failed to get current workspace:', e)

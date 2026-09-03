@@ -7,6 +7,7 @@ import StatusBar from '@/components/layout/StatusBar.vue'
 import CommandPalette from '@/components/layout/CommandPalette.vue'
 import ToastHost from '@/components/layout/ToastHost.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { usePluginRuntimeStore } from '@/stores/pluginRuntime'
 import { useReminderNotifications } from '@/composables/useReminderNotifications'
 import { WorkspaceService } from '@bindings/github.com/notevault/notevault/index.js'
@@ -84,7 +85,7 @@ async function restoreCurrentWorkspace() {
   if (workspaceStore.currentWorkspace) return
   try {
     const workspace = await WorkspaceService.GetCurrentWorkspace()
-    if (workspace) workspaceStore.setCurrentWorkspace(workspace as any)
+    if (workspace) workspaceStore.setCurrentWorkspace(toWorkspace(workspace))
   } catch (e) {
     console.warn('Failed to restore current workspace:', e)
   }

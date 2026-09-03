@@ -7,6 +7,20 @@ import (
 	"time"
 )
 
+// todayAt 返回今天 00:30 + offset（offset 只应使用正方向的小偏移）。
+// daysAgoAt 返回 n 天前 12:00（正午）。两个辅助都是为了躲开午夜边界：
+// 直接用 now.Add(-24h) 一类的写法，测试在 00:00-01:00 之间运行时会
+// 漂到错误的"天"，已实际踩坑（StreakDays 随运行时刻在 2/3 间跳动）。
+func todayAt(now time.Time, offset time.Duration) time.Time {
+	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 30, 0, 0, now.Location())
+	return midnight.Add(offset)
+}
+
+func daysAgoAt(now time.Time, n int) time.Time {
+	d := now.AddDate(0, 0, -n)
+	return time.Date(d.Year(), d.Month(), d.Day(), 12, 0, 0, 0, d.Location())
+}
+
 func mustWriteStats(t *testing.T, path, content string, modTime time.Time) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -25,12 +39,10 @@ func TestStats_GetTodayStats(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0750); err != nil {
 		t.Fatal(err)
 	}
-	mustWriteStats(t, filepath.Join(dir, "a.md"), "- [ ] 普通待办\n", now.Add(-1*time.Hour))
-	mustWriteStats(t, filepath.Join(dir, "sub", "b.md"), "- [x] 已完成\n- [ ] !! 高优先级\n", now.Add(-2*time.Hour))
-	yesterday := now.AddDate(0, 0, -1)
-	mustWriteStats(t, filepath.Join(dir, "c.md"), "# old\n", yesterday.Add(-2*time.Hour))
-	twoDaysAgo := now.AddDate(0, 0, -2)
-	mustWriteStats(t, filepath.Join(dir, "d.md"), "# older\n", twoDaysAgo.Add(-2*time.Hour))
+	mustWriteStats(t, filepath.Join(dir, "a.md"), "- [ ] 普通待办\n", todayAt(now, 5*time.Minute))
+	mustWriteStats(t, filepath.Join(dir, "sub", "b.md"), "- [x] 已完成\n- [ ] !! 高优先级\n", todayAt(now, time.Minute))
+	mustWriteStats(t, filepath.Join(dir, "c.md"), "# old\n", daysAgoAt(now, 1))
+	mustWriteStats(t, filepath.Join(dir, "d.md"), "# older\n", daysAgoAt(now, 2))
 	// 366 天前的改动不应计入连续记录
 	mustWriteStats(t, filepath.Join(dir, "e.md"), "# ancient\n", now.AddDate(0, 0, -400))
 
@@ -171,8 +183,8 @@ func TestStats_GetWritingActivity(t *testing.T) {
 	now := time.Now()
 
 	// 今天 2 篇、昨天 1 篇、3 天前 1 篇 → 周改动 4、最长连续 2
-	mustWriteStats(t, filepath.Join(dir, "a.md"), "# a\n", now.Add(-1*time.Hour))
-	mustWriteStats(t, filepath.Join(dir, "b.md"), "# b\n", now.Add(-2*time.Hour))
+	mustWriteStats(t, filepath.Join(dir, "a.md"), "# a\n", todayAt(now, 5*time.Minute))
+	mustWriteStats(t, filepath.Join(dir, "b.md"), "# b\n", todayAt(now, time.Minute))
 	mustWriteStats(t, filepath.Join(dir, "c.md"), "# c\n", now.AddDate(0, 0, -1))
 	mustWriteStats(t, filepath.Join(dir, "d.md"), "# d\n", now.AddDate(0, 0, -3))
 
