@@ -32,6 +32,10 @@ import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { FileService, WorkspaceService } from '@bindings/github.com/notevault/notevault/index.js'
+import { useToast } from '@/composables/useToast'
+import { promptDialog } from '@/composables/usePrompt'
+
+const toast = useToast()
 
 const { t } = useI18n()
 const settingsStore = useSettingsStore()
@@ -72,7 +76,7 @@ async function switchWorkspace(wsId: string) {
     }
   } catch (e) {
     console.error('Failed to switch workspace:', e)
-    alert(t('sidebar.switchFailed', { msg: (e as Error).message }))
+    toast.error(t('sidebar.switchFailed', { msg: (e as Error).message }))
   }
   workspaceMenuOpen.value = false
 }
@@ -89,7 +93,7 @@ async function createWorkspace() {
     if (!result || (Array.isArray(result) && result.length === 0)) return
     const selectedPath = Array.isArray(result) ? result[0] : result
     const folderName = selectedPath.split(/[\\/]/).pop() || t('sidebar.defaultWorkspaceName')
-    const name = prompt(t('sidebar.promptWorkspaceName'), folderName)
+    const name = await promptDialog({ message: t('sidebar.promptWorkspaceName'), defaultValue: folderName })
     if (!name) return
     const ws = await WorkspaceService.CreateWorkspace(name, selectedPath)
     if (ws) {
@@ -101,7 +105,7 @@ async function createWorkspace() {
     // 用户取消文件夹选择是正常交互，不弹错误（兜底：后端 OpenFolderDialog 也会过滤此错误）
     if (isUserCancelledError(e)) return
     console.error('Failed to create workspace:', e)
-    alert(t('sidebar.createWorkspaceFailed', { msg: (e as Error).message }))
+    toast.error(t('sidebar.createWorkspaceFailed', { msg: (e as Error).message }))
   }
   workspaceMenuOpen.value = false
 }
@@ -134,11 +138,11 @@ onBeforeUnmount(() => {
 
 async function createNewDoc() {
   if (!workspaceStore.currentWorkspace?.path) {
-    alert(t('sidebar.selectOrCreateFirst'))
+    toast.warning(t('sidebar.selectOrCreateFirst'))
     router.push('/knowledge')
     return
   }
-  const name = prompt(t('sidebar.promptFileName'), t('sidebar.untitledDoc'))
+  const name = await promptDialog({ message: t('sidebar.promptFileName'), defaultValue: t('sidebar.untitledDoc') })
   if (!name) return
   try {
     const node = await FileService.CreateFile(
@@ -156,10 +160,10 @@ async function createNewDoc() {
     }
   } catch (e) {
     if ((e as Error).message?.includes('exist')) {
-      alert(t('sidebar.fileExists'))
+      toast.warning(t('sidebar.fileExists'))
     } else {
       console.error('Failed to create file:', e)
-      alert(t('sidebar.createFileFailed', { msg: (e as Error).message }))
+      toast.error(t('sidebar.createFileFailed', { msg: (e as Error).message }))
     }
   }
 }

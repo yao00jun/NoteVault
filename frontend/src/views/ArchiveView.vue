@@ -5,6 +5,9 @@ import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
 import { ArchiveService } from '@bindings/github.com/notevault/notevault/index.js'
+import { useToast } from '@/composables/useToast'
+
+const toast = useToast()
 
 interface ArchivedFile {
   path: string
@@ -44,7 +47,7 @@ async function unarchive(file: ArchivedFile) {
     await loadFiles()
   } catch (e) {
     console.error('Failed to unarchive:', e)
-    alert(t('common.restoreFailed', { msg: (e as Error).message }))
+    toast.error(t('common.restoreFailed', { msg: (e as Error).message }))
   }
 }
 

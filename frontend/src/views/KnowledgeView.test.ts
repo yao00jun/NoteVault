@@ -5,6 +5,11 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 
+const promptDialogMock = vi.fn()
+vi.mock('@/composables/usePrompt', () => ({
+  promptDialog: (...args: unknown[]) => promptDialogMock(...args),
+}))
+
 vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
   WorkspaceService: { GetCurrentWorkspace: vi.fn() },
   FileService: {
@@ -96,11 +101,12 @@ describe('KnowledgeView folder navigation', () => {
     ] as any)
     mockedTodos.mockResolvedValue([])
     mockedTags.mockResolvedValue([])
-    vi.stubGlobal('prompt', vi.fn(() => '新文档.md'))
+    promptDialogMock.mockReset()
+    promptDialogMock.mockResolvedValue('新文档.md')
   })
 
   afterEach(() => {
-    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
   })
 
   it('按文件夹展示数量，并切换文件夹过滤文档分组', async () => {

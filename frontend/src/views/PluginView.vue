@@ -301,6 +301,9 @@ import { PluginService } from '@bindings/github.com/notevault/notevault/index.js
 import type { PluginInfo } from '@bindings/github.com/notevault/notevault/models.js'
 import type { PluginSettingItem } from '@/plugins/types'
 import { usePluginRuntimeStore } from '@/stores/pluginRuntime'
+import { useToast } from '@/composables/useToast'
+
+const toast = useToast()
 
 const { t } = useI18n()
 const pluginRuntimeStore = usePluginRuntimeStore()
@@ -378,9 +381,9 @@ async function openPluginsDir() {
   // Wails 没有暴露打开文件夹方法，简单复制路径到剪贴板
   try {
     await navigator.clipboard.writeText(pluginsDir.value)
-    alert(t('plugins.dirCopied'))
+    toast.success(t('plugins.dirCopied'))
   } catch {
-    alert(pluginsDir.value)
+    toast.info(pluginsDir.value)
   }
 }
 

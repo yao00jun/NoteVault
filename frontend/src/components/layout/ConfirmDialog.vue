@@ -9,7 +9,7 @@ import { useI18n } from 'vue-i18n'
 import { useConfirm } from '@/composables/useConfirm'
 
 const { t } = useI18n()
-const { state, accept, dismiss } = useConfirm()
+const { state, accept, chooseAlt, dismiss } = useConfirm()
 
 // 弹框期间接管 Esc（取消）与 Enter（确认），关闭后移除监听
 function handleKeydown(e: KeyboardEvent) {
@@ -28,6 +28,7 @@ watch(
     if (visible) window.addEventListener('keydown', handleKeydown)
     else window.removeEventListener('keydown', handleKeydown)
   },
+  { immediate: true },
 )
 
 onBeforeUnmount(() => {
@@ -61,6 +62,15 @@ onBeforeUnmount(() => {
           @click="dismiss"
         >
           {{ state.cancelText || t('common.cancel') }}
+        </button>
+        <button
+          v-if="state.altText"
+          class="confirm-btn alt"
+          type="button"
+          data-testid="confirm-alt"
+          @click="chooseAlt"
+        >
+          {{ state.altText }}
         </button>
         <button
           class="confirm-btn ok"
@@ -127,6 +137,9 @@ onBeforeUnmount(() => {
 }
 .confirm-btn:hover {
   background: var(--bg-hover, rgba(255, 255, 255, 0.08));
+}
+.confirm-btn.alt {
+  background: var(--bg-card, rgba(255, 255, 255, 0.08));
 }
 .confirm-btn.ok {
   background: var(--accent, #007aff);

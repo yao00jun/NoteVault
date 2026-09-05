@@ -16,6 +16,9 @@ import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { WorkspaceService, FileService } from '@bindings/github.com/notevault/notevault/index.js'
+import { useToast } from '@/composables/useToast'
+
+const toast = useToast()
 
 interface Workspace {
   id: string
@@ -108,15 +111,15 @@ function handleAction(action: string) {
 async function createNewDoc() {
   // 验证工作区信息
   if (!workspaceName.value.trim()) {
-    alert(t('welcome.errors.enterWorkspaceName'))
+    toast.warning(t('welcome.errors.enterWorkspaceName'))
     return
   }
   if (!workspacePath.value.trim()) {
-    alert(t('welcome.errors.enterWorkspacePath'))
+    toast.warning(t('welcome.errors.enterWorkspacePath'))
     return
   }
   if (!docName.value.trim()) {
-    alert(t('welcome.errors.enterDocName'))
+    toast.warning(t('welcome.errors.enterDocName'))
     return
   }
 
@@ -129,7 +132,7 @@ async function createNewDoc() {
     }
   } catch (e) {
     console.error('Failed to create workspace:', e)
-    alert(t('welcome.errors.createWorkspaceFailed', { msg: (e as Error).message }))
+    toast.error(t('welcome.errors.createWorkspaceFailed', { msg: (e as Error).message }))
     isProcessing.value = false
     return
   }
@@ -155,10 +158,10 @@ async function createNewDoc() {
     })
   } catch (e) {
     if ((e as Error).message?.includes('exist')) {
-      alert(t('welcome.errors.fileExists'))
+      toast.warning(t('welcome.errors.fileExists'))
     } else {
       console.error('Failed to create file:', e)
-      alert(t('welcome.errors.createFileFailed', { msg: (e as Error).message }))
+      toast.error(t('welcome.errors.createFileFailed', { msg: (e as Error).message }))
     }
   } finally {
     isProcessing.value = false
@@ -168,11 +171,11 @@ async function createNewDoc() {
 // 打开文件夹作为工作区
 async function openFolder() {
   if (!workspaceName.value.trim()) {
-    alert(t('welcome.errors.enterWorkspaceName'))
+    toast.warning(t('welcome.errors.enterWorkspaceName'))
     return
   }
   if (!workspacePath.value.trim()) {
-    alert(t('welcome.errors.enterFolderPath'))
+    toast.warning(t('welcome.errors.enterFolderPath'))
     return
   }
   isProcessing.value = true
@@ -193,7 +196,7 @@ async function openFolder() {
     router.push('/editor')
   } catch (e) {
     console.error('Failed to open folder:', e)
-    alert(t('welcome.errors.openFolderFailed', { msg: (e as Error).message }))
+    toast.error(t('welcome.errors.openFolderFailed', { msg: (e as Error).message }))
   } finally {
     isProcessing.value = false
   }
@@ -246,7 +249,7 @@ async function openDemo() {
     router.push('/editor')
   } catch (e) {
     console.error('Failed to open demo:', e)
-    alert(t('welcome.errors.openDemoFailed', { msg: (e as Error).message }))
+    toast.error(t('welcome.errors.openDemoFailed', { msg: (e as Error).message }))
   } finally {
     isProcessing.value = false
   }
@@ -284,7 +287,7 @@ async function browseFolder() {
       return
     }
     console.error('Failed to open folder dialog:', e)
-    alert(t('welcome.errors.dialogFailed', { msg }))
+    toast.error(t('welcome.errors.dialogFailed', { msg }))
   }
 }
 

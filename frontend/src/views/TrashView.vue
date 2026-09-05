@@ -6,6 +6,9 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
 import { confirmDialog } from '@/composables/useConfirm'
 import { TrashService } from '@bindings/github.com/notevault/notevault/index.js'
+import { useToast } from '@/composables/useToast'
+
+const toast = useToast()
 
 interface TrashedFile {
   id: string
@@ -48,7 +51,7 @@ async function restore(file: TrashedFile) {
     await loadFiles()
   } catch (e) {
     console.error('Failed to restore:', e)
-    alert(t('common.restoreFailed', { msg: (e as Error).message }))
+    toast.error(t('common.restoreFailed', { msg: (e as Error).message }))
   }
 }
 

@@ -74,6 +74,24 @@ describe('useConfirm', () => {
     await expect(pending).resolves.toBe(true)
   })
 
+  it('三按钮场景：chooseDialog 返回三值，alt 按钮结算为 alt', async () => {
+    const { chooseDialog } = await import('./useConfirm')
+    const pending = chooseDialog({
+      message: '分组内有卡片，要怎么删？',
+      confirmText: '连卡片一起删',
+      altText: '只删分组框',
+      danger: true,
+    })
+    const wrapper = mountDialog()
+    await nextTick()
+
+    expect(wrapper.find('[data-testid="confirm-alt"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="confirm-alt"]').text()).toBe('只删分组框')
+
+    await wrapper.find('[data-testid="confirm-alt"]').trigger('click')
+    await expect(pending).resolves.toBe('alt')
+  })
+
   it('重复弹出时，旧的等待 Promise 按取消结算，不悬挂', async () => {
     const first = confirmDialog({ message: '第一个' })
     const second = confirmDialog({ message: '第二个' })

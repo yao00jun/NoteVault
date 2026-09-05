@@ -48,6 +48,10 @@ import {
   TemplateService,
 } from '@bindings/github.com/notevault/notevault/index.js'
 import type { TodoItem, TagInfo } from '@bindings/github.com/notevault/notevault/models.js'
+import { useToast } from '@/composables/useToast'
+import { promptDialog } from '@/composables/usePrompt'
+
+const toast = useToast()
 
 interface FileNode {
   name: string
@@ -345,7 +349,7 @@ async function createNewDoc(folderPath = selectedFolder.value) {
     router.push('/')
     return
   }
-  const name = prompt(t('knowledge.promptFileName'), t('knowledge.untitledDoc'))
+  const name = await promptDialog({ message: t('knowledge.promptFileName'), defaultValue: t('knowledge.untitledDoc') })
   if (!name) return
   try {
     const cleanName = name.trim()
@@ -364,9 +368,9 @@ async function createNewDoc(folderPath = selectedFolder.value) {
     }
   } catch (e) {
     if ((e as Error).message?.includes('exist')) {
-      alert(t('knowledge.fileExists'))
+      toast.warning(t('knowledge.fileExists'))
     } else {
-      alert(t('knowledge.createFailed', { msg: (e as Error).message }))
+      toast.error(t('knowledge.createFailed', { msg: (e as Error).message }))
     }
   }
 }
@@ -380,7 +384,7 @@ async function createFolder() {
     router.push('/')
     return
   }
-  const name = prompt(t('knowledge.promptFolderName'), t('knowledge.untitledFolder'))
+  const name = await promptDialog({ message: t('knowledge.promptFolderName'), defaultValue: t('knowledge.untitledFolder') })
   if (!name?.trim()) return
   const folderName = name.trim()
   const relativePath = selectedFolder.value ? `${selectedFolder.value}/${folderName}` : folderName
@@ -391,9 +395,9 @@ async function createFolder() {
     workspaceStore.incrementFileTreeVersion()
   } catch (e) {
     if ((e as Error).message?.includes('exist')) {
-      alert(t('knowledge.folderExists'))
+      toast.warning(t('knowledge.folderExists'))
     } else {
-      alert(t('knowledge.createFolderFailed', { msg: (e as Error).message }))
+      toast.error(t('knowledge.createFolderFailed', { msg: (e as Error).message }))
     }
   }
 }
@@ -405,7 +409,7 @@ const isExporting = ref(false)
 const showTemplateDialog = ref(false)
 async function exportWorkspace() {
   if (!currentWorkspace.value) {
-    alert(t('knowledge.selectWorkspaceFirst'))
+    toast.warning(t('knowledge.selectWorkspaceFirst'))
     return
   }
   const runtime = await import('@wailsio/runtime')
@@ -428,9 +432,9 @@ async function exportWorkspace() {
   isExporting.value = true
   try {
     await ExportService.ExportWorkspaceMarkdown(currentWorkspace.value.path, dest)
-    alert(t('knowledge.exported', { path: dest }))
+    toast.success(t('knowledge.exported', { path: dest }))
   } catch (e) {
-    alert(t('knowledge.exportFailed', { msg: (e as Error).message }))
+    toast.error(t('knowledge.exportFailed', { msg: (e as Error).message }))
   } finally {
     isExporting.value = false
   }
@@ -476,7 +480,7 @@ async function createDailyNote() {
       router.push('/editor')
     } else {
       console.error('Failed to create daily note:', e)
-      alert(t('knowledge.dailyFailed', { msg: (e as Error).message }))
+      toast.error(t('knowledge.dailyFailed', { msg: (e as Error).message }))
     }
   }
 }

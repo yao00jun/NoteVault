@@ -7,6 +7,7 @@ import StatusBar from '@/components/layout/StatusBar.vue'
 import CommandPalette from '@/components/layout/CommandPalette.vue'
 import ToastHost from '@/components/layout/ToastHost.vue'
 import ConfirmDialog from '@/components/layout/ConfirmDialog.vue'
+import PromptDialog from '@/components/layout/PromptDialog.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { usePluginRuntimeStore } from '@/stores/pluginRuntime'
@@ -142,6 +143,7 @@ function handleNewFileFromPalette() {
     />
     <ToastHost />
     <ConfirmDialog />
+    <PromptDialog />
     <div class="plugin-notification-stack">
       <div
         v-for="notification in pluginRuntimeStore.notifications"

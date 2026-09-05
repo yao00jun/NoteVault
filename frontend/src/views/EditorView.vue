@@ -21,6 +21,7 @@ import { sanitizeHtml } from '@/utils/sanitize'
 import { isLocalBaseURL } from '@/utils/localEndpoint'
 import { useToast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirm'
+import { promptDialog } from '@/composables/usePrompt'
 
 const workspaceStore = useWorkspaceStore()
 const route = useRoute()
@@ -241,7 +242,7 @@ function scheduleAutoSave() {
 
 // 新建文件
 async function handleNewFile(parentPath: string) {
-  const name = prompt(t('editor.promptFileName'), t('editor.untitledDoc'))
+  const name = await promptDialog({ message: t('editor.promptFileName'), defaultValue: t('editor.untitledDoc') })
   if (!name) return
   const fullPath = parentPath ? `${parentPath}/${name}` : name
   try {
@@ -252,7 +253,7 @@ async function handleNewFile(parentPath: string) {
     if (node) openFile(node as FileNode)
   } catch (e) {
     if ((e as Error).message?.includes('exist')) {
-      alert(t('editor.fileExists'))
+      toast.warning(t('editor.fileExists'))
     } else {
       console.error('Failed to create file:', e)
     }
@@ -301,7 +302,7 @@ async function handleArchiveFile(node: FileNode) {
     workspaceStore.incrementFileTreeVersion()
   } catch (e) {
     console.error('Failed to archive file:', e)
-    alert(t('editor.archiveFailed', { msg: (e as Error).message }))
+    toast.error(t('editor.archiveFailed', { msg: (e as Error).message }))
   }
 }
 
@@ -324,7 +325,7 @@ async function handleTrashFile(node: FileNode) {
     workspaceStore.incrementFileTreeVersion()
   } catch (e) {
     console.error('Failed to move to trash:', e)
-    alert(t('editor.moveToTrashFailed', { msg: (e as Error).message }))
+    toast.error(t('editor.moveToTrashFailed', { msg: (e as Error).message }))
   }
 }
 
@@ -382,7 +383,7 @@ async function handlePasteImage(payload: { file: File; insertText: (text: string
     if (activeTab.value) {
       fileContent.value = activeTab.value.content.replace(/\n*!\[[^\]]*\]\(uploading-\d+\)\n*/g, '')
     }
-    alert(t('editor.imagePasteFailed', { msg: (e as Error).message }))
+    toast.error(t('editor.imagePasteFailed', { msg: (e as Error).message }))
   }
 }
 
@@ -726,12 +727,12 @@ async function handleCompile() {
 
 async function handleSummarize() {
   if (!activeTab.value) {
-    alert(t('editor.openNoteFirst'))
+    toast.warning(t('editor.openNoteFirst'))
     return
   }
   const ai = settingsStore.settings.ai
   if (!isLocalBaseURL(ai.baseURL) && (!ai.apiKey || !ai.apiKey.trim())) {
-    alert(t('editor.apiKeyMissing'))
+    toast.warning(t('editor.apiKeyMissing'))
     return
   }
   isSummarizing.value = true
@@ -760,7 +761,7 @@ function insertSummaryToNote() {
   const updated = activeTab.value.content + block
   fileContent.value = updated
   summaryOpen.value = false
-  alert(t('editor.summaryInserted'))
+  toast.success(t('editor.summaryInserted'))
 }
 
 // ============ 导出 ============
@@ -790,9 +791,9 @@ async function exportMarkdown() {
       activeTab.value.path,
       dest,
     )
-    alert(t('editor.exportedMd', { path: dest }))
+    toast.success(t('editor.exportedMd', { path: dest }))
   } catch (e) {
-    alert(t('editor.exportFailed', { msg: (e as Error).message }))
+    toast.error(t('editor.exportFailed', { msg: (e as Error).message }))
   } finally {
     isExporting.value = false
   }
@@ -807,9 +808,9 @@ async function exportSingleHTML() {
   isExporting.value = true
   try {
     await ExportService.SaveText(dest, html)
-    alert(t('editor.exportedHtml', { path: dest }))
+    toast.success(t('editor.exportedHtml', { path: dest }))
   } catch (e) {
-    alert(t('editor.exportFailed', { msg: (e as Error).message }))
+    toast.error(t('editor.exportFailed', { msg: (e as Error).message }))
   } finally {
     isExporting.value = false
   }
