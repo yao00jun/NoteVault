@@ -951,7 +951,7 @@ watch(() => currentWorkspace.value?.id, init)
   display: flex;
   height: 100%;
   overflow: hidden;
-  background: var(--bg-primary);
+  background: var(--bg-content);
 }
 
 /* 左栏 */
@@ -1201,7 +1201,7 @@ watch(() => currentWorkspace.value?.id, init)
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg-primary);
+  background: var(--bg-input);
   color: var(--text-primary);
   font-size: var(--text-sm);
   min-width: 0;
@@ -1439,7 +1439,7 @@ watch(() => currentWorkspace.value?.id, init)
   gap: 2px;
   padding: var(--space-2);
   border-radius: var(--radius-sm);
-  background: var(--bg-primary);
+  background: var(--bg-card);
   border: 1px solid var(--border);
   text-align: left;
   width: 100%;
