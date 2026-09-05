@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Tag, Plus, X } from 'lucide-vue-next'
+import { Tag, Plus, X } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{

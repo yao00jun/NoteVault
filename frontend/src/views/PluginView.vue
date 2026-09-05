@@ -296,7 +296,7 @@ import {
   AlertTriangle,
   FileCode,
   Hash as HashIcon,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { PluginService } from '@bindings/github.com/notevault/notevault/index.js'
 import type { PluginInfo } from '@bindings/github.com/notevault/notevault/models.js'
 import type { PluginSettingItem } from '@/plugins/types'

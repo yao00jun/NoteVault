@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { GitGraph, RefreshCw, Circle, ZoomIn, ZoomOut, Maximize, AlertTriangle } from 'lucide-vue-next'
+import { GitGraph, RefreshCw, Circle, ZoomIn, ZoomOut, Maximize, AlertTriangle } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'

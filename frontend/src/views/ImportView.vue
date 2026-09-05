@@ -336,7 +336,7 @@ import {
   CheckCircle2,
   AlertCircle,
   GitBranch,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { AppService, GitService, ImportService } from '@bindings/github.com/notevault/notevault/index.js'
 import type { ImportResult, GitStatus } from '@bindings/github.com/notevault/notevault/models.js'

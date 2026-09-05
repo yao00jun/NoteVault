@@ -21,7 +21,7 @@ import {
   Sparkles,
   FilePlus,
   Library,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 
 const { t } = useI18n()
 

@@ -25,7 +25,7 @@ import {
   Settings as SettingsIcon,
   ChevronsUpDown,
   Check,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'

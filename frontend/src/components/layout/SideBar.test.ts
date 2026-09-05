@@ -15,6 +15,12 @@ vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
     GetWorkspaceByID: vi.fn(),
     CreateWorkspace: vi.fn(),
   },
+  // settings store 初始化时会异步恢复三个 API Key，mock 缺这个导出会产生
+  // 未处理的 rejection，让整个 vitest 运行带 Unhandled Errors 退出
+  CredentialService: {
+    GetCredential: vi.fn().mockResolvedValue(''),
+    SaveCredential: vi.fn().mockResolvedValue(undefined),
+  },
 }))
 
 // 模拟 @wailsio/runtime

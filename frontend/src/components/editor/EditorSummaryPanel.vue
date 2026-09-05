@@ -5,7 +5,7 @@
  * 注：原 EditorView 的 .spin 缺少 @keyframes 定义，这里补上使加载动画真正旋转。
  */
 import { useI18n } from 'vue-i18n'
-import { Sparkles, X, Loader2, Download } from 'lucide-vue-next'
+import { Sparkles, X, Loader2, Download } from '@lucide/vue'
 
 const { t } = useI18n()
 

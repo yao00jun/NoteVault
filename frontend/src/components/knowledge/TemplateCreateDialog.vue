@@ -125,7 +125,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { FileText, Loader2 } from 'lucide-vue-next'
+import { FileText, Loader2 } from '@lucide/vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { TemplateService } from '@bindings/github.com/notevault/notevault/index.js'
 import type { TemplateInfo } from '@bindings/github.com/notevault/notevault/models.js'

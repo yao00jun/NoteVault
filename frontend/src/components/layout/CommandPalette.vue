@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
-import { Search, FileText, Folder, Palette, Settings, Save, X, Columns, ChevronRight, MessageCircle, Upload, Puzzle, History } from 'lucide-vue-next'
+import { Search, FileText, Folder, Palette, Settings, Save, X, Columns, ChevronRight, MessageCircle, Upload, Puzzle, History } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'

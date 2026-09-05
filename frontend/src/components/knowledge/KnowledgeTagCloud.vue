@@ -5,7 +5,7 @@
  */
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { Tags as TagsIcon, ArrowUpRight, Hash } from 'lucide-vue-next'
+import { Tags as TagsIcon, ArrowUpRight, Hash } from '@lucide/vue'
 import type { TagInfo } from '@bindings/github.com/notevault/notevault/models.js'
 
 const { t } = useI18n()

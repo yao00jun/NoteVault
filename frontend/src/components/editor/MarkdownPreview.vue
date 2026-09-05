@@ -80,7 +80,7 @@ function parseWikiLinkTarget(target: string): WikiLinkTarget & { alias: string }
   let alias = ''
   let block = ''
   let anchor = ''
-  let file = ''
+  let file: string
 
   const barIdx = rest.indexOf('|')
   if (barIdx >= 0) {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { Clock, Plus, Trash2, Check, Bell, FileText } from 'lucide-vue-next'
+import { Clock, Plus, Trash2, Check, Bell, FileText } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'

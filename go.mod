@@ -5,8 +5,8 @@ go 1.25.0
 require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/philippgille/chromem-go v0.7.0
-	github.com/wailsapp/wails/v3 v3.0.0-beta.13
-	golang.org/x/sys v0.46.0
+	github.com/wailsapp/wails/v3 v3.0.0-beta.16
+	golang.org/x/sys v0.47.0
 )
 
 require (

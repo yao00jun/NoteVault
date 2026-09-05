@@ -11,7 +11,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { BarChart3, Flame, Link2, CalendarRange, Activity, FileText, History, Loader2 } from 'lucide-vue-next'
+import { BarChart3, Flame, Link2, CalendarRange, Activity, FileText, History, Loader2 } from '@lucide/vue'
 import { StatsService, GraphService, ReportService, ReviewService, ReminderService } from '@bindings/github.com/notevault/notevault/index.js'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'

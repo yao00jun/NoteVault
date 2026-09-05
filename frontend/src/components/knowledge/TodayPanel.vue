@@ -14,7 +14,7 @@ import {
   Flame,
   ListTodo,
   AlarmClock,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { StatsService } from '@bindings/github.com/notevault/notevault/index.js'
 import { useWorkspaceStore } from '@/stores/workspace'
 

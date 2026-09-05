@@ -488,7 +488,7 @@ function runCustom(cmd: CustomCommand) {
   }
   const { from, to } = getTargetRange()
   const text = view.state.sliceDoc(from, to)
-  let newText = text
+  let newText: string
   try {
     const re = new RegExp(cmd.pattern || '', cmd.flags || 'g')
     newText = text.replace(re, cmd.replacement ?? '')

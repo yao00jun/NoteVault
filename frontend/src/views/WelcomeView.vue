@@ -10,7 +10,7 @@ import {
   Palette,
   ChevronRight,
   X,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useI18n } from 'vue-i18n'

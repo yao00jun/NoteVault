@@ -28,7 +28,7 @@ import {
   Edit3,
   Download,
   Loader2,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import KnowledgeStats from '@/components/knowledge/KnowledgeStats.vue'
 import KnowledgeFileBrowser from '@/components/knowledge/KnowledgeFileBrowser.vue'
 import TodayPanel from '@/components/knowledge/TodayPanel.vue'
@@ -410,7 +410,7 @@ async function exportWorkspace() {
   }
   const runtime = await import('@wailsio/runtime')
   const defaultName = `${currentWorkspace.value.name || 'notevault'}-export.zip`
-  let dest: string | null = null
+  let dest: string | null
   try {
     const result = await runtime.Dialogs.SaveFile({
       Title: t('knowledge.chooseExportLocation'),

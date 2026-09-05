@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
-import { Search, FileText, X, Clock, ArrowRight, AlertCircle, Sparkles } from 'lucide-vue-next'
+import { Search, FileText, X, Clock, ArrowRight, AlertCircle, Sparkles } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'

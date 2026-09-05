@@ -4,7 +4,7 @@
  * 纯展示组件：点击某个反向链接通过 emit 交还父组件打开。
  */
 import { useI18n } from 'vue-i18n'
-import { FileText } from 'lucide-vue-next'
+import { FileText } from '@lucide/vue'
 
 const { t } = useI18n()
 

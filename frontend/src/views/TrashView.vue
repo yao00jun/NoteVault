@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { Trash2, RotateCcw, FileText, AlertTriangle } from 'lucide-vue-next'
+import { Trash2, RotateCcw, FileText, AlertTriangle } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'

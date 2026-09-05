@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { Tag, FileText, ArrowLeft, Hash, X, AlertCircle } from 'lucide-vue-next'
+import { Tag, FileText, ArrowLeft, Hash, X, AlertCircle } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'

@@ -12,7 +12,7 @@ import {
   X,
   Palette,
   ChevronDown,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { useSettingsStore } from '@/stores/settings'
 import type { ThemeType } from '@/types'
 import { AppService } from '@bindings/github.com/notevault/notevault/index.js'

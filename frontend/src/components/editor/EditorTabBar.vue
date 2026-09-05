@@ -17,7 +17,7 @@ import {
   Wand2,
   FileDown,
   FileCode,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 
 const { t } = useI18n()
 

@@ -4,7 +4,7 @@
  * 挂在 App.vue 根部一次，读 useToast 的模块级单例列表渲染。
  * 纯展示 + 关闭动作，不含任何业务逻辑。
  */
-import { CheckCircle2, XCircle, AlertTriangle, Info, X } from 'lucide-vue-next'
+import { CheckCircle2, XCircle, AlertTriangle, Info, X } from '@lucide/vue'
 import { useToast } from '@/composables/useToast'
 import type { ToastKind } from '@/composables/useToast'
 

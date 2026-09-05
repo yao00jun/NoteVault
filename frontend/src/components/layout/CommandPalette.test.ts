@@ -4,6 +4,16 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter as createVueRouter } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import { i18n } from '@/i18n'
+
+// 不 mock 的话，settings store 初始化会真实发起 CredentialService 的 HTTP 调用，
+// ECONNREFUSED 的失败日志落在 worker teardown 之后，产生 Unhandled Rejection
+vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+  CredentialService: {
+    GetCredential: vi.fn().mockResolvedValue(''),
+    SaveCredential: vi.fn().mockResolvedValue(undefined),
+  },
+}))
+
 import CommandPalette from './CommandPalette.vue'
 import { usePluginRuntimeStore } from '@/stores/pluginRuntime'
 

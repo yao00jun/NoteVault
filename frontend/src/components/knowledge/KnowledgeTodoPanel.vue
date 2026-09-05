@@ -5,7 +5,7 @@
  * 通过 emit 把"切换完成/打开文件"动作交还父组件处理。
  */
 import { useI18n } from 'vue-i18n'
-import { CheckSquare, ArrowUpRight } from 'lucide-vue-next'
+import { CheckSquare, ArrowUpRight } from '@lucide/vue'
 import type { TodoItem } from '@bindings/github.com/notevault/notevault/models.js'
 
 const { t } = useI18n()

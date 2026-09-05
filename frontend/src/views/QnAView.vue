@@ -2,7 +2,7 @@
 import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { MessageCircle, Send, Trash2, FileText, Loader2, Sparkles } from 'lucide-vue-next'
+import { MessageCircle, Send, Trash2, FileText, Loader2, Sparkles } from '@lucide/vue'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { QnAService } from '@bindings/github.com/notevault/notevault/index.js'

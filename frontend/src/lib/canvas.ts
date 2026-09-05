@@ -86,7 +86,7 @@ export function parseCanvas(raw: string): CanvasData {
   try {
     obj = JSON.parse(raw)
   } catch (e) {
-    throw new Error(`画布文件不是合法 JSON：${(e as Error).message}`)
+    throw new Error(`画布文件不是合法 JSON：${(e as Error).message}`, { cause: e })
   }
   const nodesRaw = Array.isArray(obj?.nodes) ? obj.nodes : []
   const edgesRaw = Array.isArray(obj?.edges) ? obj.edges : []

@@ -11,7 +11,7 @@ import {
   History,
   Settings as SettingsIcon,
   FileText,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'

@@ -16,7 +16,7 @@ import {
   RefreshCw,
   ArrowUp,
   ArrowDown,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { confirmDialog } from '@/composables/useConfirm'
 import { useI18n } from 'vue-i18n'
