@@ -6,6 +6,7 @@ import { useRouter } from 'vue-router'
 import { FileService } from '@bindings/github.com/notevault/notevault/index.js'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useToast } from '@/composables/useToast'
+import { confirmDialog } from '@/composables/useConfirm'
 import {
   collectCanvasFiles,
   parseCanvas,
@@ -118,7 +119,7 @@ async function createCanvas() {
 }
 
 async function deleteCanvas(path: string) {
-  if (!confirm(t('canvas.deleteCanvasConfirm', { name: path.split('/').pop() }))) return
+  if (!(await confirmDialog({ message: t('canvas.deleteCanvasConfirm', { name: path.split('/').pop() }), danger: true }))) return
   try {
     await FileService.DeleteFile(workspacePath.value, path)
     await loadList()
@@ -193,8 +194,8 @@ function updateNode(id: string, patch: Partial<CanvasNode>) {
   Object.assign(n, patch)
   scheduleSave()
 }
-function deleteNode(id: string) {
-  if (!confirm(t('canvas.deleteNodeConfirm'))) return
+async function deleteNode(id: string) {
+  if (!(await confirmDialog({ message: t('canvas.deleteNodeConfirm'), danger: true }))) return
   data.value.nodes = data.value.nodes.filter((n) => n.id !== id)
   data.value.edges = data.value.edges.filter((e) => e.fromNode !== id && e.toNode !== id)
   if (selectedId.value === id) selectedId.value = null

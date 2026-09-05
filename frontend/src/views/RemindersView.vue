@@ -4,6 +4,7 @@ import { Clock, Plus, Trash2, Check, Bell, FileText } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
+import { confirmDialog } from '@/composables/useConfirm'
 import { ReminderService } from '@bindings/github.com/notevault/notevault/index.js'
 
 interface Reminder {
@@ -64,7 +65,7 @@ async function toggleReminder(reminder: Reminder) {
 
 async function deleteReminder(id: string) {
   if (!currentWorkspace.value?.path) return
-  if (!confirm(t('reminders.confirmDelete'))) return
+  if (!(await confirmDialog({ message: t('reminders.confirmDelete'), danger: true }))) return
   try {
     await ReminderService.DeleteReminder(currentWorkspace.value.path, id)
     await loadReminders()

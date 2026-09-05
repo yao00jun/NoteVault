@@ -5,6 +5,11 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 
+const confirmDialogMock = vi.fn()
+vi.mock('@/composables/useConfirm', () => ({
+  confirmDialog: (...args: unknown[]) => confirmDialogMock(...args),
+}))
+
 vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
   SnapshotService: {
     ListSnapshotFiles: vi.fn(),
@@ -101,7 +106,8 @@ describe('HistoryView', () => {
     ])
     mocked.diffCurrent.mockResolvedValue(diff() as any)
     mocked.diffSnapshots.mockResolvedValue(diff({ toId: 'snap_2' }) as any)
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    confirmDialogMock.mockReset()
+    confirmDialogMock.mockResolvedValue(true)
   })
 
   afterEach(() => {
@@ -226,14 +232,14 @@ describe('HistoryView', () => {
     await wrapper.findAll('[data-testid="restore-btn"]')[0].trigger('click')
     await flushPromises()
 
-    expect(window.confirm).toHaveBeenCalled()
+    expect(confirmDialogMock).toHaveBeenCalled()
     expect(mocked.restore).toHaveBeenCalledWith('/tmp/vault', 'snap_2')
     expect(workspaceStore.fileTreeVersion).toBe(before + 1)
     expect(wrapper.find('[data-testid="history-notice"]').text()).toContain('已自动备份')
   })
 
   it('用户在确认框点取消时不执行恢复', async () => {
-    vi.mocked(window.confirm).mockReturnValue(false)
+    confirmDialogMock.mockResolvedValue(false)
     const { wrapper } = mountHistory()
     await flushPromises()
 

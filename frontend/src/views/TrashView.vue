@@ -4,6 +4,7 @@ import { Trash2, RotateCcw, FileText, AlertTriangle } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
+import { confirmDialog } from '@/composables/useConfirm'
 import { TrashService } from '@bindings/github.com/notevault/notevault/index.js'
 
 interface TrashedFile {
@@ -53,7 +54,7 @@ async function restore(file: TrashedFile) {
 
 async function permanentlyDelete(file: TrashedFile) {
   if (!currentWorkspace.value?.path) return
-  if (!confirm(t('trash.confirmDelete', { name: file.name }))) return
+  if (!(await confirmDialog({ message: t('trash.confirmDelete', { name: file.name }), danger: true }))) return
   try {
     await TrashService.PermanentlyDelete(currentWorkspace.value.path, file.id)
     await loadFiles()
@@ -64,7 +65,7 @@ async function permanentlyDelete(file: TrashedFile) {
 
 async function emptyTrash() {
   if (!currentWorkspace.value?.path) return
-  if (!confirm(t('trash.confirmEmpty'))) return
+  if (!(await confirmDialog({ message: t('trash.confirmEmpty'), danger: true }))) return
   try {
     await TrashService.EmptyTrash(currentWorkspace.value.path)
     await loadFiles()

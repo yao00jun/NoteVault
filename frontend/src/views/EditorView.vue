@@ -20,6 +20,7 @@ import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { isLocalBaseURL } from '@/utils/localEndpoint'
 import { useToast } from '@/composables/useToast'
+import { confirmDialog } from '@/composables/useConfirm'
 
 const workspaceStore = useWorkspaceStore()
 const route = useRoute()
@@ -187,7 +188,7 @@ async function closeTab(index: number, event?: Event) {
 
   // 如果有未保存的更改，提示保存
   if (tab.isDirty) {
-    const shouldSave = confirm(t('editor.unsavedConfirm', { name: tab.name }))
+    const shouldSave = await confirmDialog({ message: t('editor.unsavedConfirm', { name: tab.name }) })
     if (shouldSave) {
       await saveTab(index)
     }
@@ -260,7 +261,7 @@ async function handleNewFile(parentPath: string) {
 
 // 删除文件
 async function handleDeleteFile(node: FileNode) {
-  if (!confirm(t('editor.confirmDelete', { name: node.name }))) return
+  if (!(await confirmDialog({ message: t('editor.confirmDelete', { name: node.name }), danger: true }))) return
   try {
     await FileService.DeleteFile(currentWorkspace.value!.path, node.path)
     await invalidateTagCache()
@@ -420,7 +421,7 @@ async function handleWikiLinkClick(target: { file: string; anchor: string; block
     }
   } else {
     // 找不到，询问是否创建新文档（用 file 名，不带锚点）
-    if (confirm(t('editor.createLinkDoc', { name: file }))) {
+    if (await confirmDialog({ message: t('editor.createLinkDoc', { name: file }) })) {
       const fileName = file.endsWith('.md') ? file : file + '.md'
       await handleNewFileWithName(fileName)
     }

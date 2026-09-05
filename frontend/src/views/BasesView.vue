@@ -18,6 +18,7 @@ import {
   ArrowDown,
 } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
+import { confirmDialog } from '@/composables/useConfirm'
 import { useI18n } from 'vue-i18n'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
@@ -230,7 +231,7 @@ async function save() {
 
 async function remove() {
   if (!isSaved.value || !wsPath.value) return
-  if (!window.confirm(t('bases.confirmDelete', { name: selectedName.value }))) return
+  if (!(await confirmDialog({ message: t('bases.confirmDelete', { name: selectedName.value }), danger: true }))) return
   try {
     await BaseService.DeleteBase(wsPath.value, selectedName.value)
     await loadBases()

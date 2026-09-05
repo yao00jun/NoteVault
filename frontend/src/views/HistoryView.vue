@@ -12,6 +12,7 @@ import {
 } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { confirmDialog } from '@/composables/useConfirm'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { SnapshotService } from '@bindings/github.com/notevault/notevault/index.js'
 import type {
@@ -188,7 +189,7 @@ async function createManualSnapshot() {
 
 async function restore(snap: Snapshot) {
   if (!currentWorkspace.value?.path) return
-  if (!confirm(t('history.confirmRestore', { date: formatDate(snap.createdAt) }))) return
+  if (!(await confirmDialog({ message: t('history.confirmRestore', { date: formatDate(snap.createdAt) }) }))) return
   clearMessages()
   try {
     const result = await SnapshotService.RestoreSnapshot(currentWorkspace.value.path, snap.id)
@@ -205,7 +206,7 @@ async function restore(snap: Snapshot) {
 
 async function deleteSnapshot(snap: Snapshot) {
   if (!currentWorkspace.value?.path) return
-  if (!confirm(t('history.confirmDeleteSnapshot', { date: formatDate(snap.createdAt) }))) return
+  if (!(await confirmDialog({ message: t('history.confirmDeleteSnapshot', { date: formatDate(snap.createdAt) }), danger: true }))) return
   clearMessages()
   try {
     await SnapshotService.DeleteSnapshot(currentWorkspace.value.path, snap.id)
@@ -218,7 +219,7 @@ async function deleteSnapshot(snap: Snapshot) {
 
 async function clearFileHistory() {
   if (!currentWorkspace.value?.path || !selectedPath.value) return
-  if (!confirm(t('history.confirmClearFile', { path: selectedPath.value }))) return
+  if (!(await confirmDialog({ message: t('history.confirmClearFile', { path: selectedPath.value }), danger: true }))) return
   clearMessages()
   try {
     await SnapshotService.ClearSnapshots(currentWorkspace.value.path, selectedPath.value)
