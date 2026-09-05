@@ -44,6 +44,8 @@ NoteVault 是**单机、本地优先的桌面知识库**。以下三项是产品
 
 ## 🚀 快速开始
 
+> 📖 **用户手册**：安装、上手与全部功能说明见 [docs/UserManual.md](docs/UserManual.md)
+
 ### 环境要求
 
 - Go 1.25+
