@@ -6,9 +6,10 @@ import { useRouter } from 'vue-router'
 import { FileService } from '@bindings/github.com/notevault/notevault/index.js'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useToast } from '@/composables/useToast'
-import { confirmDialog } from '@/composables/useConfirm'
+import { chooseDialog, confirmDialog } from '@/composables/useConfirm'
 import {
   collectCanvasFiles,
+  nodesInGroup,
   parseCanvas,
   serializeCanvas,
   createNode,
@@ -19,6 +20,7 @@ import {
 } from '@/lib/canvas'
 import type { CanvasData, CanvasNode, CanvasEdge, CanvasNodeColor, CanvasGroupNode } from '@/types'
 import MarkdownPreview from '@/components/editor/MarkdownPreview.vue'
+import { promptDialog } from '@/composables/usePrompt'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -102,7 +104,7 @@ async function loadList() {
 
 async function createCanvas() {
   if (!workspacePath.value) return
-  const name = prompt(t('canvas.newCanvasPrompt'), t('canvas.untitledCanvas'))
+  const name = await promptDialog({ message: t('canvas.newCanvasPrompt'), defaultValue: t('canvas.untitledCanvas') })
   if (!name) return
   const fileName = name.endsWith('.canvas') ? name : `${name}.canvas`
   try {
@@ -115,6 +117,23 @@ async function createCanvas() {
     } else {
       toast.error((e as Error).message)
     }
+  }
+}
+
+async function renameCanvas(path: string) {
+  if (!workspacePath.value) return
+  const oldName = path.split('/').pop() || ''
+  const name = await promptDialog({ message: t('canvas.renamePrompt'), defaultValue: oldName })
+  if (!name || !name.trim() || name.trim() === oldName) return
+  const newName = name.trim().endsWith('.canvas') ? name.trim() : `${name.trim()}.canvas`
+  try {
+    const node = await FileService.RenameFile(workspacePath.value, path, newName)
+    // 编辑器正开着这个画布：同步路径，否则保存会写回旧路径
+    if (currentPath.value === path && node) currentPath.value = node.path
+    await loadList()
+    toast.success(t('canvas.renamed', { name: newName }))
+  } catch (e) {
+    toast.error((e as Error).message)
   }
 }
 
@@ -179,8 +198,51 @@ function flushSave() {
   if (saveStatus.value !== 'saved' && currentPath.value) void doSave()
 }
 
+// ============ 撤销 / 重做 ============
+// 快照式历史：每次「操作单元」开始前压入当前状态。连续操作（拖拽、逐键输入）
+// 只在起点压栈一次；undo 时跳过与当前状态相同的检查点，避免无效操作空耗一步。
+const UNDO_LIMIT = 50
+const undoStack = ref<string[]>([])
+const redoStack = ref<string[]>([])
+const canUndo = computed(() => undoStack.value.length > 0)
+const canRedo = computed(() => redoStack.value.length > 0)
+
+function canvasSnapshot(): string {
+  return JSON.stringify({ nodes: data.value.nodes, edges: data.value.edges })
+}
+function pushUndo() {
+  const snap = canvasSnapshot()
+  if (undoStack.value[undoStack.value.length - 1] === snap) return
+  undoStack.value.push(snap)
+  if (undoStack.value.length > UNDO_LIMIT) undoStack.value.shift()
+  redoStack.value = []
+}
+function applySnapshot(snap: string) {
+  const parsed = JSON.parse(snap) as CanvasData
+  data.value = { nodes: parsed.nodes ?? [], edges: parsed.edges ?? [] }
+  selectedId.value = null
+  selectedEdgeId.value = null
+  editingId.value = null
+  scheduleSave()
+}
+function undo() {
+  const cur = canvasSnapshot()
+  while (undoStack.value.length && undoStack.value[undoStack.value.length - 1] === cur) undoStack.value.pop()
+  if (!undoStack.value.length) return
+  redoStack.value.push(cur)
+  applySnapshot(undoStack.value.pop()!)
+}
+function redo() {
+  const cur = canvasSnapshot()
+  while (redoStack.value.length && redoStack.value[redoStack.value.length - 1] === cur) redoStack.value.pop()
+  if (!redoStack.value.length) return
+  undoStack.value.push(cur)
+  applySnapshot(redoStack.value.pop()!)
+}
+
 // ============ 节点操作 ============
 function addNode(type: CanvasNode['type']) {
+  pushUndo()
   const p = getCanvasPointCentered()
   const node = createNode(type, p.x, p.y)
   data.value.nodes.push(node)
@@ -195,7 +257,42 @@ function updateNode(id: string, patch: Partial<CanvasNode>) {
   scheduleSave()
 }
 async function deleteNode(id: string) {
+  const node = data.value.nodes.find((n) => n.id === id)
+  if (node?.type === 'group') {
+    const members = nodesInGroup(data.value.nodes, node)
+    if (members.length > 0) {
+      // 容器分组：框内还有卡片时让用户二选一
+      const choice = await chooseDialog({
+        message: t('canvas.deleteGroupAsk', { name: node.label || t('canvas.addGroup'), count: members.length }),
+        confirmText: t('canvas.deleteGroupAll'),
+        altText: t('canvas.deleteGroupOnly'),
+        danger: true,
+      })
+      if (choice === 'dismiss') return
+      pushUndo()
+      if (choice === 'confirm') {
+        const memberIds = new Set(members.map((m) => m.id))
+        data.value.nodes = data.value.nodes.filter((n) => n.id === id || !memberIds.has(n.id))
+        data.value.edges = data.value.edges.filter(
+          (e) => !memberIds.has(e.fromNode) && !memberIds.has(e.toNode),
+        )
+      } else {
+        data.value.nodes = data.value.nodes.filter((n) => n.id !== id)
+      }
+      if (selectedId.value === id) selectedId.value = null
+      scheduleSave()
+      return
+    }
+    // 空分组走普通确认
+    if (!(await confirmDialog({ message: t('canvas.deleteNodeConfirm'), danger: true }))) return
+    pushUndo()
+    data.value.nodes = data.value.nodes.filter((n) => n.id !== id)
+    if (selectedId.value === id) selectedId.value = null
+    scheduleSave()
+    return
+  }
   if (!(await confirmDialog({ message: t('canvas.deleteNodeConfirm'), danger: true }))) return
+  pushUndo()
   data.value.nodes = data.value.nodes.filter((n) => n.id !== id)
   data.value.edges = data.value.edges.filter((e) => e.fromNode !== id && e.toNode !== id)
   if (selectedId.value === id) selectedId.value = null
@@ -206,13 +303,23 @@ function addEdge(from: string, to: string) {
   const dup = data.value.edges.some((e) => e.fromNode === from && e.toNode === to)
   if (dup) return
   const edge: CanvasEdge = { id: genId('e'), fromNode: from, toNode: to }
+  pushUndo()
   data.value.edges.push(edge)
   scheduleSave()
 }
 function deleteEdge(id: string) {
+  pushUndo()
   data.value.edges = data.value.edges.filter((e) => e.id !== id)
   if (selectedEdgeId.value === id) selectedEdgeId.value = null
   scheduleSave()
+}
+
+async function deleteSelected() {
+  if (selectedEdgeId.value) {
+    deleteEdge(selectedEdgeId.value)
+    return
+  }
+  if (selectedId.value) await deleteNode(selectedId.value)
 }
 
 function openNote(node: CanvasNode) {
@@ -257,6 +364,8 @@ let drag: {
   nodeH?: number
   vx?: number
   vy?: number
+  /** 拖动分组时快照的框内卡片（id + 原始坐标），随分组同步平移 */
+  contained?: { id: string; x: number; y: number }[]
 } | null = null
 
 function onSurfaceMouseDown(e: MouseEvent) {
@@ -279,6 +388,7 @@ function onSurfaceMouseDown(e: MouseEvent) {
       return
     }
     if (kind === 'resize') {
+      pushUndo()
       drag = {
         mode: 'resize',
         nodeId,
@@ -300,6 +410,7 @@ function onSurfaceMouseDown(e: MouseEvent) {
     if (!node) return
     selectedId.value = nodeId
     selectedEdgeId.value = null
+    pushUndo()
     drag = {
       mode: 'node',
       nodeId,
@@ -307,6 +418,10 @@ function onSurfaceMouseDown(e: MouseEvent) {
       startY: e.clientY,
       nodeX: node.x,
       nodeY: node.y,
+      contained:
+        node.type === 'group'
+          ? nodesInGroup(data.value.nodes, node).map((n) => ({ id: n.id, x: n.x, y: n.y }))
+          : undefined,
     }
     window.addEventListener('mousemove', onWindowMove)
     window.addEventListener('mouseup', onWindowUp)
@@ -331,6 +446,17 @@ function onWindowMove(e: MouseEvent) {
     if (!node) return
     node.x = Math.round(drag!.nodeX! + (e.clientX - drag!.startX) / viewport.scale)
     node.y = Math.round(drag!.nodeY! + (e.clientY - drag!.startY) / viewport.scale)
+    // 容器语义：拖分组时，拖拽开始时在框内的卡片跟着一起平移
+    if (drag.contained) {
+      const dx = node.x - drag.nodeX!
+      const dy = node.y - drag.nodeY!
+      for (const c of drag.contained) {
+        const m = data.value.nodes.find((n) => n.id === c.id)
+        if (!m) continue
+        m.x = Math.round(c.x + dx)
+        m.y = Math.round(c.y + dy)
+      }
+    }
     scheduleSave()
   } else if (drag.mode === 'resize') {
     const node = data.value.nodes.find((n) => n.id === drag!.nodeId)
@@ -404,6 +530,17 @@ function onKeyDown(e: KeyboardEvent) {
   if (!currentPath.value) return
   const tag = (document.activeElement?.tagName ?? '').toLowerCase()
   if (tag === 'input' || tag === 'textarea') return
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault()
+    if (e.shiftKey) redo()
+    else undo()
+    return
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+    e.preventDefault()
+    redo()
+    return
+  }
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (selectedEdgeId.value) {
       e.preventDefault()
@@ -453,6 +590,11 @@ onBeforeUnmount(() => {
   flushSave()
 })
 
+function beginEdit(id: string) {
+  pushUndo()
+  editingId.value = id
+}
+
 function typeLabel(type: CanvasNode['type']): string {
   return t(`canvas.type${type.charAt(0).toUpperCase() + type.slice(1)}`)
 }
@@ -464,25 +606,68 @@ function typeLabel(type: CanvasNode['type']): string {
     <template v-if="!currentPath">
       <header class="page-header">
         <h1>{{ t('canvas.listTitle') }}</h1>
-        <button class="primary-btn" @click="createCanvas">{{ t('canvas.newCanvas') }}</button>
+        <button
+          class="primary-btn"
+          @click="createCanvas"
+        >
+          {{ t('canvas.newCanvas') }}
+        </button>
       </header>
-      <div v-if="listLoading" class="list-hint">{{ t('common.loading') }}</div>
-      <div v-else-if="canvasFiles.length === 0" class="empty-state">
-        <p class="empty-title">{{ t('canvas.listEmpty') }}</p>
-        <p class="empty-hint">{{ t('canvas.listEmptyHint') }}</p>
-        <button class="primary-btn" @click="createCanvas">{{ t('canvas.newCanvas') }}</button>
+      <div
+        v-if="listLoading"
+        class="list-hint"
+      >
+        {{ t('common.loading') }}
       </div>
-      <div v-else class="canvas-grid">
+      <div
+        v-else-if="canvasFiles.length === 0"
+        class="empty-state"
+      >
+        <p class="empty-title">
+          {{ t('canvas.listEmpty') }}
+        </p>
+        <p class="empty-hint">
+          {{ t('canvas.listEmptyHint') }}
+        </p>
+        <button
+          class="primary-btn"
+          @click="createCanvas"
+        >
+          {{ t('canvas.newCanvas') }}
+        </button>
+      </div>
+      <div
+        v-else
+        class="canvas-grid"
+      >
         <div
           v-for="f in canvasFiles"
           :key="f.path"
           class="canvas-card"
           @click="openCanvas(f.path)"
         >
-          <div class="canvas-card-name">{{ f.name }}</div>
+          <div class="canvas-card-name">
+            {{ f.name }}
+          </div>
           <div class="canvas-card-actions">
-            <button class="ghost-btn" @click.stop="openCanvas(f.path)">{{ t('canvas.open') }}</button>
-            <button class="danger-btn" @click.stop="deleteCanvas(f.path)">{{ t('canvas.delete') }}</button>
+            <button
+              class="ghost-btn"
+              @click.stop="openCanvas(f.path)"
+            >
+              {{ t('canvas.open') }}
+            </button>
+            <button
+              class="ghost-btn"
+              @click.stop="renameCanvas(f.path)"
+            >
+              {{ t('canvas.rename') }}
+            </button>
+            <button
+              class="danger-btn"
+              @click.stop="deleteCanvas(f.path)"
+            >
+              {{ t('canvas.delete') }}
+            </button>
           </div>
         </div>
       </div>
@@ -491,29 +676,114 @@ function typeLabel(type: CanvasNode['type']): string {
     <!-- ===== 编辑器模式 ===== -->
     <template v-else>
       <header class="canvas-toolbar">
-        <button class="ghost-btn" @click="backToList">{{ t('canvas.backToList') }}</button>
+        <button
+          class="ghost-btn"
+          @click="backToList"
+        >
+          {{ t('canvas.backToList') }}
+        </button>
         <span class="canvas-name">{{ currentPath.split('/').pop() }}</span>
+        <button
+          class="icon-btn"
+          :title="t('canvas.rename')"
+          @click="renameCanvas(currentPath)"
+        >
+          ✏
+        </button>
         <div class="toolbar-sep" />
-        <button class="tool-btn" @click="addNode('text')">{{ t('canvas.addText') }}</button>
-        <button class="tool-btn" @click="addNode('file')">{{ t('canvas.addFile') }}</button>
-        <button class="tool-btn" @click="addNode('link')">{{ t('canvas.addLink') }}</button>
-        <button class="tool-btn" @click="addNode('group')">{{ t('canvas.addGroup') }}</button>
+        <button
+          class="tool-btn"
+          @click="addNode('text')"
+        >
+          {{ t('canvas.addText') }}
+        </button>
+        <button
+          class="tool-btn"
+          @click="addNode('file')"
+        >
+          {{ t('canvas.addFile') }}
+        </button>
+        <button
+          class="tool-btn"
+          @click="addNode('link')"
+        >
+          {{ t('canvas.addLink') }}
+        </button>
+        <button
+          class="tool-btn"
+          @click="addNode('group')"
+        >
+          {{ t('canvas.addGroup') }}
+        </button>
         <div class="toolbar-sep" />
-        <button class="icon-btn" :title="t('canvas.zoomOut')" @click="zoomBy(1 / 1.2)">−</button>
+        <button
+          class="tool-btn"
+          :disabled="!canUndo"
+          :title="`${t('canvas.undo')} (Ctrl+Z)`"
+          @click="undo"
+        >
+          ↶
+        </button>
+        <button
+          class="tool-btn"
+          :disabled="!canRedo"
+          :title="`${t('canvas.redo')} (Ctrl+Y)`"
+          @click="redo"
+        >
+          ↷
+        </button>
+        <button
+          class="danger-btn"
+          :disabled="!selectedId && !selectedEdgeId"
+          :title="t('canvas.deleteSelected')"
+          @click="deleteSelected"
+        >
+          {{ t('canvas.deleteSelected') }}
+        </button>
+        <div class="toolbar-sep" />
+        <button
+          class="icon-btn"
+          :title="t('canvas.zoomOut')"
+          @click="zoomBy(1 / 1.2)"
+        >
+          −
+        </button>
         <span class="zoom-label">{{ Math.round(viewport.scale * 100) }}%</span>
-        <button class="icon-btn" :title="t('canvas.zoomIn')" @click="zoomBy(1.2)">+</button>
-        <button class="icon-btn" :title="t('canvas.resetView')" @click="resetView">⤢</button>
+        <button
+          class="icon-btn"
+          :title="t('canvas.zoomIn')"
+          @click="zoomBy(1.2)"
+        >
+          +
+        </button>
+        <button
+          class="icon-btn"
+          :title="t('canvas.resetView')"
+          @click="resetView"
+        >
+          ⤢
+        </button>
         <div class="toolbar-spacer" />
-        <span class="save-status" :class="saveStatus">
+        <span
+          class="save-status"
+          :class="saveStatus"
+        >
           {{ saveStatus === 'saving' ? t('canvas.saving') : saveStatus === 'saved' ? t('canvas.saved') : t('canvas.unsaved') }}
         </span>
-        <button class="primary-btn" @click="doSave">{{ t('canvas.save') }}</button>
+        <button
+          class="primary-btn"
+          @click="doSave"
+        >
+          {{ t('canvas.save') }}
+        </button>
       </header>
 
       <div
         v-if="errorMsg"
         class="canvas-error"
-      >{{ errorMsg }}</div>
+      >
+        {{ errorMsg }}
+      </div>
 
       <div
         ref="surfaceRef"
@@ -522,7 +792,13 @@ function typeLabel(type: CanvasNode['type']): string {
         @dblclick="onSurfaceDblClick"
         @wheel="onWheel"
       >
-        <div class="canvas-world" :style="worldStyle">
+        <div class="canvas-hint">
+          {{ t('canvas.hint') }}
+        </div>
+        <div
+          class="canvas-world"
+          :style="worldStyle"
+        >
           <!-- 分组（背景层） -->
           <div
             v-for="n in groupNodes"
@@ -531,9 +807,14 @@ function typeLabel(type: CanvasNode['type']): string {
             :class="{ selected: selectedId === n.id, connecting: connectFrom === n.id }"
             :data-node-id="n.id"
             :style="{ left: n.x + 'px', top: n.y + 'px', width: n.width + 'px', height: n.height + 'px', ...nodeAccentStyle(n) }"
-            @dblclick.stop="editingId = n.id"
+            @dblclick.stop="beginEdit(n.id)"
           >
-            <div class="group-label" v-if="n.type === 'group' && n.label">{{ n.label }}</div>
+            <div
+              v-if="n.type === 'group' && n.label"
+              class="group-label"
+            >
+              {{ n.label }}
+            </div>
             <input
               v-if="editingId === n.id && n.type === 'group'"
               class="group-input"
@@ -542,9 +823,17 @@ function typeLabel(type: CanvasNode['type']): string {
               @input="updateNode(n.id, { label: ($event.target as HTMLInputElement).value } as Partial<CanvasNode>)"
               @blur="editingId = null"
               @keyup.enter="editingId = null"
+            >
+            <span
+              class="node-port"
+              :data-handle="'port'"
+              :data-node-id="n.id"
             />
-            <span class="node-port" :data-handle="'port'" :data-node-id="n.id" />
-            <span class="node-resize" :data-handle="'resize'" :data-node-id="n.id" />
+            <span
+              class="node-resize"
+              :data-handle="'resize'"
+              :data-node-id="n.id"
+            />
           </div>
 
           <!-- 其它节点 -->
@@ -556,7 +845,9 @@ function typeLabel(type: CanvasNode['type']): string {
             :data-node-id="n.id"
             :style="{ left: n.x + 'px', top: n.y + 'px', width: n.width + 'px', height: n.height + 'px', ...nodeAccentStyle(n) }"
           >
-            <div class="node-badge">{{ typeLabel(n.type) }}</div>
+            <div class="node-badge">
+              {{ typeLabel(n.type) }}
+            </div>
 
             <!-- 文字节点：非编辑态用 Markdown 渲染，双击进入编辑（纯文本 textarea） -->
             <template v-if="n.type === 'text'">
@@ -573,7 +864,7 @@ function typeLabel(type: CanvasNode['type']): string {
                 v-else
                 class="node-text"
                 :title="t('canvas.editText')"
-                @dblclick.stop="editingId = n.id"
+                @dblclick.stop="beginEdit(n.id)"
               >
                 <MarkdownPreview
                   :content="n.text || ''"
@@ -584,7 +875,10 @@ function typeLabel(type: CanvasNode['type']): string {
 
             <!-- 文件节点 -->
             <template v-else-if="n.type === 'file'">
-              <div class="node-content node-file" @dblclick.stop="editingId = n.id">
+              <div
+                class="node-content node-file"
+                @dblclick.stop="beginEdit(n.id)"
+              >
                 <span class="node-icon">📄</span>
                 <span class="node-file-path">{{ n.file || '—' }}</span>
               </div>
@@ -597,13 +891,21 @@ function typeLabel(type: CanvasNode['type']): string {
                 @input="updateNode(n.id, { file: ($event.target as HTMLInputElement).value } as Partial<CanvasNode>)"
                 @blur="editingId = null"
                 @keyup.enter="editingId = null"
-              />
-              <button class="node-action" @click.stop="openNote(n)">{{ t('canvas.openNote') }}</button>
+              >
+              <button
+                class="node-action"
+                @click.stop="openNote(n)"
+              >
+                {{ t('canvas.openNote') }}
+              </button>
             </template>
 
             <!-- 链接节点 -->
             <template v-else-if="n.type === 'link'">
-              <div class="node-content node-link" @dblclick.stop="editingId = n.id">
+              <div
+                class="node-content node-link"
+                @dblclick.stop="beginEdit(n.id)"
+              >
                 <span class="node-icon">🔗</span>
                 <span class="node-link-url">{{ n.url || '—' }}</span>
               </div>
@@ -616,12 +918,25 @@ function typeLabel(type: CanvasNode['type']): string {
                 @input="updateNode(n.id, { url: ($event.target as HTMLInputElement).value } as Partial<CanvasNode>)"
                 @blur="editingId = null"
                 @keyup.enter="editingId = null"
-              />
-              <button class="node-action" @click.stop="openLink(n)">{{ t('canvas.open') }}</button>
+              >
+              <button
+                class="node-action"
+                @click.stop="openLink(n)"
+              >
+                {{ t('canvas.open') }}
+              </button>
             </template>
 
-            <span class="node-port" :data-handle="'port'" :data-node-id="n.id" />
-            <span class="node-resize" :data-handle="'resize'" :data-node-id="n.id" />
+            <span
+              class="node-port"
+              :data-handle="'port'"
+              :data-node-id="n.id"
+            />
+            <span
+              class="node-resize"
+              :data-handle="'resize'"
+              :data-node-id="n.id"
+            />
           </div>
 
           <!-- 边 -->
@@ -636,10 +951,16 @@ function typeLabel(type: CanvasNode['type']): string {
                 markerHeight="7"
                 orient="auto-start-reverse"
               >
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#8a8f98" />
+                <path
+                  d="M 0 0 L 10 5 L 0 10 z"
+                  fill="#8a8f98"
+                />
               </marker>
             </defs>
-            <g v-for="ep in edgePaths" :key="ep.id">
+            <g
+              v-for="ep in edgePaths"
+              :key="ep.id"
+            >
               <path
                 class="edge-hit"
                 :d="`M ${ep.from.x} ${ep.from.y} L ${ep.to.x} ${ep.to.y}`"
@@ -661,7 +982,10 @@ function typeLabel(type: CanvasNode['type']): string {
           </svg>
         </div>
 
-        <div v-if="data.nodes.length === 0" class="canvas-empty-hint">
+        <div
+          v-if="data.nodes.length === 0"
+          class="canvas-empty-hint"
+        >
           {{ t('canvas.emptyHint') }}
         </div>
       </div>
@@ -858,9 +1182,17 @@ function typeLabel(type: CanvasNode['type']): string {
   font-size: var(--text-sm);
   font-family: inherit;
   resize: none;
-  background: var(--bg-primary, #fff);
+  /* 透明继承节点底色（--bg-card）。此前用未定义的 --bg-primary 回退成白底，
+     Islands Dark 的浅色文字落在白底上几乎不可读 */
+  background: transparent;
   color: var(--text-primary);
   box-sizing: border-box;
+}
+.group-input:focus,
+.node-edit-input:focus,
+.node-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 .node-textarea {
   flex: 1;
@@ -1031,6 +1363,33 @@ function typeLabel(type: CanvasNode['type']): string {
 }
 .primary-btn:hover {
   background: var(--accent-hover);
+}
+.canvas-hint {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  z-index: 5;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  pointer-events: none;
+  opacity: 0.85;
+}
+.tool-btn:disabled,
+.ghost-btn:disabled,
+.danger-btn:disabled,
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.tool-btn:disabled:hover,
+.ghost-btn:disabled:hover,
+.danger-btn:disabled:hover,
+.icon-btn:disabled:hover {
+  background: var(--bg-card);
 }
 .tool-btn:hover,
 .ghost-btn:hover {

@@ -200,6 +200,22 @@ export function collectCanvasFiles(nodes: RawFileNode[]): { path: string; name: 
   return out
 }
 
+/**
+ * 分组容器语义：卡片中心落在分组矩形内即视为成员（不含其他分组）。
+ * 拖动分组 / 删除分组时用它圈定要联动（或一并删除）的卡片。
+ */
+export function nodesInGroup(nodes: CanvasNode[], group: CanvasNode): CanvasNode[] {
+  if (group.type !== 'group') return []
+  const right = group.x + group.width
+  const bottom = group.y + group.height
+  return nodes.filter((n) => {
+    if (n.id === group.id || n.type === 'group') return false
+    const cx = n.x + n.width / 2
+    const cy = n.y + n.height / 2
+    return cx >= group.x && cx <= right && cy >= group.y && cy <= bottom
+  })
+}
+
 // 类型再导出，方便视图层单点 import
 import type { CanvasTextNode, CanvasFileNode, CanvasLinkNode, CanvasGroupNode } from '@/types'
 export type {

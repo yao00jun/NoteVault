@@ -9,6 +9,7 @@ import {
   nodeAnchor,
   edgeEndpoints,
   type RawFileNode,
+  nodesInGroup,
 } from './canvas'
 import type { CanvasData } from '@/types'
 
@@ -142,5 +143,33 @@ describe('canvas data layer', () => {
     expect(ep!.from).toEqual({ x: a.x + a.width, y: a.y + a.height / 2 })
     expect(ep!.to).toEqual({ x: b.x, y: b.y + b.height / 2 })
     expect(edgeEndpoints({ id: 'e', fromNode: 'missing', toNode: b.id }, map)).toBeNull()
+  })
+})
+
+describe('nodesInGroup', () => {
+  it('卡片中心落在分组矩形内才算成员', () => {
+    const g = { ...createNode('group', 0, 0), width: 200, height: 200 } as ReturnType<typeof createNode>
+    const inside = createNode('text', 50, 50)
+    // 中心恰好压在右下边界 (200,200) 上：createNode 会 round 坐标，取半宽/半高精确对齐
+    const probe = createNode('text', 0, 0)
+    const edgeCaseCenter = createNode('text', 200 - probe.width / 2, 200 - probe.height / 2)
+    const outside = createNode('text', 250, 50)
+
+    const members = nodesInGroup([g, inside, edgeCaseCenter, outside], g)
+    expect(members.map((n) => n.id)).toContain(inside.id)
+    expect(members.map((n) => n.id)).toContain(edgeCaseCenter.id)
+    expect(members.map((n) => n.id)).not.toContain(outside.id)
+    expect(members.map((n) => n.id)).not.toContain(g.id)
+  })
+
+  it('分组不嵌套：其他分组永远不是成员', () => {
+    const g = { ...createNode('group', 0, 0), width: 200, height: 200 } as ReturnType<typeof createNode>
+    const nested = { ...createNode('group', 50, 50), width: 50, height: 50 } as ReturnType<typeof createNode>
+    expect(nodesInGroup([g, nested], g)).toHaveLength(0)
+  })
+
+  it('非分组节点查询返回空数组', () => {
+    const t = createNode('text', 0, 0)
+    expect(nodesInGroup([t], t)).toHaveLength(0)
   })
 })
