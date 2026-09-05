@@ -139,9 +139,11 @@ func (s *FileService) readDir(rootPath string, relPath string) ([]*FileNode, err
 			}
 			nodes = append(nodes, node)
 		} else {
-			// 只包含 .md 文件
+			// 只包含笔记类文件：.md 是正文，.canvas 是 Canvas 白板（P2-3）。
+			// 画布列表页靠 GetFileTree 收集 .canvas，漏掉会导致
+			// 「新建画布提示已存在但列表永远为空」。
 			ext := strings.ToLower(filepath.Ext(name))
-			if ext == ".md" || ext == ".markdown" {
+			if ext == ".md" || ext == ".markdown" || ext == ".canvas" {
 				nodes = append(nodes, node)
 			}
 		}

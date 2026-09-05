@@ -359,6 +359,38 @@ func TestGetFileTreeEmpty(t *testing.T) {
 	}
 }
 
+// .canvas 是 Canvas 白板（P2-3）的存储格式，画布列表页靠 GetFileTree 收集。
+// 回归背景：过滤器曾只认 .md，画布文件创建成功后列表永远为空，
+// 再次新建报「文件已存在」却无处可寻。
+func TestGetFileTreeIncludesCanvas(t *testing.T) {
+	service, wsPath := createTestFileService(t)
+
+	service.CreateFile(wsPath, "未命名画布.canvas", `{"nodes":[],"edges":[]}`)
+	service.CreateFile(wsPath, "note.md", "# note")
+	service.CreateFile(wsPath, "ignore.txt", "not a note")
+
+	tree, err := service.GetFileTree(wsPath)
+	if err != nil {
+		t.Fatalf("GetFileTree failed: %v", err)
+	}
+
+	names := map[string]bool{}
+	for _, n := range tree {
+		if !n.IsDir {
+			names[n.Name] = true
+		}
+	}
+	if !names["未命名画布.canvas"] {
+		t.Error("expected .canvas file in tree, got none")
+	}
+	if !names["note.md"] {
+		t.Error("expected .md file in tree, got none")
+	}
+	if names["ignore.txt"] {
+		t.Error("expected .txt file to be filtered out")
+	}
+}
+
 func TestGetFileTreeIgnoresHiddenFiles(t *testing.T) {
 	service, wsPath := createTestFileService(t)
 
