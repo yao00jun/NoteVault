@@ -29,9 +29,15 @@ import {
   Trash2,
   Puzzle,
   Upload,
+  Flame,
+  Search,
+  GitGraph,
+  Square,
+  PenLine,
+  Hash,
 } from '@lucide/vue'
 import KnowledgeFileBrowser from '@/components/knowledge/KnowledgeFileBrowser.vue'
-import TodayPanel from '@/components/knowledge/TodayPanel.vue'
+import WorkbenchWidgets from '@/components/knowledge/WorkbenchWidgets.vue'
 import TemplateCreateDialog from '@/components/knowledge/TemplateCreateDialog.vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -40,9 +46,14 @@ import { useI18n } from 'vue-i18n'
 import {
   FileService,
   WorkspaceService,
+  StatsService,
+  TodoService,
+  TagService,
+  ReminderService,
   ExportService,
   TemplateService,
 } from '@bindings/github.com/notevault/notevault/index.js'
+import type { TodoItem, TagInfo } from '@bindings/github.com/notevault/notevault/models.js'
 import { useToast } from '@/composables/useToast'
 import { promptDialog } from '@/composables/usePrompt'
 
@@ -59,6 +70,90 @@ interface FileNode {
 }
 
 const router = useRouter()
+
+// ---- 个人工作台 ----
+// 问候语随时间变化；日期与连续记录展示在 Banner 副行
+const greeting = computed(() => {
+  const h = new Date().getHours()
+  if (h < 5) return t('knowledge.workbench.greeting.night')
+  if (h < 11) return t('knowledge.workbench.greeting.morning')
+  if (h < 13) return t('knowledge.workbench.greeting.noon')
+  if (h < 18) return t('knowledge.workbench.greeting.afternoon')
+  return t('knowledge.workbench.greeting.evening')
+})
+const todayLabel = computed(() => {
+  const d = new Date()
+  const weekday = t(`knowledge.workbench.weekday.${d.getDay()}`)
+  return `${d.getMonth() + 1}${t('knowledge.workbench.month')} ${d.getDate()}${t('knowledge.workbench.day')} ${weekday}`
+})
+
+// 快速捕获：一行输入回车即建笔记（认知负荷原则——记想法不需要离开工作台）
+const captureText = ref('')
+const capturing = ref(false)
+async function quickCapture() {
+  const text = captureText.value.trim()
+  if (!text || capturing.value) return
+  if (!currentWorkspace.value) {
+    toast.warning(t('knowledge.selectWorkspaceFirst'))
+    return
+  }
+  capturing.value = true
+  try {
+    const name = text.endsWith('.md') ? text : `${text}.md`
+    await FileService.CreateFile(currentWorkspace.value.path, name, `# ${name.replace(/\.md$/, '')}
+
+`)
+    captureText.value = ''
+    workspaceStore.incrementFileTreeVersion()
+    toast.success(t('knowledge.workbench.captured', { name: name.replace(/\.md$/, '') }))
+  } catch (e) {
+    if ((e as Error).message?.includes('exist')) {
+      toast.warning(t('knowledge.fileExists'))
+    } else {
+      toast.error(t('knowledge.workbench.captureFailed', { msg: (e as Error).message }))
+    }
+  } finally {
+    capturing.value = false
+  }
+}
+
+// 连续记录（来自 StatsService，静默降级）
+const streakDays = ref<number | null>(null)
+const remindersToday = ref(0)
+async function loadWorkbenchStats() {
+  if (!currentWorkspace.value?.path) return
+  try {
+    const st = (await StatsService.GetTodayStats(currentWorkspace.value.path)) as {
+      streakDays?: number
+      dueReminders?: number
+    } | null
+    streakDays.value = st?.streakDays ?? null
+    remindersToday.value = st?.dueReminders ?? 0
+  } catch {
+    streakDays.value = null
+  }
+}
+
+async function loadHotTags() {
+  if (!currentWorkspace.value?.path) return
+  try {
+    const list = (await TagService.GetAllTags(currentWorkspace.value.path)) as TagInfo[] | null
+    tags.value = ((list ?? []) as TagInfo[]).filter((x) => !!x)
+  } catch (e) {
+    console.error('Failed to load tags:', e)
+  }
+}
+
+// 星标文档（右列，top 5）
+const starredFiles = computed(() =>
+  documentFiles.value.filter((f) => isStarred(f.path)).slice(0, 5),
+)
+
+// 标签速览（右列，top 8，点击进发现·标签）
+const tags = ref<{ name: string; count: number }[]>([])
+const hotTags = computed(() =>
+  [...tags.value].sort((a, b) => b.count - a.count).slice(0, 8),
+)
 const workspaceStore = useWorkspaceStore()
 const { t, locale } = useI18n()
 
@@ -451,10 +546,14 @@ function formatRelativeTime(modTime?: string): string {
 onMounted(() => {
   loadStarred()
   loadAll()
+  loadWorkbenchStats()
+  loadHotTags()
 })
 
 watch(() => currentWorkspace.value?.id, () => {
   loadAll()
+  loadWorkbenchStats()
+  loadHotTags()
 })
 
 watch(() => workspaceStore.fileTreeVersion, () => {
@@ -472,16 +571,34 @@ watch(() => workspaceStore.fileTreeVersion, () => {
         </div>
         <div>
           <h1 class="kv-banner-title">
-            {{ currentWorkspace?.name || t('knowledge.defaultTitle') }}
+            {{ greeting }}<span
+              v-if="streakDays"
+              class="kv-banner-streak"
+            ><Flame :size="15" /> {{ streakDays }}</span>
           </h1>
           <p class="kv-banner-sub">
+            <span>{{ todayLabel }}</span>
             <span v-if="currentWorkspace">
               <FolderOpen :size="12" />
-              {{ currentWorkspace.path }}
+              {{ currentWorkspace.name }} · {{ currentWorkspace.path }}
             </span>
             <span v-else>{{ t('knowledge.noWorkspace') }}</span>
           </p>
         </div>
+      </div>
+
+      <!-- 快速捕获：回车即建笔记 -->
+      <div class="kv-capture">
+        <PenLine :size="15" />
+        <input
+          v-model="captureText"
+          class="kv-capture-input"
+          type="text"
+          :placeholder="t('knowledge.workbench.capturePlaceholder')"
+          :disabled="!currentWorkspace"
+          data-testid="quick-capture"
+          @keyup.enter="quickCapture"
+        >
       </div>
       <div class="kv-banner-actions">
         <button
@@ -541,8 +658,8 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       </router-link>
     </div>
 
-    <!-- 今日工作台条带：今日编辑/连续记录/待办/到期提醒 + 继续上次 -->
-    <TodayPanel />
+    <!-- 今日焦点：可勾选待办 / 到期提醒 / 今日编辑 -->
+    <WorkbenchWidgets />
 
     <!-- 双列内容区 -->
     <div class="kv-grid">
@@ -570,6 +687,110 @@ watch(() => workspaceStore.fileTreeVersion, () => {
         @create-new="handleCreateNewDoc"
         @create-folder="createFolder"
       />
+
+      <!-- 右列：工作台出口 -->
+      <aside class="kv-side">
+        <!-- 快速入口 launchpad -->
+        <div class="kv-card">
+          <div class="kv-card-header">
+            <h3>
+              <Sparkles :size="14" />
+              <span>{{ t('knowledge.workbench.launchpad') }}</span>
+            </h3>
+          </div>
+          <div class="kv-launch-grid">
+            <button
+              class="kv-launch-btn"
+              data-testid="launch-search"
+              @click="router.push('/discover')"
+            >
+              <Search :size="16" />
+              <span>{{ t('knowledge.workbench.launch.search') }}</span>
+            </button>
+            <button
+              class="kv-launch-btn"
+              @click="router.push('/discover?tab=views&view=graph')"
+            >
+              <GitGraph :size="16" />
+              <span>{{ t('knowledge.workbench.launch.graph') }}</span>
+            </button>
+            <button
+              class="kv-launch-btn"
+              @click="router.push('/canvas')"
+            >
+              <Square :size="16" />
+              <span>{{ t('knowledge.workbench.launch.canvas') }}</span>
+            </button>
+            <button
+              class="kv-launch-btn"
+              @click="createDailyNote"
+            >
+              <Calendar :size="16" />
+              <span>{{ t('knowledge.workbench.launch.daily') }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 星标文档 -->
+        <div class="kv-card">
+          <div class="kv-card-header">
+            <h3>
+              <Star :size="14" />
+              <span>{{ t('knowledge.workbench.starred') }}</span>
+            </h3>
+          </div>
+          <div
+            v-if="starredFiles.length === 0"
+            class="wb-side-empty"
+          >
+            {{ t('knowledge.workbench.starredEmpty') }}
+          </div>
+          <ul
+            v-else
+            class="wb-side-list"
+          >
+            <li
+              v-for="f in starredFiles"
+              :key="f.path"
+              class="wb-side-item"
+              :title="f.path"
+              @click="openFile(f)"
+            >
+              <FileText :size="13" />
+              <span>{{ f.name.replace(/\.(md|markdown)$/, '') }}</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- 标签速览 -->
+        <div class="kv-card">
+          <div class="kv-card-header">
+            <h3>
+              <Hash :size="14" />
+              <span>{{ t('knowledge.workbench.tags') }}</span>
+            </h3>
+          </div>
+          <div
+            v-if="hotTags.length === 0"
+            class="wb-side-empty"
+          >
+            {{ t('knowledge.workbench.tagsEmpty') }}
+          </div>
+          <div
+            v-else
+            class="kv-tag-chips"
+          >
+            <button
+              v-for="tag in hotTags"
+              :key="tag.name"
+              class="kv-tag-chip"
+              @click="router.push('/discover?tab=views&view=tags')"
+            >
+              # {{ tag.name }} <span class="kv-tag-count">{{ tag.count }}</span>
+            </button>
+          </div>
+        </div>
+      </aside>
     </div>
 
     <!-- 低频出口：细线文字链接（Codex 式，低频功能不占视觉主体） -->
@@ -766,13 +987,149 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   background: var(--bg-hover);
 }
 
-/* 主内容：单列（文档列表即主体） */
+/* 主内容：文档主体 + 右列工作台出口 */
 .kv-grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: var(--space-4);
   padding: var(--space-4) var(--space-8);
   flex: 1;
   min-height: 0;
+}
+
+/* 快速捕获条 */
+.kv-capture {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  max-width: 420px;
+  margin: 0 var(--space-4);
+  padding: 0 var(--space-3);
+  background: var(--bg-input, var(--bg-card));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  transition: border-color var(--transition-fast);
+}
+.kv-capture:focus-within {
+  border-color: var(--border-accent, var(--accent));
+}
+.kv-capture-input {
+  flex: 1;
+  height: 34px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+.kv-capture-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Banner 连续记录徽标 */
+.kv-banner-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: var(--space-3);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(249, 115, 22, 0.14);
+  color: #f97316;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* 右列：工作台出口 */
+.kv-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  overflow-y: auto;
+}
+.kv-launch-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+.kv-launch-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-3) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.kv-launch-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-accent, var(--accent));
+}
+.wb-side-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wb-side-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: background var(--transition-fast);
+}
+.wb-side-item:hover {
+  background: var(--bg-hover);
+}
+.wb-side-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wb-side-empty {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  padding: var(--space-2) 0;
+}
+.kv-tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.kv-tag-chip {
+  padding: 2px 10px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.kv-tag-chip:hover {
+  color: var(--accent);
+  border-color: var(--border-accent, var(--accent));
+}
+.kv-tag-count {
+  color: var(--text-muted);
 }
 
 /* 低频出口链接 */
