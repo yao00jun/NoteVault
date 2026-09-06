@@ -169,7 +169,7 @@ func (s *SearchService) Search(workspacePath string, query string) ([]*SearchRes
 	idx.maybeSaveSummary(workspacePath)
 
 	queryLower := strings.ToLower(query)
-	queryTokens := tokenize(queryLower)
+	queryTokens := tokenizeQuery(queryLower)
 	if len(queryTokens) == 0 {
 		return []*SearchResult{}, nil
 	}
@@ -263,7 +263,7 @@ func (s *SearchService) GetSearchSnippet(workspacePath, relPath, query string) (
 		return "", err
 	}
 
-	queryTokens := tokenize(strings.ToLower(query))
+	queryTokens := tokenizeQuery(strings.ToLower(query))
 	if len(queryTokens) == 0 {
 		return "", nil
 	}

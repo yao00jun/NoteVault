@@ -1,6 +1,8 @@
 package service
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -359,7 +361,18 @@ func TestSchema_SearchSummaryRoundTripsCurrentFormat(t *testing.T) {
 	if err := src.SaveSummary(ws); err != nil {
 		t.Fatalf("SaveSummary: %v", err)
 	}
-	assertEnveloped(t, summaryPathFor(ws), schema.SearchSummary)
+	// 蓝图专项 4：摘要落盘升级为 Gob 二进制（自带类型信息，不再套 JSON 信封）
+	raw, err := os.ReadFile(summaryPathFor(ws))
+	if err != nil {
+		t.Fatalf("读取 Gob 摘要失败: %v", err)
+	}
+	var payload indexSummaryGob
+	if err := gob.NewDecoder(bytes.NewReader(raw)).Decode(&payload); err != nil {
+		t.Fatalf("Gob 解码失败: %v", err)
+	}
+	if payload.Version != gobSummaryVersion || len(payload.Entries) != 1 || payload.Entries[0].RelPath != "note.md" {
+		t.Fatalf("Gob 载荷不一致: %+v", payload)
+	}
 
 	dst := newSearchIndex()
 	if err := dst.LoadSummary(ws); err != nil {

@@ -1,7 +1,9 @@
 package service
 
 import (
+	"bytes"
 	"crypto/sha1"
+	"encoding/gob"
 	"encoding/hex"
 	"errors"
 	"math"
@@ -15,7 +17,6 @@ import (
 	"unicode"
 
 	"github.com/notevault/notevault/internal/core"
-	"github.com/notevault/notevault/internal/infra/schema"
 )
 
 // ---------------------------------------------------------------------------
@@ -493,7 +494,7 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 		}
 
 		// 分词并构建 token 集合
-		tokens := tokenize(contentStr)
+		tokens := tokenizeIndex(contentStr)
 		tokenFreq := freqOf(tokens)
 
 		built = append(built, builtDoc{rel: rel, doc: &cachedDoc{
@@ -506,7 +507,7 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 			contentLower:  strings.ToLower(contentStr),
 			contentLoaded: true,
 			tokenFreq:     tokenFreq,
-			titleFreq:     freqOf(tokenize(title)),
+			titleFreq:     freqOf(tokenizeIndex(title)),
 			docLen:        len(tokens),
 			lastUsed:      time.Now().UnixNano(),
 		}})
@@ -588,7 +589,7 @@ func (idx *searchIndex) removeDocLocked(doc *cachedDoc) {
 // query 使用反向索引快速筛选候选文档。
 // 返回包含任意 query token 的文档列表，调用者须持有读锁。
 func (idx *searchIndex) query(queryLower string) []*cachedDoc {
-	queryTokens := tokenize(queryLower)
+	queryTokens := tokenizeQuery(queryLower)
 	if len(queryTokens) == 0 {
 		return nil
 	}
@@ -796,11 +797,23 @@ func searchIndexDir() string {
 }
 
 // summaryPathFor 计算工作区对应的摘要文件路径
-// 用 sha1(workspacePath) 作为文件名，避免路径分隔符问题
+// 用 sha1(workspacePath) 作为文件名，避免路径分隔符问题。
+// 蓝图专项 4：格式升级为 Gob 二进制（.gob），冷启动反序列化显著快于 JSON。
 func summaryPathFor(workspacePath string) string {
 	h := sha1.Sum([]byte(filepath.ToSlash(filepath.Clean(workspacePath))))
-	name := hex.EncodeToString(h[:]) + ".json"
+	name := hex.EncodeToString(h[:]) + ".gob"
 	return filepath.Join(searchIndexDir(), name)
+}
+
+// gobSummaryVersion Gob 摘要自身的格式版本：结构变更时递增，
+// 版本不符直接丢弃重建（摘要纯缓存，与 schema.SearchSummary 的取舍一致）
+const gobSummaryVersion = 1
+
+// indexSummaryGob Gob 落盘载荷（不再套 JSON 信封——Gob 自带类型信息）
+type indexSummaryGob struct {
+	Version       int
+	WorkspacePath string
+	Entries       []indexSummaryEntry
 }
 
 // SaveSummary 把当前索引的 tokenSet + 标题 + modtime 持久化
@@ -826,13 +839,15 @@ func (idx *searchIndex) SaveSummary(workspacePath string) error {
 	}
 	idx.mu.RUnlock()
 
-	data, err := schema.MarshalAs(schema.SearchSummary, indexSummaryPayload{
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(indexSummaryGob{
+		Version:       gobSummaryVersion,
 		WorkspacePath: filepath.ToSlash(filepath.Clean(workspacePath)),
 		Entries:       entries,
-	})
-	if err != nil {
+	}); err != nil {
 		return core.WrapError(core.ErrInternal, "序列化索引摘要失败", err)
 	}
+	data := buf.Bytes()
 	dir := searchIndexDir()
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return core.WrapError(core.ErrPermission, "创建摘要目录失败: "+dir, err)
@@ -885,14 +900,13 @@ func (idx *searchIndex) LoadSummary(workspacePath string) error {
 		}
 		return core.OsToNVError(err, "读取摘要失败: "+path)
 	}
-	summary, res, err := schema.UnmarshalAs[indexSummaryPayload](data, schema.SearchSummary)
-	if err != nil {
-		// 损坏的摘要不应阻塞搜索，返回 nil 让上层重新扫描
+	var summary indexSummaryGob
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&summary); err != nil {
+		// 损坏/旧格式（v3 JSON）摘要不应阻塞搜索，返回 nil 让上层重新扫描。
+		// 旧 JSON 摘要按「纯缓存直接丢弃重建」处理，不做兼容迁移。
 		return nil
 	}
-	// 版本不完全一致（v1/v2 旧摘要、裸格式、更高版本）一律丢弃：重建代价远小于兼容分支。
-	// 这里不能静默沿用旧结构——v1 没有词频与文档长度，BM25 会拿着残缺数据算出错误分数。
-	if res.Compat != schema.CompatExact {
+	if summary.Version != gobSummaryVersion {
 		return nil
 	}
 	// 校验 workspacePath 一致（避免哈希碰撞误读其他工作区的摘要）
@@ -922,7 +936,7 @@ func (idx *searchIndex) LoadSummary(workspacePath string) error {
 			tokenFreq: tokenFreq,
 			// titleFreq 不落盘，从 title 现算——标题很短，重算成本可忽略，
 			// 换来的是摘要格式不必再升版本。
-			titleFreq: freqOf(tokenize(e.Title)),
+			titleFreq: freqOf(tokenizeIndex(e.Title)),
 			docLen:    e.DocLen,
 		}
 		idx.totalDocLen += int64(e.DocLen)

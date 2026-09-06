@@ -243,9 +243,9 @@ func TestSummaryPathFor_DeterministicAndDifferentWorkspaces(t *testing.T) {
 	if a == c {
 		t.Error("different workspaces should produce different paths")
 	}
-	// 校验文件名是 .json
-	if !strings.HasSuffix(a, ".json") {
-		t.Errorf("summary path should end with .json, got %s", a)
+	// 校验文件名是 .gob（蓝图专项 4：Gob 二进制摘要）
+	if !strings.HasSuffix(a, ".gob") {
+		t.Errorf("summary path should end with .gob, got %s", a)
 	}
 }
 

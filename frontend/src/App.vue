@@ -7,6 +7,7 @@ import StatusBar from '@/components/layout/StatusBar.vue'
 import CommandPalette from '@/components/layout/CommandPalette.vue'
 import ToastHost from '@/components/layout/ToastHost.vue'
 import ConfirmDialog from '@/components/layout/ConfirmDialog.vue'
+import OmniSearch from '@/components/layout/OmniSearch.vue'
 import PromptDialog from '@/components/layout/PromptDialog.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
@@ -23,6 +24,8 @@ const router = useRouter()
 
 // 命令面板状态
 const showCommandPalette = ref(false)
+// 全局检索与 AI 问答浮层（蓝图 2.4）：任意界面 Ctrl+K 唤起
+const showOmniSearch = ref(false)
 
 // 欢迎页和设置页有自己的独立布局，需要隐藏主应用侧边栏
 const hideSidebarRoutes = ['/', '/settings']
@@ -39,6 +42,12 @@ function handleGlobalKeydown(e: KeyboardEvent) {
   if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p') {
     e.preventDefault()
     showCommandPalette.value = !showCommandPalette.value
+    return
+  }
+  // Ctrl+K：全局检索 / AI 问答浮层（蓝图 2.4）
+  if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+    e.preventDefault()
+    showOmniSearch.value = !showOmniSearch.value
     return
   }
   // Ctrl+,：打开设置
@@ -112,6 +121,13 @@ function closeCommandPalette() {
   showCommandPalette.value = false
 }
 
+// OmniSearch 命中：打开文件进编辑器（与工作台文档列表同款动线）
+function openFileFromOmni(path: string) {
+  workspaceStore.openFile(path)
+  workspaceStore.incrementFileTreeVersion()
+  router.push('/editor')
+}
+
 function handleNewFileFromPalette() {
   const event = new CustomEvent('notevault:new-file')
   window.dispatchEvent(event)
@@ -147,6 +163,11 @@ function handleNewFileFromPalette() {
     <ToastHost />
     <ConfirmDialog />
     <PromptDialog />
+    <OmniSearch
+      :visible="showOmniSearch"
+      @close="showOmniSearch = false"
+      @open-file="openFileFromOmni"
+    />
     <div class="plugin-notification-stack">
       <div
         v-for="notification in pluginRuntimeStore.notifications"
