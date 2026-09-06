@@ -32,7 +32,8 @@ async function loadReminders() {
   isLoading.value = true
   try {
     const data = await ReminderService.GetAllReminders(currentWorkspace.value.path)
-    reminders.value = data as Reminder[]
+    // 同 TodosView：nil 切片 → JSON null，必须设防
+    reminders.value = Array.isArray(data) ? data as Reminder[] : []
   } catch (e) {
     console.error('Failed to load reminders:', e)
     reminders.value = []

@@ -21,10 +21,12 @@ import {
   TemplateService,
 } from '@bindings/github.com/notevault/notevault/index.js'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useToast } from '@/composables/useToast'
 import { promptDialog } from '@/composables/usePrompt'
 
 const { t } = useI18n()
 const router = useRouter()
+const toast = useToast()
 const workspaceStore = useWorkspaceStore()
 
 interface TodayStats {
@@ -154,8 +156,10 @@ async function addTodo() {
 `
     await FileService.SaveFile(ws.path, path, content)
     await load()
+    toast.success(t('knowledge.workbench.todoAdded'))
   } catch (e) {
     console.error('[workbench] add todo failed:', e)
+    toast.error(t('knowledge.workbench.addTodoFailed', { msg: (e as Error).message }))
   }
 }
 

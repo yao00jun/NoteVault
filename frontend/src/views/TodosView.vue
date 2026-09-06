@@ -105,7 +105,9 @@ async function loadTodos() {
   isLoading.value = true
   try {
     const data = await TodoService.GetAllTodos(currentWorkspace.value!.path)
-    todos.value = data as TodoItem[]
+    // 空待办时 Go 返回 nil 切片 → JSON null；直接赋值会让模板渲染抛错，
+    // 组件冻结在加载帧（回顾·任务 tab 卡死的根因）
+    todos.value = Array.isArray(data) ? data as TodoItem[] : []
   } catch (e) {
     console.error('Failed to load todos:', e)
     errorMsg.value = t('todos.loadFailed', { msg: (e as Error).message })

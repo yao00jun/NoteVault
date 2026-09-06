@@ -837,6 +837,8 @@ export default {
     captureFailed: 'Create failed: {msg}',
     todos: 'Todos today',
     todosEmpty: 'Nothing to do — go write something',
+    todoAdded: 'Added to the daily note',
+    addTodoFailed: 'Add failed: {msg}',
     addTodo: 'Add todo',
     addTodoPrompt: 'Todo content (will be added to the daily note of today):',
     addReminder: 'Add reminder',

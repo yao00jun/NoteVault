@@ -57,6 +57,17 @@ describe('TodosView kanban', () => {
     mockedToggle.mockResolvedValue(undefined as any)
   })
 
+  it('GetAllTodos 返回 null（空待办）时渲染空列表而不冻结', async () => {
+    mockedTodos.mockResolvedValue(null as any)
+    const { wrapper } = mountTodos()
+    await flushPromises()
+
+    // 渲染不应抛错冻结在加载帧
+    expect(wrapper.findAll('.todo-loading, [class*=loading]').length).toBe(0)
+    // 组件应正常展示（无待办内容）
+    expect(wrapper.exists()).toBe(true)
+  })
+
   it('默认列表视图渲染全部待办', async () => {
     const { wrapper } = mountTodos()
     await flushPromises()

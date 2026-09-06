@@ -837,6 +837,8 @@ export default {
     captureFailed: '创建失败：{msg}',
     todos: '今日待办',
     todosEmpty: '没有待办，去写点什么吧',
+    todoAdded: '已添加到今天的日记',
+    addTodoFailed: '添加失败：{msg}',
     addTodo: '新建待办',
     addTodoPrompt: '输入待办内容（将写入今天的日记）：',
     addReminder: '新建提醒',
