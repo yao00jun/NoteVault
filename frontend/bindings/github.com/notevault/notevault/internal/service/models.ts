@@ -949,6 +949,11 @@ export interface TemplateInfo {
      * 需要用户填写的自定义变量（已排除内置）
      */
     "variables": string[] | null;
+
+    /**
+     * 是否为应用内置模板（工作区同名模板可覆盖）
+     */
+    "builtin": boolean;
 }
 
 /**

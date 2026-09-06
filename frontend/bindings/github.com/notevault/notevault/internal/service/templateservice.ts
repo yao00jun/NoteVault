@@ -31,8 +31,8 @@ export function GetTemplateContent(workspacePath: string, name: string): $Cancel
 }
 
 /**
- * ListTemplates 列出工作区全部模板（按名称排序）。
- * Templates/ 目录不存在时返回空列表——这是全新工作区的正常状态，不是错误。
+ * ListTemplates 列出可用模板 = 内置模板 + 工作区 Templates/ 下的模板，
+ * 工作区同名模板覆盖内置版本（用户自定义优先）。按名称排序。
  */
 export function ListTemplates(workspacePath: string): $CancellablePromise<($models.TemplateInfo | null)[] | null> {
     return $Call.ByName("github.com/notevault/notevault/internal/service.TemplateService.ListTemplates", workspacePath);

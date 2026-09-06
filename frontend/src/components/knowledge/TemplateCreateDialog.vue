@@ -49,7 +49,7 @@
                 :key="tpl.name"
                 :value="tpl.name"
               >
-                {{ tpl.name }}
+                {{ tpl.name }}{{ tpl.builtin ? t('templates.builtinTag') : '' }}
               </option>
             </select>
           </div>
@@ -64,11 +64,12 @@
               :key="name"
               class="tcd-field"
             >
-              <label>{{ t('templates.variableLabel', { name }) }}</label>
+              <label>{{ varLabel(name) }}</label>
               <input
                 v-model="variableValues[name]"
                 type="text"
                 class="tcd-input"
+                :placeholder="name"
                 @keyup.enter="doCreate"
               >
             </div>
@@ -147,6 +148,20 @@ const creating = ref(false)
 const errorMsg = ref('')
 
 const workspacePath = computed(() => workspaceStore.currentWorkspace?.path ?? '')
+// 内置模板自定义变量的中文标签；未映射的变量（用户自建模板）原样显示
+const VAR_LABEL_KEYS: Record<string, string> = {
+  author: 'varAuthor',
+  attendees: 'varAttendees',
+  deadline: 'varDeadline',
+  project: 'varProject',
+  book: 'varBook',
+  people: 'varPeople',
+}
+function varLabel(name: string): string {
+  const key = VAR_LABEL_KEYS[name]
+  return key ? t(`templates.${key}`) : t('templates.variableLabel', { name })
+}
+
 const currentVariables = computed(() => {
   const tpl = templates.value.find(tp => tp.name === selectedName.value)
   return tpl?.variables ?? []

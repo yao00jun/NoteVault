@@ -53,8 +53,8 @@ describe('TemplateCreateDialog · P2-2 模板系统', () => {
 
   it('渲染模板下拉、自定义变量输入与目标路径', async () => {
     mockedList.mockResolvedValue([
-      { name: '会议', variables: ['project', 'people'] },
-      { name: '读书笔记', variables: [] },
+      { name: '会议', variables: ['project', 'people'], builtin: false },
+      { name: '读书笔记', variables: [], builtin: true },
     ])
     const { wrapper } = mountDialog()
     await flushPromises()
@@ -62,8 +62,12 @@ describe('TemplateCreateDialog · P2-2 模板系统', () => {
     // 默认选中第一个模板（按名称排序后是「会议」）
     const select = wrapper.find('select')
     expect((select.element as HTMLSelectElement).value).toBe('会议')
-    // 两个自定义变量各一个输入框
+    // 两个自定义变量各一个输入框；已知变量显示中文标签，原始变量名退到 placeholder
+    const varLabels = wrapper.findAll('.tcd-vars label').map((w) => w.text())
+    expect(varLabels).toContain('项目')
+    expect(varLabels).toContain('参与人')
     const varInputs = wrapper.findAll('.tcd-vars input')
+    expect((varInputs[0]!.element as HTMLInputElement).placeholder).toBe('project')
     expect(varInputs.length).toBe(2)
     // 目标路径默认为 模板名.md
     const target = wrapper.find('.tcd-target')
@@ -72,7 +76,7 @@ describe('TemplateCreateDialog · P2-2 模板系统', () => {
   })
 
   it('填写变量后创建并触发 created 事件', async () => {
-    mockedList.mockResolvedValue([{ name: '会议', variables: ['project'] }])
+    mockedList.mockResolvedValue([{ name: '会议', variables: ['project'], builtin: true }])
     mockedCreate.mockResolvedValue({ name: '周会.md', path: '周会.md' } as never)
     const { wrapper } = mountDialog()
     await flushPromises()
@@ -91,7 +95,7 @@ describe('TemplateCreateDialog · P2-2 模板系统', () => {
   })
 
   it('创建失败时显示错误不关闭', async () => {
-    mockedList.mockResolvedValue([{ name: '会议', variables: [] }])
+    mockedList.mockResolvedValue([{ name: '会议', variables: [], builtin: true }])
     mockedCreate.mockRejectedValue(new Error('文件已存在'))
     const { wrapper } = mountDialog()
     await flushPromises()

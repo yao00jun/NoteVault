@@ -19,14 +19,26 @@ func writeTemplate(t *testing.T, workspace, name, content string) {
 }
 
 func TestTemplateService_ListTemplates(t *testing.T) {
-	t.Run("目录不存在返回空列表", func(t *testing.T) {
+	t.Run("空工作区返回内置模板", func(t *testing.T) {
 		svc := NewTemplateService(NewFileService())
 		list, err := svc.ListTemplates(t.TempDir())
 		if err != nil {
 			t.Fatalf("不应报错: %v", err)
 		}
-		if len(list) != 0 {
-			t.Fatalf("应返回空列表, got %v", list)
+		if len(list) < 5 {
+			t.Fatalf("应至少返回 5 个内置模板, got %d", len(list))
+		}
+		names := map[string]bool{}
+		for _, tpl := range list {
+			if !tpl.Builtin {
+				t.Errorf("空工作区里 %q 应标记为内置", tpl.Name)
+			}
+			names[tpl.Name] = true
+		}
+		for _, want := range []string{"Daily", "读书笔记", "会议记录", "每周回顾", "项目"} {
+			if !names[want] {
+				t.Errorf("缺少内置模板 %q, got %v", want, names)
+			}
 		}
 	})
 
@@ -44,19 +56,33 @@ func TestTemplateService_ListTemplates(t *testing.T) {
 		if err != nil {
 			t.Fatalf("不应报错: %v", err)
 		}
-		if len(list) != 2 {
-			t.Fatalf("应只有 2 个模板, got %d", len(list))
+		// 内置模板 + 2 个工作区模板，其中「读书笔记」覆盖同名内置 → 不重复出现
+		if len(list) != len(bundledTemplates())+1 {
+			t.Fatalf("应为 内置数+1, got %d", len(list))
 		}
-		if list[0].Name != "会议" || list[1].Name != "读书笔记" {
+		byName := map[string]*TemplateInfo{}
+		for _, tpl := range list {
+			byName[tpl.Name] = tpl
+		}
+		if byName["读书笔记"] == nil || byName["读书笔记"].Builtin {
+			t.Fatal("工作区读书笔记应覆盖内置（Builtin=false）")
+		}
+		if byName["会议"] == nil || byName["会议"].Builtin {
+			t.Fatal("工作区会议模板应存在且非内置")
+		}
+		if byName["Daily"] == nil || !byName["Daily"].Builtin {
+			t.Fatal("内置 Daily 应保留")
+		}
+		if list[0].Name == "" || list[len(list)-1].Name < list[0].Name {
 			t.Fatalf("应按名称排序: %v", list)
 		}
 		// date 是内置变量不应出现；people/project 应出现且排序
-		if strings.Join(list[0].Variables, ",") != "people,project" {
-			t.Fatalf("会议模板变量应为 people,project, got %v", list[0].Variables)
+		if strings.Join(byName["会议"].Variables, ",") != "people,project" {
+			t.Fatalf("会议模板变量应为 people,project, got %v", byName["会议"].Variables)
 		}
 		// 重复变量去重
-		if len(list[1].Variables) != 1 || list[1].Variables[0] != "book" {
-			t.Fatalf("读书笔记变量应只有 book, got %v", list[1].Variables)
+		if len(byName["读书笔记"].Variables) != 1 || byName["读书笔记"].Variables[0] != "book" {
+			t.Fatalf("读书笔记变量应只有 book, got %v", byName["读书笔记"].Variables)
 		}
 	})
 }
@@ -82,6 +108,30 @@ func TestTemplateService_GetTemplateContent(t *testing.T) {
 		}
 		if _, err := svc.GetTemplateContent(t.TempDir(), `a\b`); err == nil {
 			t.Fatal("反斜杠路径应被拒绝")
+		}
+	})
+
+	t.Run("工作区没有时回退内置模板", func(t *testing.T) {
+		svc := NewTemplateService(NewFileService())
+		content, err := svc.GetTemplateContent(t.TempDir(), "Daily")
+		if err != nil {
+			t.Fatalf("内置模板应可直接读取: %v", err)
+		}
+		if !strings.Contains(content, "{{date}}") {
+			t.Fatalf("内置 Daily 内容不符: %q", content)
+		}
+	})
+
+	t.Run("工作区同名模板覆盖内置", func(t *testing.T) {
+		ws := t.TempDir()
+		writeTemplate(t, ws, "Daily", "# 我自己的日记模板 {{date}}")
+		svc := NewTemplateService(NewFileService())
+		content, err := svc.GetTemplateContent(ws, "Daily")
+		if err != nil {
+			t.Fatalf("不应报错: %v", err)
+		}
+		if !strings.Contains(content, "我自己的日记模板") {
+			t.Fatalf("应返回工作区版本, got %q", content)
 		}
 	})
 
@@ -131,6 +181,27 @@ func TestTemplateService_CreateFromTemplate(t *testing.T) {
 		if !strings.Contains(text, "{{missing}}") {
 			t.Fatalf("未提供变量应保留占位符, got:\n%s", text)
 		}
+	})
+
+	t.Run("用内置模板创建并渲染变量", func(t *testing.T) {
+		ws := t.TempDir()
+		svc := newSvc()
+		node, err := svc.CreateFromTemplate(ws, "读书笔记", "Books/代码大全.md", map[string]string{"author": "Steve McConnell"})
+		if err != nil {
+			t.Fatalf("用内置模板创建失败: %v", err)
+		}
+		data, err := os.ReadFile(filepath.Join(ws, "Books", "代码大全.md"))
+		if err != nil {
+			t.Fatalf("文件应已落盘: %v", err)
+		}
+		text := string(data)
+		if !strings.Contains(text, "# 代码大全") || !strings.Contains(text, "Steve McConnell") {
+			t.Fatalf("内置模板变量应渲染, got:\n%s", text)
+		}
+		if !strings.Contains(text, "tags: [读书笔记]") {
+			t.Fatalf("应保留内置模板 frontmatter, got:\n%s", text)
+		}
+		_ = node
 	})
 
 	t.Run("目标路径不能为空", func(t *testing.T) {

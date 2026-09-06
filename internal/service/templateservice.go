@@ -1,7 +1,9 @@
 package service
 
 import (
+	"embed"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -27,6 +29,12 @@ import (
 // templatesDirName 是模板目录名（Obsidian 同名约定，方便迁移）。
 const templatesDirName = "Templates"
 
+// 内置模板：随应用打包（internal/service/templates/*.md），
+// 任何工作区开箱即得；工作区 Templates/ 下的同名模板覆盖内置版本。
+//
+//go:embed templates/*.md
+var bundledTemplateFS embed.FS
+
 // variablePattern 匹配 {{word}} 占位符；word 限字母开头、允许数字/下划线/连字符，
 // 避免误吞 {{ }} 或 JSON 片段。
 var variablePattern = regexp.MustCompile(`\{\{([a-zA-Z][a-zA-Z0-9_-]*)\}\}`)
@@ -43,6 +51,38 @@ var builtinVariables = map[string]bool{
 type TemplateInfo struct {
 	Name      string   `json:"name"`      // 模板名（文件名去扩展名），即模板 ID
 	Variables []string `json:"variables"` // 需要用户填写的自定义变量（已排除内置）
+	Builtin   bool     `json:"builtin"`   // 是否为应用内置模板（工作区同名模板可覆盖）
+}
+
+// bundledTemplates 读取全部内置模板（名字 + 变量清单），按名称排序。
+func bundledTemplates() []*TemplateInfo {
+	entries, err := fs.ReadDir(bundledTemplateFS, "templates")
+	if err != nil {
+		return nil
+	}
+	out := make([]*TemplateInfo, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		name := strings.TrimSuffix(entry.Name(), ".md")
+		info := &TemplateInfo{Name: name, Variables: []string{}, Builtin: true}
+		if content, err := fs.ReadFile(bundledTemplateFS, "templates/"+entry.Name()); err == nil {
+			info.Variables = extractVariables(string(content))
+		}
+		out = append(out, info)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// bundledTemplateContent 返回内置模板原文；不存在返回 ok=false。
+func bundledTemplateContent(name string) (string, bool) {
+	content, err := bundledTemplateFS.ReadFile("templates/" + name + ".md")
+	if err != nil {
+		return "", false
+	}
+	return string(content), true
 }
 
 // TemplateService 提供模板列表与从模板创建笔记。
@@ -54,19 +94,20 @@ func NewTemplateService(files *FileService) *TemplateService {
 	return &TemplateService{files: files}
 }
 
-// ListTemplates 列出工作区全部模板（按名称排序）。
-// Templates/ 目录不存在时返回空列表——这是全新工作区的正常状态，不是错误。
+// ListTemplates 列出可用模板 = 内置模板 + 工作区 Templates/ 下的模板，
+// 工作区同名模板覆盖内置版本（用户自定义优先）。按名称排序。
 func (s *TemplateService) ListTemplates(workspacePath string) ([]*TemplateInfo, error) {
+	merged := map[string]*TemplateInfo{}
+	for _, tpl := range bundledTemplates() {
+		merged[tpl.Name] = tpl
+	}
+
 	dir := filepath.Join(workspacePath, templatesDirName)
 	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
+	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("读取模板目录失败: %w", err)
 	}
 
-	templates := make([]*TemplateInfo, 0)
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
 			continue
@@ -77,7 +118,12 @@ func (s *TemplateService) ListTemplates(workspacePath string) ([]*TemplateInfo, 
 			info.Variables = extractVariables(string(content))
 		}
 		// 读失败不影响列出：只是拿不到变量清单，创建时仍可用
-		templates = append(templates, info)
+		info.Builtin = false
+		merged[name] = info // 工作区模板覆盖同名内置
+	}
+	templates := make([]*TemplateInfo, 0, len(merged))
+	for _, tpl := range merged {
+		templates = append(templates, tpl)
 	}
 	sort.Slice(templates, func(i, j int) bool {
 		return templates[i].Name < templates[j].Name
@@ -108,10 +154,15 @@ func (s *TemplateService) GetTemplateContent(workspacePath string, name string) 
 		return "", err
 	}
 	content, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("读取模板失败: %w", err)
+	if err == nil {
+		return string(content), nil
 	}
-	return string(content), nil
+	// 工作区读不到（不存在或不可读）时回退内置版本：
+	// Windows 上目录不存在报 ERROR_PATH_NOT_FOUND，勿依赖 os.IsNotExist 细分
+	if bundled, ok := bundledTemplateContent(name); ok {
+		return bundled, nil
+	}
+	return "", fmt.Errorf("读取模板失败: %w", err)
 }
 
 // CreateFromTemplate 用模板创建笔记：渲染占位符 → 经 FileService 落盘。
@@ -123,13 +174,9 @@ func (s *TemplateService) CreateFromTemplate(
 	targetRelativePath string,
 	variables map[string]string,
 ) (*FileNode, error) {
-	tplPath, err := s.templatePath(workspacePath, templateName)
+	raw, err := s.GetTemplateContent(workspacePath, templateName)
 	if err != nil {
 		return nil, err
-	}
-	raw, err := os.ReadFile(tplPath)
-	if err != nil {
-		return nil, fmt.Errorf("读取模板失败: %w", err)
 	}
 
 	if strings.TrimSpace(targetRelativePath) == "" {
