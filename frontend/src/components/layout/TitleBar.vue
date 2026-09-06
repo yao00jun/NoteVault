@@ -152,8 +152,84 @@ if (typeof window !== 'undefined') {
   <div class="titlebar">
     <!-- 左侧：拖拽区域 + 应用名 -->
     <div class="titlebar-left">
-      <div class="app-icon">
-        📓
+      <div
+        class="app-icon"
+        aria-hidden="true"
+      >
+        <!-- 与 build/appicon.png 同源的迷你版：墨底 + 琥珀书脊笔记本 + 双链 -->
+        <svg
+          viewBox="0 0 32 32"
+          width="22"
+          height="22"
+        >
+          <rect
+            x="1"
+            y="1"
+            width="30"
+            height="30"
+            rx="7"
+            fill="#22242A"
+          />
+          <rect
+            x="9.5"
+            y="6.5"
+            width="15"
+            height="19"
+            rx="2"
+            fill="#F6F7FA"
+          />
+          <rect
+            x="9.5"
+            y="6.5"
+            width="4"
+            height="19"
+            rx="2"
+            fill="#F0A732"
+          />
+          <rect
+            x="20.5"
+            y="6.5"
+            width="3"
+            height="5"
+            fill="#F0A732"
+          />
+          <rect
+            x="15"
+            y="10.5"
+            width="7"
+            height="1.6"
+            rx="0.8"
+            fill="#C4C9D2"
+          />
+          <rect
+            x="15"
+            y="14"
+            width="7"
+            height="1.6"
+            rx="0.8"
+            fill="#C4C9D2"
+          />
+          <rect
+            x="15"
+            y="17.5"
+            width="5"
+            height="1.6"
+            rx="0.8"
+            fill="#C4C9D2"
+          />
+          <circle
+            cx="15.5"
+            cy="22.5"
+            r="1.8"
+            fill="#F0A732"
+          />
+          <circle
+            cx="20"
+            cy="22.5"
+            r="1.5"
+            fill="#FFFFFF"
+          />
+        </svg>
       </div>
       <span class="app-name">NoteVault</span>
     </div>
@@ -326,7 +402,8 @@ if (typeof window !== 'undefined') {
 }
 
 .app-icon {
-  font-size: 16px;
+  display: flex;
+  align-items: center;
 }
 
 .app-name {
