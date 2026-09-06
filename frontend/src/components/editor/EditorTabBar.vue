@@ -17,6 +17,7 @@ import {
   Wand2,
   FileDown,
   FileCode,
+  ArrowLeft,
 } from '@lucide/vue'
 
 const { t } = useI18n()
@@ -40,6 +41,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  (e: 'back'): void
   (e: 'switch-tab', index: number): void
   (e: 'close-tab', index: number, event: Event): void
   (e: 'new-file'): void
@@ -68,6 +70,14 @@ const compileTooltip = computed(() => {
 
 <template>
   <div class="tab-bar">
+    <button
+      class="tab-back"
+      data-testid="editor-back"
+      :title="t('common.backToKnowledge')"
+      @click="emit('back')"
+    >
+      <ArrowLeft :size="15" />
+    </button>
     <div class="tabs-container">
       <div
         v-for="(tab, index) in tabs"

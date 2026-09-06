@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import EditorTabBar from '@/components/editor/EditorTabBar.vue'
 import EditorBacklinks from '@/components/editor/EditorBacklinks.vue'
 import EditorSummaryPanel from '@/components/editor/EditorSummaryPanel.vue'
@@ -25,6 +25,7 @@ import { promptDialog } from '@/composables/usePrompt'
 
 const workspaceStore = useWorkspaceStore()
 const route = useRoute()
+const router = useRouter()
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
 const toast = useToast()
@@ -966,6 +967,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       @export-html="exportSingleHTML"
       @save="saveCurrentTab"
       @toggle-view="toggleViewMode"
+      @back="router.push('/knowledge')"
     />
 
     <!-- 编辑器主区域 -->
