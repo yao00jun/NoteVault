@@ -153,8 +153,8 @@ func main() {
 	// 主窗口
 	mainWindow = wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            core.AppName,
-		Width:            1440,
-		Height:           900,
+		Width:            1600,
+		Height:           1000,
 		MinWidth:         1000,
 		MinHeight:        700,
 		BackgroundColour: application.NewRGB(30, 31, 36),
