@@ -11,6 +11,7 @@ vi.mock('@/composables/usePrompt', () => ({
 }))
 
 vi.mock('@/api', () => ({
+  ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
   WorkspaceService: { GetCurrentWorkspace: vi.fn() },
   FileService: {
     GetFileTree: vi.fn(),
@@ -19,6 +20,9 @@ vi.mock('@/api', () => ({
   },
   TodoService: { GetAllTodos: vi.fn(), ToggleTodo: vi.fn() },
   TagService: { GetAllTags: vi.fn() },
+  StatsService: { GetTodayStats: vi.fn(async () => null) },
+  ReminderService: { GetAllReminders: vi.fn(async () => []) },
+  TrashService: { MoveToTrash: vi.fn(async () => null) },
   ExportService: { ExportWorkspaceMarkdown: vi.fn() },
   TemplateService: {
     ListTemplates: vi.fn(async () => []),

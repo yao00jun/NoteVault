@@ -102,6 +102,17 @@ func main() {
 		EnableLocalErrorLog: true,
 	})
 
+	// 本地 Web Clipper 剪藏接口（蓝图专项 8）：只监听 127.0.0.1，Token 鉴权。
+	// 渐进降级：端口被占只记日志，应用照常运行（不影响其他功能）。
+	if err := container.Clipper.Start(); err != nil {
+		log.Printf("[clipper] 启动失败（剪藏接口不可用）: %v", err)
+	}
+	defer func() {
+		if err := container.Clipper.Stop(); err != nil {
+			log.Printf("[clipper] 停止失败: %v", err)
+		}
+	}()
+
 	// 主窗口引用：单实例锁回调里聚焦已有窗口
 	var mainWindow *application.WebviewWindow
 

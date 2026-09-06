@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
-import { CredentialService } from '@/api'
+import { CredentialService, ClipperService } from '@/api'
 import type { AppSettings, ThemeType } from '@/types'
 import { VISIBLE_DEFAULT, TOOLBAR_ORDER_DEFAULT } from '@/components/editor/toolbarButtons'
 import { setLocale, type Locale } from '@/i18n'
@@ -258,6 +258,18 @@ export const useSettingsStore = defineStore('settings', () => {
         console.warn('[settings] 保存 Rerank Key 到系统凭据库失败:', e)
       })
     },
+  )
+
+  // 剪藏接口的可选 AI 摘要：AI 配置（含异步恢复的 apiKey）一变就推给后端。
+  // 推送失败只降级为"剪藏不带摘要"，绝不阻断设置流程（红线 4）。
+  watch(
+    () => ({ ...settings.value.ai }),
+    (ai) => {
+      void ClipperService.ConfigureAI(ai.apiKey ?? '', ai.baseURL ?? '', ai.model ?? '', ai.protocol ?? '').catch((e) => {
+        console.warn('[settings] 推送剪藏 AI 配置失败（剪藏将不生成摘要）:', e)
+      })
+    },
+    { deep: true },
   )
 
   // 主题切换

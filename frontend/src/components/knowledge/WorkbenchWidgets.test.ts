@@ -11,6 +11,7 @@ const mocked = {
 }
 
 vi.mock('@/api', () => ({
+  ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
   StatsService: { GetTodayStats: (...a: unknown[]) => mocked.stats(...a) },
   TodoService: {
     GetAllTodos: (...a: unknown[]) => mocked.todos(...a),

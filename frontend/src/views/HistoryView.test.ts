@@ -11,6 +11,7 @@ vi.mock('@/composables/useConfirm', () => ({
 }))
 
 vi.mock('@/api', () => ({
+  ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
   SnapshotService: {
     ListSnapshotFiles: vi.fn(),
     ListSnapshots: vi.fn(),

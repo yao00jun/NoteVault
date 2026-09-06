@@ -20,6 +20,7 @@ vi.mock('@wailsio/runtime', () => {
 })
 
 vi.mock('@/api', () => ({
+  ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
   AppService: { ForceQuit: vi.fn(() => Promise.resolve()) },
 }))
 

@@ -164,6 +164,16 @@ export interface BuiltinTemplate {
 }
 
 /**
+ * ClipperStatus 剪藏服务运行状态（暴露给设置页展示）。
+ */
+export interface ClipperStatus {
+    "running": boolean;
+    "port": number;
+    "token": string;
+    "aiEnabled": boolean;
+}
+
+/**
  * CompileAllResult 是 CompileAll 的聚合结果，专为 Wails 绑定设计：
  * 返回单一结构体 + error（而非 Go 惯用的 (results, []error) 双返回值）。
  * 原因：Wails 会把多返回值序列化为元组，而 []error 是接口切片，

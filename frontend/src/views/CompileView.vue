@@ -18,6 +18,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
 import { useToast } from '@/composables/useToast'
+import { isLocalBaseURL } from '@/utils/localEndpoint'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -47,7 +48,14 @@ const errorList = computed(
 )
 
 const ai = computed(() => settingsStore.settings.ai)
-const hasApiKey = computed(() => ai.value.apiKey.trim() !== '')
+// AI 就绪判定与 EditorView/QnAView 同口径：本机端点（Ollama 等）免 Key，
+// 云端才要求 Key；baseURL 任何时候都必须有。此前这里单独用「apiKey 非空」
+// 判定，导致配了本地 Ollama 也一直亮「未配置 API Key」横幅、编译全量被拦
+//（2026-09-07 用户实测踩坑）。
+const hasApiKey = computed(
+  () => Boolean(ai.value.baseURL.trim()) &&
+    (isLocalBaseURL(ai.value.baseURL) || ai.value.apiKey.trim() !== ''),
+)
 const workspacePath = computed(() => workspaceStore.currentWorkspace?.path ?? '')
 
 function basename(p: string): string {

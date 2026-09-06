@@ -14,7 +14,6 @@ import { ref, computed, onMounted, watch } from 'vue'
 import {
   Library,
   FileText,
-  Calendar,
   Star,
   StarOff,
   ChevronRight,
@@ -36,9 +35,6 @@ import {
   Square,
   PenLine,
   Hash,
-  Rocket,
-  Inbox,
-  BookOpen,
 } from '@lucide/vue'
 import KnowledgeFileBrowser from '@/components/knowledge/KnowledgeFileBrowser.vue'
 import WorkbenchWidgets from '@/components/knowledge/WorkbenchWidgets.vue'
@@ -51,6 +47,7 @@ import { useToast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirm'
 import { isImeComposing } from '@/utils/ime'
 import { promptDialog } from '@/composables/usePrompt'
+import { useWorkbenchSpaces, normalizePath, isMarkdownFile } from '@/composables/useWorkbenchSpaces'
 
 const toast = useToast()
 
@@ -154,26 +151,7 @@ async function loadHotTags() {
   }
 }
 
-// 知识空间：按约定目录聚合（蓝图 2.1 四大空间）
-const SPACE_DEFS = [
-  { key: 'learning', dir: 'Learning', icon: BookOpen },
-  { key: 'projects', dir: 'Projects', icon: Rocket },
-  { key: 'inbox', dir: 'Inbox', icon: Inbox },
-  { key: 'daily', dir: 'Daily', icon: Calendar },
-] as const
-
-const knowledgeSpaces = computed(() =>
-  SPACE_DEFS.map((def) => ({
-    ...def,
-    label: t(`knowledge.spaces.${def.key}.name`),
-    desc: t(`knowledge.spaces.${def.key}.desc`),
-    count: flatFiles.value.filter(
-      (f) => !f.isDir && (f.name.endsWith('.md') || f.name.endsWith('.markdown')) &&
-        normalizePath(f.path).startsWith(`${def.dir}/`),
-    ).length,
-  })),
-)
-
+// 知识空间（分类扫描/统计/过滤已抽到 useWorkbenchSpaces，蓝图 2.1 四大空间）
 function openSpace(space: { dir: string; key: string }) {
   if (space.key === 'daily') {
     createDailyNote()
@@ -259,14 +237,7 @@ function flattenFiles(nodes: FileNode[], depth = 0): { path: string; name: strin
 }
 
 const flatFiles = computed(() => flattenFiles(allFiles.value))
-
-function isMarkdownFile(file: { name: string; isDir: boolean }): boolean {
-  return !file.isDir && /\.(md|markdown)$/i.test(file.name)
-}
-
-function normalizePath(path: string): string {
-  return path.replaceAll('\\', '/')
-}
+const { knowledgeSpaces } = useWorkbenchSpaces(flatFiles)
 
 function parentFolderPath(path: string): string {
   const normalized = normalizePath(path)

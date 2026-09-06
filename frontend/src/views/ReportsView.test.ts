@@ -6,6 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 
 vi.mock('@/api', () => ({
+  ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
   StatsService: { GetWritingActivity: vi.fn(), GetOnThisDay: vi.fn(async () => []) },
   GraphService: { GetGraph: vi.fn() },
   ReportService: { GenerateWeeklyReport: vi.fn() },

@@ -166,15 +166,29 @@ type LLMProbeResult struct {
 // 自检要同时服务于「AI 总结」「知识问答」以及将来的 embedding 配置，
 // 挂在任一功能服务上都会让依赖方向变歪。
 type LLMConfigService struct {
+	// client 云端探测。8s 曾把高延迟云端（或代理链路）误报成不可用，
+	// 按用户口径放宽到 60s。
 	client *http.Client
+	// slowClient 本地端点探测：Ollama 等首次调用要把模型载入内存，
+	// 实测 qwen2.5:7b 冷加载 40s+、bge-m3 9s+，短超时会把
+	// 「服务正常、模型加载中」误报成「端点不可用」（2026-09-07 用户实测踩坑）。
+	slowClient *http.Client
 }
 
 // NewLLMConfigService 创建端点配置服务。
 func NewLLMConfigService() *LLMConfigService {
 	return &LLMConfigService{
-		// 自检不该让用户等太久——填错地址时要快速失败
-		client: &http.Client{Timeout: 8 * time.Second},
+		client:     &http.Client{Timeout: 60 * time.Second},
+		slowClient: &http.Client{Timeout: 90 * time.Second},
 	}
+}
+
+// probeClient 按端点归属选择探测客户端：本地宽、云端紧。
+func (s *LLMConfigService) probeClient(isLocal bool) *http.Client {
+	if isLocal {
+		return s.slowClient
+	}
+	return s.client
 }
 
 // Presets 返回内置端点预设列表。
@@ -244,7 +258,7 @@ func (s *LLMConfigService) Probe(apiKey, baseURL, protocol, model string) *LLMPr
 	// 空模型名时退回模型列举（没有可测对象，罗列仍有价值）。
 	if res.Model != "" {
 		start := time.Now()
-		_, chatErr := llmChatComplete(context.Background(), s.client,
+		_, chatErr := llmChatComplete(context.Background(), s.probeClient(isLocal),
 			apiKey, baseURL, res.Model, protocol,
 			"你是连通性探测器。只回复两个字：正常", "ping")
 		res.LatencyMS = time.Since(start).Milliseconds()
@@ -252,6 +266,10 @@ func (s *LLMConfigService) Probe(apiKey, baseURL, protocol, model string) *LLMPr
 		if chatErr != nil {
 			res.OK = false
 			res.Message = fmt.Sprintf("用模型 %s 发送测试请求失败：%v\n（模型名拼写、端点是否支持该模型、Key 权限都会导致此错误）", res.Model, chatErr)
+			// 本地超时≠服务不可用：大概率是模型冷加载，给出可行动的提示
+			if isLocal && strings.Contains(chatErr.Error(), "Client.Timeout") {
+				res.Message += "\n本机模型可能正在冷加载（首次调用需把模型载入内存，耗时可达数十秒），请稍候重试；若持续超时请确认服务已启动。"
+			}
 			// 附加模型清单帮助定位"名字填错"这类最常见问题
 			res.Models = s.listModels(apiKey, baseURL, p)
 			if len(res.Models) > 0 {
@@ -273,7 +291,7 @@ func (s *LLMConfigService) Probe(apiKey, baseURL, protocol, model string) *LLMPr
 	}
 	res.Endpoint = endpoint
 	start := time.Now()
-	resp, err := s.client.Do(req)
+	resp, err := s.probeClient(isLocal).Do(req)
 	res.LatencyMS = time.Since(start).Milliseconds()
 	if err != nil {
 		if isLocal {

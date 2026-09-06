@@ -6,6 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 
 vi.mock('@/api', () => ({
+  ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
   WorkspaceService: { GetCurrentWorkspace: vi.fn() },
   TodoService: {
     GetAllTodos: vi.fn(async () => sampleTodos),

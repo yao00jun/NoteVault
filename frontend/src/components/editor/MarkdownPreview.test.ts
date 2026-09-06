@@ -11,6 +11,7 @@ import { createI18n } from 'vue-i18n'
 // 同步 mock CredentialService 让 settings store 启动时不报错
 const readFileMock = vi.fn()
 vi.mock('@/api', () => ({
+  ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
   FileService: {
     ReadFile: (...args: unknown[]) => readFileMock(...args),
   },

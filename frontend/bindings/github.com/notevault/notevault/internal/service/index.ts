@@ -3,6 +3,7 @@
 
 import * as ArchiveService from "./archiveservice.js";
 import * as BaseService from "./baseservice.js";
+import * as ClipperService from "./clipperservice.js";
 import * as CompileService from "./compileservice.js";
 import * as CredentialService from "./credentialservice.js";
 import * as ExportService from "./exportservice.js";
@@ -28,6 +29,7 @@ import * as WorkspaceService from "./workspaceservice.js";
 export {
     ArchiveService,
     BaseService,
+    ClipperService,
     CompileService,
     CredentialService,
     ExportService,
@@ -71,6 +73,7 @@ export type {
     BaseSummary,
     BaseView,
     BuiltinTemplate,
+    ClipperStatus,
     CompileAllResult,
     CompileErrorItem,
     CompileOutput,

@@ -9,6 +9,7 @@ const saveCredential = vi.fn(async (..._args: unknown[]) => undefined)
 const getCredential = vi.fn(async (..._args: unknown[]) => '')
 
 vi.mock('@/api', () => ({
+  ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
   CredentialService: {
     SaveCredential: (...args: unknown[]) => saveCredential(...args),
     GetCredential: (...args: unknown[]) => getCredential(...args),

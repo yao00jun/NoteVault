@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Events } from '@wailsio/runtime'
-import { diffLines, type DiffRow } from '@/utils/textDiff'
 import EditorTabBar from '@/components/editor/EditorTabBar.vue'
 import EditorBacklinks from '@/components/editor/EditorBacklinks.vue'
 import EditorContextDrawer from '@/components/editor/EditorContextDrawer.vue'
@@ -19,7 +17,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
-import { FileService, WorkspaceService, SearchService, TagService, ArchiveService, TrashService, SummarizeService, ExportService, CompileService } from '@/api'
+import { FileService, WorkspaceService, TagService, ArchiveService, TrashService, SummarizeService, ExportService, CompileService } from '@/api'
 import { arrayBufferToBase64, generateMarkdownImage } from '@/utils/image'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
@@ -27,6 +25,8 @@ import { isLocalBaseURL } from '@/utils/localEndpoint'
 import { useToast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirm'
 import { promptDialog } from '@/composables/usePrompt'
+import { useEditorDraft, type EditorTab } from '@/composables/useEditorDraft'
+import { useEditorBacklinks } from '@/composables/useEditorBacklinks'
 
 const workspaceStore = useWorkspaceStore()
 const route = useRoute()
@@ -35,22 +35,14 @@ const settingsStore = useSettingsStore()
 const { t } = useI18n()
 const toast = useToast()
 
-// 标签页数据结构
-interface Tab {
-  path: string
-  name: string
-  content: string
-  isDirty: boolean
-  lastSavedAt: string
-}
+// 标签页数据结构（字段定义与草稿/冲突逻辑同源，见 useEditorDraft）
+type Tab = EditorTab
 
 // 状态
 const fileTree = ref<FileNode[]>([])
 const tabs = ref<Tab[]>([])
 const activeTabIndex = ref(-1)
-const isSaving = ref(false)
 const viewMode = ref<'split' | 'editor' | 'preview'>('split')
-let saveTimer: ReturnType<typeof setTimeout> | null = null
 
 // 计算属性
 const activeTab = computed(() => {
@@ -192,6 +184,40 @@ function switchToTab(index: number) {
   activeTabIndex.value = index
 }
 
+// ---- 草稿生命周期与冲突保护（自动保存/脏标记/fsnotify 冲突监听已抽到 useEditorDraft）----
+const {
+  isSaving,
+  saveTab,
+  saveCurrentTab,
+  scheduleAutoSave,
+  flushDirtyTab,
+  conflictedPaths,
+  diffModal,
+  activeConflictPath,
+  abandonDraftAndReload,
+  saveDraftAsCopy,
+  openConflictDiff,
+  startConflictWatcher,
+  dispose: disposeDraft,
+} = useEditorDraft({
+  tabs,
+  activeTabIndex,
+  workspacePath: computed(() => currentWorkspace.value?.path),
+  autoSaveInterval: () => settingsStore.settings.autoSaveInterval,
+  findTabIndex,
+  onSaved: invalidateTagCache,
+})
+
+// ---- 反向链接（提取与跳转已抽到 useEditorBacklinks）----
+const { backlinks, loadBacklinks, openBacklink } = useEditorBacklinks({
+  workspacePath: computed(() => currentWorkspace.value?.path),
+  activeTabName: computed(() => activeTab.value?.name),
+  activeTabPath: computed(() => activeTab.value?.path),
+  activeTabIndex,
+  fileTree,
+  openFile,
+})
+
 // 关闭标签页
 async function closeTab(index: number, event?: Event) {
   if (event) event.stopPropagation()
@@ -216,40 +242,6 @@ async function closeTab(index: number, event?: Event) {
   } else if (index <= activeTabIndex.value) {
     activeTabIndex.value = Math.max(0, activeTabIndex.value - 1)
   }
-}
-
-// 保存指定标签页
-async function saveTab(index: number) {
-  const tab = tabs.value[index]
-  if (!tab || !currentWorkspace.value) return
-
-  isSaving.value = true
-  try {
-    await FileService.SaveFile(currentWorkspace.value.path, tab.path, tab.content)
-    await invalidateTagCache()
-    tab.isDirty = false
-    tab.lastSavedAt = new Date().toLocaleTimeString()
-  } catch (e) {
-    console.error('Failed to save file:', e)
-  } finally {
-    isSaving.value = false
-  }
-}
-
-// 保存当前标签页
-async function saveCurrentTab() {
-  if (activeTabIndex.value >= 0) {
-    await saveTab(activeTabIndex.value)
-  }
-}
-
-// 自动保存（debounce；间隔读用户设置，不再硬编码）
-function scheduleAutoSave() {
-  if (saveTimer) clearTimeout(saveTimer)
-  const delay = Math.max(200, settingsStore.settings.autoSaveInterval || 500)
-  saveTimer = setTimeout(() => {
-    saveCurrentTab()
-  }, delay)
 }
 
 // 新建文件
@@ -561,9 +553,6 @@ async function handleNewFileWithName(fileName: string) {
   }
 }
 
-// 反向链接
-const backlinks = ref<{ path: string; name: string }[]>([])
-
 // ---- 右侧辅助抽屉（Context Drawer）：大纲 + 反向链接 ----
 const drawerOpen = ref(false)
 const drawerTab = ref<'outline' | 'backlinks'>('outline')
@@ -596,138 +585,7 @@ function openDrawerPath(path: string) {
   workspaceStore.incrementFileTreeVersion()
 }
 
-// ---- 外部修改冲突保护（蓝图专项 1）----
-// Git/Syncthing 拉取远端改动时 fsnotify 推 file-change：
-//  - 打开的 Tab 无草稿 → 静默重载磁盘内容；
-//  - 有未保存草稿 → 绝不自动覆盖，弹黄色冲突横幅供三选一。
-const conflictedPaths = ref<Set<string>>(new Set())
-const diffModal = ref<{ path: string; rows: DiffRow[] } | null>(null)
-let stopFileChangeSub: (() => void) | null = null
-
-function onExternalFileChange(payload: { type?: string; path?: string } | null) {
-  if (!payload?.path || payload.type !== 'modify') return
-  const rel = payload.path
-  const idx = findTabIndex(rel)
-  if (idx < 0) return
-  const tab = tabs.value[idx]!
-  if (rel === tabs.value[activeTabIndex.value]?.path && !tab.isDirty) {
-    // 无草稿：静默重载
-    void reloadTabFromDisk(idx)
-    return
-  }
-  if (tab.isDirty) {
-    const next = new Set(conflictedPaths.value)
-    next.add(rel)
-    conflictedPaths.value = next
-  }
-}
-
-async function reloadTabFromDisk(idx: number) {
-  const tab = tabs.value[idx]
-  if (!tab || !currentWorkspace.value) return
-  try {
-    tab.content = await FileService.ReadFile(currentWorkspace.value.path, tab.path)
-    tab.isDirty = false
-    clearConflict(tab.path)
-  } catch (e) {
-    console.error('[conflict] reload failed:', e)
-  }
-}
-
-function clearConflict(path: string) {
-  const next = new Set(conflictedPaths.value)
-  next.delete(path)
-  conflictedPaths.value = next
-}
-
-const activeConflictPath = computed(() => {
-  const active = tabs.value[activeTabIndex.value]?.path
-  if (active && conflictedPaths.value.has(active)) return active
-  for (const p of conflictedPaths.value) {
-    if (findTabIndex(p) >= 0) return p
-  }
-  return null
-})
-
-function abandonDraftAndReload(path: string) {
-  const idx = findTabIndex(path)
-  if (idx >= 0) void reloadTabFromDisk(idx)
-}
-
-// 保留本地草稿，另存副本（副本落在原目录，天然可检索）
-async function saveDraftAsCopy(path: string) {
-  const idx = findTabIndex(path)
-  const tab = tabs.value[idx]
-  if (!tab || !currentWorkspace.value) return
-  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-  const ext = path.toLowerCase().endsWith('.markdown') ? '.markdown' : '.md'
-  const base = path.slice(0, path.length - ext.length)
-  const copyRel = `${base}.冲突副本-${ts}${ext}`
-  try {
-    await FileService.SaveFile(currentWorkspace.value.path, copyRel, tab.content)
-    clearConflict(path)
-    toast.success(t('editor.conflict.copySaved', { path: copyRel }))
-  } catch (e) {
-    toast.error((e as Error).message)
-  }
-}
-
-// 查看对比：磁盘内容 vs 本地草稿
-async function openConflictDiff(path: string) {
-  if (!currentWorkspace.value) return
-  try {
-    const disk = await FileService.ReadFile(currentWorkspace.value.path, path)
-    const idx = findTabIndex(path)
-    const draft = tabs.value[idx]?.content ?? ''
-    diffModal.value = { path, rows: diffLines(disk, draft) }
-  } catch (e) {
-    toast.error((e as Error).message)
-  }
-}
-
-async function loadBacklinks() {
-  if (!currentWorkspace.value || !activeTab.value) {
-    backlinks.value = []
-    return
-  }
-  const currentName = activeTab.value.name.replace(/\.md$/, '').replace(/\.markdown$/, '')
-  try {
-    // 搜索包含 [[当前文档名]] 的文档
-    const results = await SearchService.Search(currentWorkspace.value.path, `[[${currentName}]]`)
-    backlinks.value = (Array.isArray(results) ? results : []).map((r: any) => ({
-      path: r.path,
-      name: r.title,
-    })).filter((r: any) => r.path !== activeTab.value?.path)
-  } catch (e) {
-    console.error('Failed to load backlinks:', e)
-    backlinks.value = []
-  }
-}
-
-// 打开反向链接文档
-function openBacklink(link: { path: string; name: string }) {
-  // 在文件树中找到并打开
-  const node = findFileByPath(fileTree.value, link.path)
-  if (node) {
-    openFile(node)
-  }
-}
-
-function findFileByPath(nodes: FileNode[], path: string): FileNode | null {
-  for (const node of nodes) {
-    if (node.path === path) return node
-    if (node.children) {
-      const found = findFileByPath(node.children, path)
-      if (found) return found
-    }
-  }
-  return null
-}
-
-// 监听当前标签页变化，加载反向链接
-watch(activeTabIndex, () => {
-  loadBacklinks()
-})
+// 监听当前标签页变化，加载反向链接（watch 在 useEditorBacklinks 内注册）
 // 文件加载完成后尝试滚动到待跳转锚点
 // 跨文件 [[note#heading]] 点击后：先 openFile 异步加载，加载完 activeTab 变化触发此 watch
 watch(activeTab, () => {
@@ -989,25 +847,14 @@ function escapeHtml(s: string): string {
 }
 
 // 初始化
-// flushDirtyTab：清掉挂起的自动保存定时器，并对未保存的当前标签页立即保存。
+// flushDirtyTab / conflictWatcher / dispose 均由 useEditorDraft 提供：
 // keep-alive 下路由切换触发的是 deactivated 而非 unmount，flush 必须挂在
 // onDeactivated 才能覆盖"切页面前最后 1 秒（一个 debounce 窗口）的编辑"；
-// onBeforeUnmount 保留作真卸载时的兜底。注意 deactivated 时不能清 saveTimer：
+// dispose 保留作真卸载时的兜底。注意 deactivated 时不能清 saveTimer：
 // 组件仍保活，用户可能切回来继续编辑，定时器要照常工作。
-function flushDirtyTab() {
-  const tab = tabs.value[activeTabIndex.value]
-  if (tab?.isDirty) {
-    void saveTab(activeTabIndex.value)
-  }
-}
 onDeactivated(flushDirtyTab)
 onBeforeUnmount(() => {
-  stopFileChangeSub?.()
-  if (saveTimer) {
-    clearTimeout(saveTimer)
-    saveTimer = null
-  }
-  flushDirtyTab()
+  disposeDraft()
 })
 
 // 打开请求的文件：优先 route.query.file（欢迎页"新建文档"经此跳转），
@@ -1035,14 +882,8 @@ watch(() => route.query.file, (val) => {
 })
 
 onMounted(async () => {
-  // 外部修改冲突保护：订阅后端 fsnotify 推送（蓝图专项 1）
-  try {
-    stopFileChangeSub = Events.On('workspace:file-changed', (ev: { data?: { path?: string; type?: string } }) => {
-      onExternalFileChange(ev?.data ?? null)
-    })
-  } catch (e) {
-    console.warn('[conflict] failed to subscribe file-change:', e)
-  }
+  // 外部修改冲突保护：订阅后端 fsnotify 推送（蓝图专项 1，订阅在 useEditorDraft 内）
+  startConflictWatcher()
   if (!currentWorkspace.value) {
     try {
       const ws = await WorkspaceService.GetCurrentWorkspace()
@@ -1256,7 +1097,6 @@ watch(() => workspaceStore.fileTreeVersion, () => {
         @insert="insertSummaryToNote"
       />
     </div>
-  </div>
     <!-- 冲突对比弹窗 -->
     <div
       v-if="diffModal"
@@ -1294,6 +1134,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
         </div>
       </div>
     </div>
+  </div>
 </template>
 
 <style scoped>

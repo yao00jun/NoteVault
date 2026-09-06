@@ -201,11 +201,17 @@ func (s *LLMConfigService) ProbeEmbedding(apiKey, baseURL, model string) *Embedd
 	applyAuth(req, credential)
 
 	start := time.Now()
-	resp, err := s.client.Do(req)
+	// 本地端点用宽超时：embedding 模型（bge-m3）冷加载实测 9s+，
+	// 8s 探测超时会把「服务正常、模型加载中」误报成「端点不可用」
+	resp, err := s.probeClient(isLocal).Do(req)
 	res.LatencyMS = time.Since(start).Milliseconds()
 	if err != nil {
 		if isLocal {
-			res.Message = fmt.Sprintf("连接不上本机 embedding 服务：%v（请确认服务已启动且已 pull 对应模型）", err)
+			if strings.Contains(err.Error(), "Client.Timeout") {
+				res.Message = fmt.Sprintf("本机 embedding 服务响应超时：%v\n模型首次调用需加载进内存（可能耗时数十秒），请稍候重试；若持续超时请确认服务已启动且已 pull 对应模型。", err)
+			} else {
+				res.Message = fmt.Sprintf("连接不上本机 embedding 服务：%v（请确认服务已启动且已 pull 对应模型）", err)
+			}
 		} else {
 			res.Message = fmt.Sprintf("连接失败：%v", err)
 		}

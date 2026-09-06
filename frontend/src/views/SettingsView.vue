@@ -1144,6 +1144,76 @@ async function scrollToSection(id: string) {
   color: var(--text-muted);
 }
 
+/* 资产运维：孤立附件 GC（此前整块缺样式，按钮被全局 reset 成纯文本） */
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.assets-btn {
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.assets-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.assets-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.assets-btn.assets-clean {
+  margin-top: var(--space-3);
+  border-color: var(--danger, #ef4444);
+  color: var(--danger, #ef4444);
+}
+
+.assets-btn.assets-clean:hover:not(:disabled) {
+  border-color: var(--danger, #ef4444);
+  background: var(--danger-bg, rgba(239, 68, 68, 0.12));
+}
+
+.assets-orphan-list {
+  margin-top: var(--space-3);
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+}
+
+.assets-orphan-item {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+  word-break: break-all;
+}
+
+.assets-orphan-item + .assets-orphan-item {
+  border-top: 1px solid var(--border-light);
+}
+
+.assets-note {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
 .theme-options {
   display: flex;
   gap: var(--space-2);

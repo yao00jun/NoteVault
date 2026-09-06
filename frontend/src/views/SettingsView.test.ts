@@ -15,6 +15,10 @@ vi.mock('@/api', () => ({
     GetCredential: vi.fn(async () => ''),
     DeleteCredential: vi.fn(async () => undefined),
   },
+  ClipperService: {
+    ConfigureAI: vi.fn(async () => undefined),
+    Status: vi.fn(async () => ({ running: false, port: 27123, token: '', aiEnabled: false })),
+  },
 }))
 
 import SettingsView from './SettingsView.vue'

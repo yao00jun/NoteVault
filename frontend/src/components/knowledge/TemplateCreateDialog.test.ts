@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { i18n } from '@/i18n'
 
 vi.mock('@/api', () => ({
+  ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
   TemplateService: {
     ListTemplates: vi.fn(async () => []),
     GetTemplateContent: vi.fn(async () => ''),

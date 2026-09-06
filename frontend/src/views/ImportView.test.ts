@@ -7,6 +7,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 
 vi.mock('@/api', () => ({
+  ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
   AppService: {
     OpenFolderDialog: vi.fn(async () => ''),
     OpenFileDialog: vi.fn(async () => ''),

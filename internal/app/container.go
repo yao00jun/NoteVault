@@ -69,6 +69,7 @@ type Container struct {
 	Templates    *service.TemplateService
 	ErrorMonitor *monitor.ErrorMonitor
 	Plugin       *plugin.PluginService
+	Clipper      *service.ClipperService
 
 	// Indexes 是容器级索引注册表（E-4），不注册给 Wails。
 	// 它不是服务，而是被 Workspace / Search / QnA 三方共享的基础设施：
@@ -107,6 +108,9 @@ func NewContainer(cfg ContainerConfig) *Container {
 	todoService := service.NewTodoService()
 	reminderService := service.NewReminderService()
 
+	// Summarize 同理：Summarize 服务与剪藏 AI 摘要共用一份无状态实例
+	summarizeService := service.NewSummarizeService()
+
 	return &Container{
 		App:          &AppService{},
 		Workspace:    service.NewWorkspaceServiceWithRegistryAndSink(indexRegistry, wailsFileChangeEmitter{}),
@@ -122,7 +126,7 @@ func NewContainer(cfg ContainerConfig) *Container {
 		Trash:        service.NewTrashService(),
 		Graph:        service.NewGraphService(),
 		Export:       service.NewExportService(),
-		Summarize:    service.NewSummarizeService(),
+		Summarize:    summarizeService,
 		QnA:          service.NewQnAServiceWithRegistry(fileService, indexRegistry, service.NewOllamaEmbeddingClient(), service.NewReranker()),
 		LLMConfig:    service.NewLLMConfigService(),
 		Credentials:  service.NewCredentialService(platform.NewCredentialStore("NoteVault")),
@@ -135,6 +139,13 @@ func NewContainer(cfg ContainerConfig) *Container {
 		Review:       service.NewReviewService(fileService, service.NewSummarizeService(), reminderService),
 		ErrorMonitor: errorMonitor,
 		Plugin:       plugin.NewPluginService(cfg.PluginsDir),
+		// 剪藏接口：File 注入带快照管线的实例（红线 3），Summarize 供可选 AI 摘要。
+		// Workspace 用独立实例：GetCurrentWorkspace 只读配置文件，不依赖索引注册表。
+		Clipper: service.NewClipperService(
+			service.NewWorkspaceService(),
+			fileService,
+			summarizeService,
+		),
 		Indexes:      indexRegistry,
 	}
 }
@@ -184,5 +195,6 @@ func (c *Container) WailsServices() []application.Service {
 		application.NewService(c.Templates),
 		application.NewService(c.ErrorMonitor),
 		application.NewService(c.Plugin),
+		application.NewService(c.Clipper),
 	}
 }
