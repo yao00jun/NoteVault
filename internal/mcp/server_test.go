@@ -97,7 +97,7 @@ func TestInitialize(t *testing.T) {
 	}
 }
 
-func TestToolsListHasSix(t *testing.T) {
+func TestToolsListHasEight(t *testing.T) {
 	s := NewServer(newTestVault(t), false)
 	resp := rpc(s, "tools/list", nil)
 	res, ok := resp["result"].(map[string]any)
@@ -108,12 +108,13 @@ func TestToolsListHasSix(t *testing.T) {
 	if !ok {
 		t.Fatalf("tools/list: tools not array")
 	}
-	if len(tools) != 6 {
-		t.Errorf("tool count = %d, want 6", len(tools))
+	if len(tools) != 8 {
+		t.Errorf("tool count = %d, want 8", len(tools))
 	}
 	want := map[string]bool{
 		"list_notes": true, "read_note": true, "search_notes": true,
 		"get_tags": true, "get_backlinks": true, "create_note": true,
+		"append_note": true, "patch_note": true,
 	}
 	for _, td := range tools {
 		m, ok := td.(map[string]any)
@@ -233,5 +234,174 @@ func TestNotificationNoResponse(t *testing.T) {
 	_, has := s.Process(raw)
 	if has {
 		t.Errorf("notification should not produce a response")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 蓝图专项 3：append_note / patch_note（写前快照留底）
+// ---------------------------------------------------------------------------
+
+func TestAppendNote_BasicAndSnapshot(t *testing.T) {
+	ws := newTestVault(t)
+	s := NewServer(ws, true)
+	resp := rpc(s, "tools/call", map[string]any{
+		"name": "append_note",
+		"arguments": map[string]any{
+			"path":    "notes/alpha.md",
+			"content": "追加的一行",
+		},
+	})
+	if _, has := resp["error"]; has {
+		t.Fatalf("append_note failed: %v", resp["error"])
+	}
+	res := resp["result"].(map[string]any)
+	text := res["content"].([]any)[0].(map[string]any)["text"].(string)
+	if !strings.Contains(text, "snapshot:") {
+		t.Errorf("响应应携带快照 id 供回滚: %s", text)
+	}
+	data, err := os.ReadFile(filepath.Join(ws, "notes", "alpha.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "追加的一行") {
+		t.Errorf("内容未追加: %s", data)
+	}
+}
+
+func TestAppendNote_UnderHeading(t *testing.T) {
+	ws := newTestVault(t)
+	s := NewServer(ws, true)
+	resp := rpc(s, "tools/call", map[string]any{
+		"name": "append_note",
+		"arguments": map[string]any{
+			"path":    "notes/alpha.md",
+			"content": "标题下的新段落",
+			"heading": "Alpha",
+		},
+	})
+	if _, has := resp["error"]; has {
+		t.Fatalf("append_note failed: %v", resp["error"])
+	}
+	data, err := os.ReadFile(filepath.Join(ws, "notes", "alpha.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	// 应插在「Alpha」标题之下、下一个标题之前
+	if !strings.Contains(text, "# Alpha\n标题下的新段落") {
+		t.Errorf("应插在指定标题之下:\n%s", text)
+	}
+}
+
+func TestAppendNote_NewFileCreated(t *testing.T) {
+	ws := newTestVault(t)
+	s := NewServer(ws, true)
+	resp := rpc(s, "tools/call", map[string]any{
+		"name": "append_note",
+		"arguments": map[string]any{
+			"path":    "notes/新笔记.md",
+			"content": "首段内容",
+		},
+	})
+	if _, has := resp["error"]; has {
+		t.Fatalf("append_note failed: %v", resp["error"])
+	}
+	res := resp["result"].(map[string]any)
+	text := res["content"].([]any)[0].(map[string]any)["text"].(string)
+	if !strings.Contains(text, "Created") {
+		t.Errorf("新文件应返回 Created: %s", text)
+	}
+}
+
+func TestAppendNote_WriteDisabled(t *testing.T) {
+	s := NewServer(newTestVault(t), false)
+	resp := rpc(s, "tools/call", map[string]any{
+		"name":      "append_note",
+		"arguments": map[string]any{"path": "a.md", "content": "x"},
+	})
+	// 工具错误走 MCP isError 约定（result.isError + 文本），不是 JSON-RPC error
+	res, ok := resp["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("应返回 result: %v", resp)
+	}
+	if isError, _ := res["isError"].(bool); !isError {
+		t.Errorf("写禁用时 isError 应为 true: %v", res)
+	}
+}
+
+func TestPatchNote_UniqueMatchReplaces(t *testing.T) {
+	ws := newTestVault(t)
+	s := NewServer(ws, true)
+	resp := rpc(s, "tools/call", map[string]any{
+		"name": "patch_note",
+		"arguments": map[string]any{
+			"path":              "notes/beta.md",
+			"target_chunk":      "Keyword zebra somewhere special.",
+			"replacement_chunk": "Keyword zebra patched.",
+		},
+	})
+	if _, has := resp["error"]; has {
+		t.Fatalf("patch_note failed: %v", resp["error"])
+	}
+	data, _ := os.ReadFile(filepath.Join(ws, "notes", "beta.md"))
+	if !strings.Contains(string(data), "Keyword zebra patched.") {
+		t.Errorf("替换未生效: %s", data)
+	}
+}
+
+func TestPatchNote_AmbiguousTargetRejected(t *testing.T) {
+	ws := newTestVault(t)
+	s := NewServer(ws, true)
+	// 先注入一个重复片段
+	rpc(s, "tools/call", map[string]any{
+		"name": "append_note",
+		"arguments": map[string]any{
+			"path":    "notes/beta.md",
+			"content": "重复片段",
+		},
+	})
+	// 追加两次制造两处相同片段
+	for i := 0; i < 2; i++ {
+		rpc(s, "tools/call", map[string]any{
+			"name": "append_note",
+			"arguments": map[string]any{
+				"path":    "notes/beta.md",
+				"content": "重复片段",
+			},
+		})
+	}
+	resp := rpc(s, "tools/call", map[string]any{
+		"name": "patch_note",
+		"arguments": map[string]any{
+			"path":              "notes/beta.md",
+			"target_chunk":      "重复片段",
+			"replacement_chunk": "x",
+		},
+	})
+	res, ok := resp["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("应返回 result: %v", resp)
+	}
+	if isError, _ := res["isError"].(bool); !isError {
+		t.Errorf("多目标匹配应拒绝: %v", res)
+	}
+}
+
+func TestPatchNote_TargetNotFound(t *testing.T) {
+	s := NewServer(newTestVault(t), true)
+	resp := rpc(s, "tools/call", map[string]any{
+		"name": "patch_note",
+		"arguments": map[string]any{
+			"path":              "notes/beta.md",
+			"target_chunk":      "不存在的片段",
+			"replacement_chunk": "x",
+		},
+	})
+	res, ok := resp["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("应返回 result: %v", resp)
+	}
+	if isError, _ := res["isError"].(bool); !isError {
+		t.Errorf("目标不存在应 isError: %v", res)
 	}
 }

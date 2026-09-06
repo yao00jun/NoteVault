@@ -13,11 +13,15 @@ import (
 func TestReport_GenerateWeeklyReport_WithoutAI(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now()
+	// mtime 相对「本周一 0 点」构造：跨周界（周日夜→周一晨）跑测试时，
+	// now.Add(-1h) 会落到上周窗口外，Notes 断言时间炸弹式失败
+	weekday := (int(now.Weekday()) + 6) % 7 // 周一=0 … 周日=6
+	weekStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -weekday)
 	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0750); err != nil {
 		t.Fatal(err)
 	}
-	mustWriteStats(t, filepath.Join(dir, "a.md"), "# 笔记 A\n\n内容", now.Add(-1*time.Hour))
-	mustWriteStats(t, filepath.Join(dir, "sub", "b.md"), "- [ ] 未完成\n- [ ] !! 紧急\n", now.Add(-2*time.Hour))
+	mustWriteStats(t, filepath.Join(dir, "a.md"), "# 笔记 A\n\n内容", weekStart.Add(2*time.Hour))
+	mustWriteStats(t, filepath.Join(dir, "sub", "b.md"), "- [ ] 未完成\n- [ ] !! 紧急\n", weekStart.Add(3*time.Hour))
 
 	s := NewReportService(NewFileServiceWithHistory(NewSnapshotService()), NewTodoService())
 	result, err := s.GenerateWeeklyReport(dir, WeeklyReportAIConfig{})

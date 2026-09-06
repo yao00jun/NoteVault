@@ -32,11 +32,12 @@ type Server struct {
 	workspacePath string
 	enableWrite   bool
 
-	fileSvc   *service.FileService
-	searchSvc *service.SearchService
-	tagSvc    *service.TagService
-	todoSvc   *service.TodoService
-	graphSvc  *service.GraphService
+	fileSvc     *service.FileService
+	snapshotSvc *service.SnapshotService
+	searchSvc   *service.SearchService
+	tagSvc      *service.TagService
+	todoSvc     *service.TodoService
+	graphSvc    *service.GraphService
 }
 
 // NewServer 构造一个绑定到 workspacePath 的 MCP 服务端。
@@ -47,6 +48,7 @@ func NewServer(workspacePath string, enableWrite bool) *Server {
 		workspacePath: workspacePath,
 		enableWrite:   enableWrite,
 		fileSvc:       fs,
+		snapshotSvc:   service.NewSnapshotService(),
 		searchSvc:     service.NewSearchServiceForFullSnippets(fs),
 		tagSvc:        service.NewTagService(),
 		todoSvc:       service.NewTodoService(),
@@ -243,6 +245,32 @@ func (s *Server) toolDefs() []map[string]any {
 			},
 		},
 		{
+			"name":        "append_note",
+			"description": "Append content to an existing note (or create it if missing). Optionally insert under a given heading. DISABLED unless --enable-write. A manual snapshot of the original file is taken BEFORE any write, and the snapshot id is returned for undo.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []any{"path", "content"},
+				"properties": map[string]any{
+					"path":    map[string]any{"type": "string", "description": "Relative path of the target note."},
+					"content": map[string]any{"type": "string", "description": "Markdown content to append."},
+					"heading": map[string]any{"type": "string", "description": "Optional heading text; content is appended right under this heading instead of at end of file."},
+				},
+			},
+		},
+		{
+			"name":        "patch_note",
+			"description": "Replace an exact target chunk inside a note with replacement content. DISABLED unless --enable-write. A manual snapshot of the original file is taken BEFORE any write, and the snapshot id is returned for undo.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []any{"path", "target_chunk", "replacement_chunk"},
+				"properties": map[string]any{
+					"path":              map[string]any{"type": "string", "description": "Relative path of the target note."},
+					"target_chunk":      map[string]any{"type": "string", "description": "Exact text to replace (must match uniquely)."},
+					"replacement_chunk": map[string]any{"type": "string", "description": "Replacement text."},
+				},
+			},
+		},
+		{
 			"name":        "create_note",
 			"description": "Create a new Markdown note. DISABLED unless the server was started with --enable-write. When enabled, the new file is created atomically (fails if it already exists).",
 			"inputSchema": map[string]any{
@@ -267,6 +295,8 @@ func (s *Server) toolHandlers() map[string]toolHandler {
 		"get_tags":      s.getTags,
 		"get_backlinks": s.getBacklinks,
 		"create_note":   s.createNote,
+		"append_note":   s.appendNote,
+		"patch_note":    s.patchNote,
 	}
 }
 
@@ -401,6 +431,142 @@ func (s *Server) createNote(args map[string]any) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("Created %s", node.Path), nil
+}
+
+// snapshotBeforeWrite 写操作前置留底（蓝图专项 3 / 红线 3）：
+// 原文件存在时打手动快照，返回 snapshot id 供回滚；文件不存在（新建）跳过。
+func (s *Server) snapshotBeforeWrite(relPath string) (string, error) {
+	if s.snapshotSvc == nil {
+		return "", nil
+	}
+	// 先探测文件是否存在：不存在（新建场景）无需留底，
+	// 也不应把 NOT_FOUND 当错误抛给调用方
+	if _, err := s.fileSvc.ReadFile(s.workspacePath, relPath); err != nil {
+		return "", nil
+	}
+	snap, err := s.snapshotSvc.CreateManualSnapshot(s.workspacePath, relPath)
+	if err != nil {
+		return "", err
+	}
+	if snap == nil {
+		return "", nil
+	}
+	return snap.ID, nil
+}
+
+// appendNote 追加内容：可选 heading 定位，文件不存在自动创建（写前快照）
+func (s *Server) appendNote(args map[string]any) (string, error) {
+	if !s.enableWrite {
+		return "", fmt.Errorf("write operations are disabled; restart the server with --enable-write to append notes")
+	}
+	p := getString(args, "path", "")
+	content := getString(args, "content", "")
+	heading := getString(args, "heading", "")
+	if p == "" || content == "" {
+		return "", fmt.Errorf("missing required arguments: path, content")
+	}
+
+	snapshotID, err := s.snapshotBeforeWrite(p)
+	if err != nil {
+		return "", fmt.Errorf("pre-write snapshot failed: %w", err)
+	}
+
+	full, err := s.fileSvc.ReadFile(s.workspacePath, p)
+	if err != nil {
+		// 文件不存在 → 自动创建（首快照无可留底）
+		if _, cerr := s.fileSvc.CreateFile(s.workspacePath, p, content); cerr != nil {
+			return "", cerr
+		}
+		return fmt.Sprintf("Created %s (new file, no prior snapshot)", p), nil
+	}
+
+	var updated string
+	if heading != "" {
+		updated, err = appendUnderHeading(full, heading, content)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		updated = strings.TrimRight(full, "\n") + "\n\n" + strings.TrimRight(content, "\n") + "\n"
+	}
+	if err := s.fileSvc.SaveFile(s.workspacePath, p, updated); err != nil {
+		return "", err
+	}
+	if snapshotID != "" {
+		return fmt.Sprintf("Appended to %s (snapshot: %s)", p, snapshotID), nil
+	}
+	return fmt.Sprintf("Appended to %s", p), nil
+}
+
+// appendUnderHeading 在指定标题（任意级别）之下、下一个标题之前插入内容
+func appendUnderHeading(doc, heading, content string) (string, error) {
+	lines := strings.Split(doc, "\n")
+	var headingLine = -1
+	var insertAt = -1
+	for i, line := range lines {
+		if insertAt < 0 && strings.HasPrefix(strings.TrimSpace(line), "#") {
+			if strings.Contains(strings.TrimLeft(strings.TrimSpace(line), "#"), heading) {
+				headingLine = i
+				insertAt = i + 1
+				continue
+			}
+		}
+		if headingLine >= 0 {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "#") {
+				insertAt = i
+				break
+			}
+		}
+	}
+	if headingLine < 0 {
+		return "", fmt.Errorf("heading %q not found in %s", heading, "note")
+	}
+	block := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	out := make([]string, 0, len(lines)+len(block)+1)
+	out = append(out, lines[:insertAt]...)
+	out = append(out, block...)
+	out = append(out, "")
+	out = append(out, lines[insertAt:]...)
+	return strings.Join(out, "\n"), nil
+}
+
+// patchNote 精准替换：target_chunk 必须唯一匹配，避免误伤
+func (s *Server) patchNote(args map[string]any) (string, error) {
+	if !s.enableWrite {
+		return "", fmt.Errorf("write operations are disabled; restart the server with --enable-write to patch notes")
+	}
+	p := getString(args, "path", "")
+	target := getString(args, "target_chunk", "")
+	replacement := getString(args, "replacement_chunk", "")
+	if p == "" || target == "" {
+		return "", fmt.Errorf("missing required arguments: path, target_chunk")
+	}
+
+	snapshotID, err := s.snapshotBeforeWrite(p)
+	if err != nil {
+		return "", fmt.Errorf("pre-write snapshot failed: %w", err)
+	}
+
+	full, err := s.fileSvc.ReadFile(s.workspacePath, p)
+	if err != nil {
+		return "", err
+	}
+	count := strings.Count(full, target)
+	if count == 0 {
+		return "", fmt.Errorf("target chunk not found in %s", p)
+	}
+	if count > 1 {
+		return "", fmt.Errorf("target chunk matches %d times in %s; provide a longer, unique chunk", count, p)
+	}
+	updated := strings.Replace(full, target, replacement, 1)
+	if err := s.fileSvc.SaveFile(s.workspacePath, p, updated); err != nil {
+		return "", err
+	}
+	if snapshotID != "" {
+		return fmt.Sprintf("Patched %s (snapshot: %s)", p, snapshotID), nil
+	}
+	return fmt.Sprintf("Patched %s", p), nil
 }
 
 // ---- 内部辅助 ----

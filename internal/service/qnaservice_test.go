@@ -361,7 +361,7 @@ func TestQnAService_RetrieveChunksHybrid_DegradesToBM25(t *testing.T) {
 	ws := newQnATestWorkspace(t)
 	svc := NewQnAService()
 	plain := svc.retrieveChunks(ws, "部署 deploy 流程")
-	hybrid := svc.retrieveChunksHybrid(ws, "部署 deploy 流程", EmbeddingConfig{}, RerankConfig{})
+	hybrid := svc.retrieveChunksHybrid(ws, "部署 deploy 流程", EmbeddingConfig{}, RerankConfig{}, LLMEndpoint{})
 	if len(plain) != len(hybrid) {
 		t.Fatalf("length mismatch: %d vs %d", len(plain), len(hybrid))
 	}
@@ -538,13 +538,13 @@ func TestQnAService_RetrieveChunksHybrid_RerankReorders(t *testing.T) {
 	embCfg := EmbeddingConfig{Model: "test-embed"}
 
 	q := "Go 并发 goroutine"
-	rrfOrder := svc.retrieveChunksHybrid(ws, q, embCfg, RerankConfig{}) // rerank 关：纯 RRF 截断
+	rrfOrder := svc.retrieveChunksHybrid(ws, q, embCfg, RerankConfig{}, LLMEndpoint{}) // rerank 关：纯 RRF 截断
 	if len(rrfOrder) < 2 {
 		t.Fatalf("need >=2 candidates, got %d", len(rrfOrder))
 	}
 
 	svc.reranker = &fakeReranker{reverse: true}
-	reranked := svc.retrieveChunksHybrid(ws, q, embCfg, RerankConfig{Provider: RerankProviderCohere, Model: "x"})
+	reranked := svc.retrieveChunksHybrid(ws, q, embCfg, RerankConfig{Provider: RerankProviderCohere, Model: "x"}, LLMEndpoint{})
 	if len(reranked) != len(rrfOrder) {
 		t.Fatalf("length changed: %d vs %d", len(reranked), len(rrfOrder))
 	}
@@ -572,10 +572,10 @@ func TestQnAService_RetrieveChunksHybrid_RerankDegradesToRRF(t *testing.T) {
 	q := "Go 并发 goroutine"
 
 	svcRRF := NewQnAServiceWithRegistry(fs, nil, &tokenEmbedder{dim: 64}, &NoopReranker{})
-	rffOnly := svcRRF.retrieveChunksHybrid(ws, q, embCfg, RerankConfig{})
+	rffOnly := svcRRF.retrieveChunksHybrid(ws, q, embCfg, RerankConfig{}, LLMEndpoint{})
 
 	svcErr := NewQnAServiceWithRegistry(fs, nil, &tokenEmbedder{dim: 64}, &fakeReranker{err: true})
-	reranked := svcErr.retrieveChunksHybrid(ws, q, embCfg, RerankConfig{Provider: RerankProviderCohere, Model: "x"})
+	reranked := svcErr.retrieveChunksHybrid(ws, q, embCfg, RerankConfig{Provider: RerankProviderCohere, Model: "x"}, LLMEndpoint{})
 
 	if len(rffOnly) != len(reranked) {
 		t.Fatalf("length mismatch: %d vs %d", len(rffOnly), len(reranked))

@@ -210,7 +210,9 @@ func (s *QnAService) Answer(apiKey, baseURL, model, protocol, embBaseURL, embMod
 	}
 
 	embCfg := EmbeddingConfig{BaseURL: embBaseURL, Model: embModel, APIKey: embAPIKey}
-	scored := s.retrieveChunksHybrid(workspacePath, question, embCfg, rerankCfg)
+	scored := s.retrieveChunksHybrid(workspacePath, question, embCfg, rerankCfg, LLMEndpoint{
+		apiKey: apiKey, baseURL: baseURL, model: model, protocol: protocol,
+	})
 
 	// 组装上下文：按块累计，受总预算约束。
 	// 与旧实现的差别是「截断单位」——旧的是每篇砍到 2500 字（砍掉的是后半篇），
@@ -361,7 +363,7 @@ func (s *QnAService) ensureVectorStore(workspacePath string, cfg EmbeddingConfig
 // 配置 rerank（rerankCfg 非空且 reranker 可用）时，在 RRF 融合后再做一遍重排序
 // （宽候选池 → cross-encoder 重排 → Top-K），进一步修正召回顺序。rerank 不可用
 // 时静默回退到纯 RRF 截断，行为与 P1-3 结束态逐字节一致。
-func (s *QnAService) retrieveChunksHybrid(workspacePath, question string, embCfg EmbeddingConfig, rerankCfg RerankConfig) []scoredChunk {
+func (s *QnAService) retrieveChunksHybrid(workspacePath, question string, embCfg EmbeddingConfig, rerankCfg RerankConfig, llm LLMEndpoint) []scoredChunk {
 	bm25 := s.retrieveChunks(workspacePath, question)
 	if s.embedder == nil || strings.TrimSpace(embCfg.Model) == "" {
 		return bm25
@@ -450,15 +452,15 @@ func (s *QnAService) retrieveChunksHybrid(workspacePath, question string, embCfg
 
 	// P1-3b：配置 rerank 且服务可用时，取宽候选池交重排，再取 Top-K 进上下文。
 	// 重排失败（未配置 / 服务不可用 / 返回空）静默回退 RRF 截断，绝不因此残废问答。
+	pool := candidates
+	if len(pool) > qnaRerankPool {
+		pool = pool[:qnaRerankPool]
+	}
+	docs := make([]string, len(pool))
+	for i, c := range pool {
+		docs[i] = c.chunk.text
+	}
 	if s.reranker != nil {
-		pool := candidates
-		if len(pool) > qnaRerankPool {
-			pool = pool[:qnaRerankPool]
-		}
-		docs := make([]string, len(pool))
-		for i, c := range pool {
-			docs[i] = c.chunk.text
-		}
 		if ranked, rErr := s.reranker.Rerank(context.Background(), rerankCfg, question, docs); rErr == nil && len(ranked) > 0 {
 			out := make([]scoredChunk, 0, qnaTopKChunks)
 			for _, r := range ranked {
@@ -466,6 +468,28 @@ func (s *QnAService) retrieveChunksHybrid(workspacePath, question string, embCfg
 					continue
 				}
 				out = append(out, pool[r.Index])
+				if len(out) >= qnaTopKChunks {
+					break
+				}
+			}
+			if len(out) > 0 {
+				return out
+			}
+		}
+	}
+
+	// 蓝图专项 5：LLM-as-a-Reranker 兜底——重排 API 不可用但对话模型已配置时，
+	// 用一次提示词调用对候选块打分（1~5）并内存重排。失败静默回退 RRF。
+	if llm.hasCreds() {
+		if ranked := llmRerankByPrompt(context.Background(), func(ctx context.Context, aKey, aBase, aModel, aProto, sys, user string) (string, error) {
+			return llmChatComplete(ctx, s.client, aKey, aBase, aModel, aProto, sys, user)
+		}, llm.apiKey, llm.baseURL, llm.model, llm.protocol, question, docs); ranked != nil {
+			out := make([]scoredChunk, 0, qnaTopKChunks)
+			for _, r := range ranked {
+				if r < 0 || r >= len(pool) {
+					continue
+				}
+				out = append(out, pool[r])
 				if len(out) >= qnaTopKChunks {
 					break
 				}

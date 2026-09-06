@@ -347,8 +347,10 @@ func (s *TaskService) finish(entry *taskEntry, status TaskStatus, err error) {
 	snapshot := entry.info
 	entry.mu.Unlock()
 
-	close(entry.done)
+	// 先发 finished 再关 done：等待 Done() 的观察者（如测试/前端）
+	// 恢复执行时，finished 事件一定已经推送完毕，避免竞态丢事件
 	s.emit(EventTaskFinished, &snapshot)
+	close(entry.done)
 	s.pruneHistory()
 }
 
