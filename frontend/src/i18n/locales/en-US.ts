@@ -11,7 +11,7 @@ export default {
   },
   sidebar: {
     nav: {
-      knowledge: 'Knowledge Hub',
+      knowledge: 'Workbench',
       discover: 'Discover',
       review: 'Review',
       graph: 'Knowledge Graph',

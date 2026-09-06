@@ -275,7 +275,8 @@ function openFile(path: string) {
           v-for="r in dueReminders"
           :key="r.id"
           class="wb-item"
-          @click="openFile(r.filePath)"
+          :title="t('knowledge.workbench.goReminders')"
+          @click="router.push('/review?tab=tasks&sub=reminders')"
         >
           <span
             class="wb-time"

@@ -95,7 +95,7 @@ describe('SideBar', () => {
     const navItems = wrapper.findAll('.nav-item')
     expect(navItems.length).toBe(3)
     const labels = navItems.map((w) => w.text())
-    expect(labels.some((x) => x.includes('知识库'))).toBe(true)
+    expect(labels.some((x) => x.includes('工作台'))).toBe(true)
     expect(labels.some((x) => x.includes('发现'))).toBe(true)
     expect(labels.some((x) => x.includes('回顾'))).toBe(true)
   })

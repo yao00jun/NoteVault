@@ -11,7 +11,7 @@ export default {
   },
   sidebar: {
     nav: {
-      knowledge: '知识库',
+      knowledge: '工作台',
       discover: '发现',
       review: '回顾',
       graph: '知识图谱',
@@ -145,7 +145,7 @@ export default {
     noMatch: '未找到匹配的命令',
     commands: {
       newFile: { label: '新建文档', desc: '创建一个新的 Markdown 文档' },
-      knowledge: { label: '知识库主页', desc: '统计卡片与最近文档总览' },
+      knowledge: { label: '工作台', desc: '今日概览、最近文档与快速入口' },
       graph: { label: '知识图谱', desc: '可视化笔记间的双向链接' },
       bases: { label: 'Bases 视图', desc: '按属性结构化浏览笔记' },
       canvas: { label: 'Canvas 白板', desc: '卡片与连线整理思路' },
