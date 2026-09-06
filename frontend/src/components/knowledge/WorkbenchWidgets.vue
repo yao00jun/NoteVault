@@ -88,7 +88,9 @@ watch(() => workspaceStore.fileTreeVersion, load)
 // 今日待办：未完成优先，高优先级在前，top 5
 const pendingTodos = computed(() =>
   todos.value
-    .filter((todo) => !todo.completed)
+    // 空内容的 `- [ ]`（常见于模板留白）没有可读文本，显示时只能
+    // 回退到文件名，看起来就像日记混进了待办，因此不进工作台
+    .filter((todo) => !todo.completed && (todo.content ?? '').trim() !== '')
     .slice()
     .sort((a, b) => {
       const order: Record<string, number> = { high: 0, medium: 1, low: 2 }
@@ -179,7 +181,7 @@ function openFile(path: string) {
             :class="{ high: todo.priority === 'high' }"
             :title="`${todo.fileName} · ${todo.content}`"
             @click="openFile(todo.filePath)"
-          >{{ todo.content || todo.fileName }}</span>
+          >{{ todo.content.trim() }}</span>
         </li>
       </ul>
     </div>

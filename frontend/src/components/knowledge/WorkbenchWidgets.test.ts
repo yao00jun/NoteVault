@@ -48,6 +48,7 @@ beforeEach(() => {
     { id: 't1', filePath: 'a.md', fileName: 'a.md', content: '高优先任务', lineIndex: 0, completed: false, priority: 'high' },
     { id: 't2', filePath: 'b.md', fileName: 'b.md', content: '普通任务', lineIndex: 1, completed: false, priority: 'low' },
     { id: 't3', filePath: 'c.md', fileName: 'c.md', content: '已完成', lineIndex: 2, completed: true, priority: 'high' },
+    { id: 't4', filePath: 'Daily/x.md', fileName: 'x.md', content: '   ', lineIndex: 3, completed: false, priority: 'low' },
   ])
   mocked.reminders.mockResolvedValue([
     { id: 'r1', filePath: 'x.md', fileName: 'x.md', content: '过期提醒', remindAt: '2020-01-01T09:00:00Z', createdAt: '', completed: false },
@@ -69,7 +70,8 @@ describe('WorkbenchWidgets', () => {
     expect(wrapper.find('[data-testid="wb-edited"]').exists()).toBe(true)
 
     const todoTexts = wrapper.findAll('[data-testid="wb-todos"] .wb-item-text').map((w) => w.text())
-    expect(todoTexts).toEqual(['高优先任务', '普通任务']) // 已完成的被过滤，高优先级在前
+    // 已完成的被过滤；空白内容的空复选框（日记模板留白）也不该出现
+    expect(todoTexts).toEqual(['高优先任务', '普通任务'])
 
     // 过期提醒时间带 overdue 样式
     const times = wrapper.findAll('[data-testid="wb-reminders"] .wb-time')
