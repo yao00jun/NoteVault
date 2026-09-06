@@ -193,7 +193,7 @@ async function openFolder() {
     }
     showDialog.value = false
     await loadRecentWorkspaces()
-    router.push('/editor')
+    router.push('/knowledge')
   } catch (e) {
     console.error('Failed to open folder:', e)
     toast.error(t('welcome.errors.openFolderFailed', { msg: (e as Error).message }))
@@ -215,7 +215,7 @@ async function openRecentWorkspace(ws: Workspace) {
   try {
     await WorkspaceService.SetCurrentWorkspace(ws.id)
     workspaceStore.setCurrentWorkspace(toWorkspace(ws))
-    await router.push('/editor')
+    await router.push('/knowledge')
   } catch (e) {
     // 错误必须可见：Wails v3 的 alert 会路由到独立 dialog，用户经常看不见。
     // 这里用页面内联红字提示，配合 console.error 便于排查。
@@ -246,7 +246,7 @@ async function openDemo() {
       }
     }
     await loadRecentWorkspaces()
-    router.push('/editor')
+    router.push('/knowledge')
   } catch (e) {
     console.error('Failed to open demo:', e)
     toast.error(t('welcome.errors.openDemoFailed', { msg: (e as Error).message }))
