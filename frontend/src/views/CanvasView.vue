@@ -2,7 +2,8 @@
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import type { CSSProperties } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { ArrowLeft } from '@lucide/vue'
 import { FileService } from '@bindings/github.com/notevault/notevault/index.js'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useToast } from '@/composables/useToast'
@@ -24,6 +25,7 @@ import { promptDialog } from '@/composables/usePrompt'
 
 const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
 const workspaceStore = useWorkspaceStore()
 const toast = useToast()
 
@@ -147,6 +149,17 @@ async function deleteCanvas(path: string) {
   }
 }
 
+// 路由 ?file= 深链：文件树/工作台可直接打开指定画布
+watch(
+  () => route.query.file,
+  async (f) => {
+    if (typeof f === 'string' && f && f !== currentPath.value && workspacePath.value) {
+      await openCanvas(f)
+    }
+  },
+  { immediate: true },
+)
+
 async function openCanvas(path: string) {
   if (!workspacePath.value) return
   try {
@@ -161,6 +174,10 @@ async function openCanvas(path: string) {
     viewport.x = 40
     viewport.y = 40
     viewport.scale = 1
+    // 写进路由 query：刷新可恢复（watch 有同值守卫防回环）
+    if (route.query.file !== path) {
+      void router.replace({ query: { ...route.query, file: path } })
+    }
   } catch (e) {
     errorMsg.value = t('canvas.parseError', { msg: (e as Error).message })
   }
@@ -169,6 +186,9 @@ async function openCanvas(path: string) {
 function backToList() {
   flushSave()
   currentPath.value = null
+  if (route.query.file) {
+    void router.replace({ query: {} })
+  }
   void loadList()
 }
 
@@ -605,6 +625,14 @@ function typeLabel(type: CanvasNode['type']): string {
     <!-- ===== 列表模式 ===== -->
     <template v-if="!currentPath">
       <header class="page-header">
+        <button
+          class="back-btn"
+          data-testid="canvas-list-back"
+          @click="router.push('/knowledge')"
+        >
+          <ArrowLeft :size="16" />
+          <span>{{ t('common.backToKnowledge') }}</span>
+        </button>
         <h1>{{ t('canvas.listTitle') }}</h1>
         <button
           class="primary-btn"
@@ -1006,6 +1034,24 @@ function typeLabel(type: CanvasNode['type']): string {
   justify-content: space-between;
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border);
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.back-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 .page-header h1 {
   font-size: var(--text-lg);

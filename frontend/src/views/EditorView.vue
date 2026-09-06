@@ -126,6 +126,12 @@ function findTabIndex(path: string): number {
 async function openFile(node: FileNode) {
   if (node.isDir) return
 
+  // Canvas 白板是文档类型而非编辑器内容：直达画布视图
+  if (node.name.toLowerCase().endsWith('.canvas')) {
+    router.push({ path: '/canvas', query: { file: node.path } })
+    return
+  }
+
   // 如果已经在标签页中，直接切换
   const existingIndex = findTabIndex(node.path)
   if (existingIndex >= 0) {
