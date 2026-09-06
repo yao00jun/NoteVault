@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, watch, nextTick, ref, onMounted, onBeforeUnmount } from 'vue'
 import { marked } from 'marked'
+import markedKatex from 'marked-katex-extension'
+import 'katex/dist/katex.min.css'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
@@ -53,6 +55,7 @@ const previewStyle = computed(() => ({
 }))
 
 // 配置 marked
+marked.use(markedKatex({ throwOnError: false }))
 marked.setOptions({
   breaks: true,
   gfm: true,
@@ -1032,4 +1035,5 @@ onBeforeUnmount(() => {
   --callout-color: #6b7280;
   --callout-bg: rgba(107, 114, 128, 0.07);
 }
+
 </style>

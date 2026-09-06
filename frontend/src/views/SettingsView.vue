@@ -1,18 +1,65 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
-import { Settings, Palette, Keyboard, Info, ArrowLeft, Sparkles, Eye, EyeOff, AlertTriangle } from '@lucide/vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { Settings, Palette, Keyboard, Info, ArrowLeft, Sparkles, Eye, EyeOff, AlertTriangle, PackageOpen } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { useAiEndpointSettings } from '@/composables/useAiEndpointSettings'
 import { useEditorToolbarSettings } from '@/composables/useEditorToolbarSettings'
 import type { ThemeType } from '@/types'
 import type { Locale } from '@/i18n'
+import { FileService } from '@/api'
+import { confirmDialog } from '@/composables/useConfirm'
+import { useToast } from '@/composables/useToast'
 
 const { t } = useI18n()
+const toast = useToast()
 const settingsStore = useSettingsStore()
+const workspaceStore = useWorkspaceStore()
 const router = useRouter()
 const apiKeyVisible = ref(false)
+
+// 资产运维（蓝图专项 6）：孤立附件扫描与安全清理
+const orphanAssets = ref<string[]>([])
+const assetsScanning = ref(false)
+const assetsCleaning = ref(false)
+
+async function scanOrphanAssets() {
+  const ws = workspaceStore.currentWorkspace
+  if (!ws?.path || assetsScanning.value) return
+  assetsScanning.value = true
+  try {
+    const list = await FileService.ScanOrphanAssets(ws.path)
+    orphanAssets.value = Array.isArray(list) ? (list as string[]) : []
+  } catch (e) {
+    orphanAssets.value = []
+    console.error('[assets] scan failed:', e)
+  } finally {
+    assetsScanning.value = false
+  }
+}
+
+async function cleanOrphanAssets() {
+  const ws = workspaceStore.currentWorkspace
+  if (!ws?.path || orphanAssets.value.length === 0 || assetsCleaning.value) return
+  const ok = await confirmDialog({
+    message: t('settings.assets.cleanConfirm', { count: orphanAssets.value.length }),
+    confirmText: t('settings.assets.cleanConfirmBtn'),
+    danger: true,
+  })
+  if (!ok) return
+  assetsCleaning.value = true
+  try {
+    const moved = await FileService.MoveOrphansToTrash(ws.path, orphanAssets.value)
+    toast.success(t('settings.assets.cleaned', { count: moved }))
+    orphanAssets.value = []
+  } catch (e) {
+    toast.error((e as Error).message)
+  } finally {
+    assetsCleaning.value = false
+  }
+}
 
 // AI 三区块（AI/Embedding/Rerank）的预设与自检逻辑抽至 composable（模板/样式不变）
 const {
@@ -53,6 +100,7 @@ const sections = computed(() => [
   { id: 'embedding', label: t('settings.nav.embedding'), icon: Sparkles },
   { id: 'rerank', label: t('settings.nav.rerank'), icon: Sparkles },
   { id: 'shortcuts', label: t('settings.nav.shortcuts'), icon: Keyboard },
+  { id: 'assets', label: t('settings.nav.assets'), icon: PackageOpen },
   { id: 'errorReport', label: t('settings.nav.errorReport'), icon: AlertTriangle },
   { id: 'about', label: t('settings.nav.about'), icon: Info },
 ])
@@ -856,6 +904,55 @@ async function scrollToSection(id: string) {
             <span class="shortcut-desc">{{ s.desc }}</span>
           </div>
         </div>
+      </div>
+
+      <!-- 4.5 资产运维：孤立附件 GC（蓝图专项 6） -->
+      <div
+        id="settings-section-assets"
+        class="settings-section"
+      >
+        <h3 class="section-title">
+          {{ t('settings.assets.title') }}
+        </h3>
+        <p class="section-desc">
+          {{ t('settings.assets.desc') }}
+        </p>
+        <div class="setting-row">
+          <span class="setting-label">{{ t('settings.assets.scanLabel') }}</span>
+          <button
+            class="assets-btn"
+            data-testid="assets-scan"
+            :disabled="assetsScanning || !workspaceStore.currentWorkspace"
+            @click="scanOrphanAssets"
+          >
+            {{ assetsScanning ? t('common.loading') : t('settings.assets.scan') }}
+          </button>
+        </div>
+        <div
+          v-if="orphanAssets.length > 0"
+          class="assets-orphan-list"
+          data-testid="assets-orphan-list"
+        >
+          <div
+            v-for="o in orphanAssets"
+            :key="o"
+            class="assets-orphan-item"
+          >
+            {{ o }}
+          </div>
+        </div>
+        <button
+          v-if="orphanAssets.length > 0"
+          class="assets-btn assets-clean"
+          data-testid="assets-clean"
+          :disabled="assetsCleaning"
+          @click="cleanOrphanAssets"
+        >
+          {{ assetsCleaning ? t('common.loading') : t('settings.assets.clean', { count: orphanAssets.length }) }}
+        </button>
+        <p class="assets-note">
+          {{ t('settings.assets.note') }}
+        </p>
       </div>
 
       <!-- 5. 错误监控 -->

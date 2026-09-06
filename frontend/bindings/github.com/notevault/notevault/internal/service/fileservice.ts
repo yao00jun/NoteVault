@@ -52,6 +52,14 @@ export function GetFileTree(workspacePath: string): $CancellablePromise<($models
 }
 
 /**
+ * MoveOrphansToTrash 把指定孤立附件逐个移入 .trash/（可恢复）。
+ * 单个失败不中断整体，返回成功数量与最后一个错误。
+ */
+export function MoveOrphansToTrash(workspacePath: string, relPaths: string[] | null): $CancellablePromise<number> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.FileService.MoveOrphansToTrash", workspacePath, relPaths);
+}
+
+/**
  * ReadFile 读取文件内容
  * workspacePath: 工作区根目录
  * relativePath: 相对于工作区根目录的文件路径
@@ -89,4 +97,13 @@ export function SaveFile(workspacePath: string, relativePath: string, content: s
  */
 export function SaveImage(workspacePath: string, fileName: string, data: string | null): $CancellablePromise<string> {
     return $Call.ByName("github.com/notevault/notevault/internal/service.FileService.SaveImage", workspacePath, fileName, data);
+}
+
+/**
+ * ScanOrphanAssets 扫描 assets/ 下未被任何笔记引用的文件。
+ * 引用判定：资产文件名（basename）出现在工作区任一 .md / .canvas 文本中
+ * 即视为被引用（覆盖 ![](assets/x.png)、![[x.png]] 与 Canvas JSON 引用）。
+ */
+export function ScanOrphanAssets(workspacePath: string): $CancellablePromise<string[] | null> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.FileService.ScanOrphanAssets", workspacePath);
 }
