@@ -13,8 +13,6 @@ import { ref, computed, onMounted, watch } from 'vue'
 import {
   Library,
   FileText,
-  Search,
-  Clock,
   Calendar,
   Star,
   StarOff,
@@ -25,15 +23,15 @@ import {
   FolderOpen,
   Sparkles,
   FilePlus,
-  Edit3,
   Download,
   Loader2,
+  Archive,
+  Trash2,
+  Puzzle,
+  Upload,
 } from '@lucide/vue'
-import KnowledgeStats from '@/components/knowledge/KnowledgeStats.vue'
 import KnowledgeFileBrowser from '@/components/knowledge/KnowledgeFileBrowser.vue'
 import TodayPanel from '@/components/knowledge/TodayPanel.vue'
-import KnowledgeTodoPanel from '@/components/knowledge/KnowledgeTodoPanel.vue'
-import KnowledgeTagCloud from '@/components/knowledge/KnowledgeTagCloud.vue'
 import TemplateCreateDialog from '@/components/knowledge/TemplateCreateDialog.vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -42,12 +40,9 @@ import { useI18n } from 'vue-i18n'
 import {
   FileService,
   WorkspaceService,
-  TodoService,
-  TagService,
   ExportService,
   TemplateService,
 } from '@bindings/github.com/notevault/notevault/index.js'
-import type { TodoItem, TagInfo } from '@bindings/github.com/notevault/notevault/models.js'
 import { useToast } from '@/composables/useToast'
 import { promptDialog } from '@/composables/usePrompt'
 
@@ -70,8 +65,7 @@ const { t, locale } = useI18n()
 // 状态
 const allFiles = ref<FileNode[]>([])
 const recentFiles = ref<{ path: string; title: string; modifiedAt: string }[]>([])
-const todos = ref<TodoItem[]>([])
-const tags = ref<TagInfo[]>([])
+
 const searchKeyword = ref('')
 const showOnlyStarred = ref(false)
 const sortBy = ref<'modified' | 'name' | 'created'>('modified')
@@ -185,55 +179,6 @@ const selectedFolderLabel = computed(() => {
   return folderEntries.value.find((folder) => folder.path === selectedFolder.value)?.name || selectedFolder.value
 })
 
-// 统计卡片
-const stats = computed(() => {
-  const noteFiles = documentFiles.value
-  const mdCount = noteFiles.length
-  const starredCount = noteFiles.filter((f) => isStarred(f.path)).length
-  const todoAll = todos.value
-  const pendingTodos = todoAll.filter((todo) => !todo.completed).length
-  const highTodos = todoAll.filter((todo) => !todo.completed && todo.priority === 'high').length
-  const completedTodos = todoAll.filter((todo) => todo.completed).length
-  return {
-    notes: mdCount,
-    starred: starredCount,
-    folders: flatFiles.value.filter((f) => f.isDir).length,
-    todos: pendingTodos,
-    high: highTodos,
-    done: completedTodos,
-    tags: tags.value.length,
-  }
-})
-
-// 最近文件（来自工作区 store + 文件树最新 8 个）
-const recentDisplayed = computed(() => {
-  const files = flatFiles.value
-    .filter((f) => !f.isDir && (f.name.endsWith('.md') || f.name.endsWith('.markdown')))
-    .sort((a, b) => (b.modTime || '').localeCompare(a.modTime || ''))
-    .slice(0, 8)
-  return files
-})
-
-// 待办摘要：未完成优先 + 高优先级在前
-const urgentTodos = computed(() => {
-  return todos.value
-    .filter((todo) => !todo.completed)
-    .slice()
-    .sort((a, b) => {
-      // 高优先级在前
-      const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 }
-      return (priorityOrder[a.priority] ?? 1) - (priorityOrder[b.priority] ?? 1)
-    })
-    .slice(0, 6)
-})
-
-// 标签云（最多 18 个）
-const tagCloud = computed(() =>
-  [...tags.value]
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 18)
-)
-
 // 文档列表（搜索/筛选/排序）
 const filteredFiles = computed(() => {
   let list = documentFiles.value.slice()
@@ -320,16 +265,9 @@ async function loadAll() {
   if (!await ensureWorkspace()) return
   isLoading.value = true
   try {
-    // 并行加载
-    const [tree, todoList, tagList] = await Promise.all([
-      FileService.GetFileTree(currentWorkspace.value!.path),
-      TodoService.GetAllTodos(currentWorkspace.value!.path),
-      TagService.GetAllTags(currentWorkspace.value!.path),
-    ])
+    const tree = await FileService.GetFileTree(currentWorkspace.value!.path)
     allFiles.value = (tree as FileNode[]) || []
     syncFolderExpansion()
-    todos.value = ((todoList as TodoItem[]) || []).filter((item) => !!item)
-    tags.value = ((tagList as TagInfo[]) || []).filter((item) => !!item)
   } catch (e) {
     console.error('Failed to load knowledge view:', e)
     errorMsg.value = t('knowledge.loadFailed', { msg: (e as Error).message })
@@ -494,23 +432,6 @@ function onTemplateCreated(path: string) {
 }
 
 /** 切换待办完成状态 */
-async function toggleTodo(todo: TodoItem) {
-  if (!currentWorkspace.value) return
-  try {
-    await TodoService.ToggleTodo(currentWorkspace.value.path, todo.filePath, todo.lineIndex)
-    // 重新加载
-    const updated = await TodoService.GetAllTodos(currentWorkspace.value.path)
-    todos.value = ((updated as TodoItem[]) || []).filter((item) => !!item)
-  } catch (e) {
-    console.error('Failed to toggle todo:', e)
-  }
-}
-
-function openTodoFile(todo: TodoItem) {
-  workspaceStore.openFile(todo.filePath)
-  workspaceStore.incrementFileTreeVersion()
-  router.push('/editor')
-}
 
 function formatRelativeTime(modTime?: string): string {
   if (!modTime) return ''
@@ -623,9 +544,6 @@ watch(() => workspaceStore.fileTreeVersion, () => {
     <!-- 今日工作台条带：今日编辑/连续记录/待办/到期提醒 + 继续上次 -->
     <TodayPanel />
 
-    <!-- 统计卡片 -->
-    <KnowledgeStats :stats="stats" />
-
     <!-- 双列内容区 -->
     <div class="kv-grid">
       <!-- 主区：文档列表 -->
@@ -652,91 +570,39 @@ watch(() => workspaceStore.fileTreeVersion, () => {
         @create-new="handleCreateNewDoc"
         @create-folder="createFolder"
       />
-
-      <!-- 侧栏：待办 + 标签 -->
-      <aside class="kv-section kv-section-side">
-        <!-- 待办 -->
-        <KnowledgeTodoPanel
-          :todos="urgentTodos"
-          @toggle="toggleTodo"
-          @open="openTodoFile"
-        />
-
-        <!-- 标签云 -->
-        <KnowledgeTagCloud :tags="tagCloud" />
-
-        <!-- 最近编辑 -->
-        <div class="kv-card">
-          <div class="kv-card-header">
-            <h3>
-              <Clock :size="14" />
-              <span>{{ t('knowledge.recentEdits') }}</span>
-            </h3>
-          </div>
-          <div
-            v-if="recentDisplayed.length === 0"
-            class="kv-card-empty"
-          >
-            {{ t('knowledge.noRecent') }}
-          </div>
-          <ul
-            v-else
-            class="kv-recent-list"
-          >
-            <li
-              v-for="file in recentDisplayed"
-              :key="file.path"
-              class="kv-recent-item"
-              @click="openFile(file)"
-            >
-              <FileText :size="13" />
-              <span class="kv-recent-name">{{ file.name.replace(/\.(md|markdown)$/, '') }}</span>
-              <span class="kv-recent-time">{{ formatRelativeTime(file.modTime) }}</span>
-            </li>
-          </ul>
-        </div>
-
-        <!-- 快速入口 -->
-        <div class="kv-card">
-          <div class="kv-card-header">
-            <h3>
-              <Edit3 :size="14" />
-              <span>{{ t('knowledge.quickAccess') }}</span>
-            </h3>
-          </div>
-          <div class="kv-quick-grid">
-            <button
-              class="kv-quick-btn"
-              @click="router.push('/editor')"
-            >
-              <FileText :size="16" />
-              <span>{{ t('knowledge.allDocs') }}</span>
-            </button>
-            <button
-              class="kv-quick-btn"
-              @click="router.push('/search')"
-            >
-              <Search :size="16" />
-              <span>{{ t('knowledge.globalSearch') }}</span>
-            </button>
-            <button
-              class="kv-quick-btn"
-              @click="router.push('/reminders')"
-            >
-              <Clock :size="16" />
-              <span>{{ t('knowledge.reminders') }}</span>
-            </button>
-            <button
-              class="kv-quick-btn"
-              @click="router.push('/archive')"
-            >
-              <FolderOpen :size="16" />
-              <span>{{ t('knowledge.archive') }}</span>
-            </button>
-          </div>
-        </div>
-      </aside>
     </div>
+
+    <!-- 低频出口：细线文字链接（Codex 式，低频功能不占视觉主体） -->
+    <footer class="kv-footer-links">
+      <button
+        class="kv-footer-link"
+        @click="router.push('/archive')"
+      >
+        <Archive :size="13" />
+        <span>{{ t('knowledge.archive') }}</span>
+      </button>
+      <button
+        class="kv-footer-link"
+        @click="router.push('/trash')"
+      >
+        <Trash2 :size="13" />
+        <span>{{ t('knowledge.trash') }}</span>
+      </button>
+      <button
+        class="kv-footer-link"
+        @click="router.push('/plugins')"
+      >
+        <Puzzle :size="13" />
+        <span>{{ t('knowledge.plugins') }}</span>
+      </button>
+      <button
+        class="kv-footer-link"
+        @click="router.push('/import')"
+      >
+        <Upload :size="13" />
+        <span>{{ t('knowledge.import') }}</span>
+      </button>
+    </footer>
 
     <!-- P2-2：从模板新建 -->
     <TemplateCreateDialog
@@ -900,13 +766,36 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   background: var(--bg-hover);
 }
 
-/* 主内容双列网格 */
+/* 主内容：单列（文档列表即主体） */
 .kv-grid {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: var(--space-4);
+  display: flex;
+  flex-direction: column;
   padding: var(--space-4) var(--space-8);
   flex: 1;
+  min-height: 0;
+}
+
+/* 低频出口链接 */
+.kv-footer-links {
+  display: flex;
+  gap: var(--space-5);
+  padding: 0 var(--space-8) var(--space-4);
+  flex-shrink: 0;
+}
+.kv-footer-link {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  padding: 4px 2px;
+  transition: color var(--transition-fast);
+}
+.kv-footer-link:hover {
+  color: var(--text-primary);
 }
 
 .kv-section {

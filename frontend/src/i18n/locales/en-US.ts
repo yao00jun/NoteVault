@@ -893,6 +893,9 @@ export default {
     globalSearch: 'Global Search',
     reminders: 'Reminders',
     archive: 'Archive',
+    trash: 'Trash',
+    plugins: 'Plugins',
+    import: 'Import',
     time: {
       justNow: 'just now',
       minutesAgo: '{count} min ago',

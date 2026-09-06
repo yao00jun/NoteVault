@@ -893,6 +893,9 @@ export default {
     globalSearch: '全局搜索',
     reminders: '提醒',
     archive: '归档',
+    trash: '回收站',
+    plugins: '插件',
+    import: '数据导入',
     time: {
       justNow: '刚刚',
       minutesAgo: '{count} 分钟前',
