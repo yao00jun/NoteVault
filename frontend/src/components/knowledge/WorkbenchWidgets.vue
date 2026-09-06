@@ -129,6 +129,21 @@ function formatTime(iso: string): string {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
 }
 
+// 临近提醒倒计时：跨天显示日期，当日显示「x 小时 / x 分钟后」，过期显示「已过期」
+function countdownLabel(iso: string): string {
+  if (!iso) return ''
+  const ts = new Date(iso).getTime()
+  if (Number.isNaN(ts)) return ''
+  const diff = ts - Date.now()
+  if (diff < 0) return t('knowledge.workbench.overdue')
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 60) return t('knowledge.workbench.inMinutes', { count: minutes })
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return t('knowledge.workbench.inHours', { count: hours })
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
+
 function todayPath(): string {
   const d = new Date()
   const mm = String(d.getMonth() + 1).padStart(2, '0')
@@ -281,7 +296,7 @@ function openFile(path: string) {
           <span
             class="wb-time"
             :class="{ overdue: isOverdue(r.remindAt) }"
-          >{{ formatTime(r.remindAt) }}</span>
+          >{{ formatTime(r.remindAt) }} · {{ countdownLabel(r.remindAt) }}</span>
           <span
             class="wb-item-text"
             :title="`${r.fileName} · ${r.content}`"

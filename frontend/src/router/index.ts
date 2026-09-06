@@ -20,8 +20,8 @@ const routes = [
   { path: '/search', redirect: (to) => ({ path: '/discover', query: { tab: 'search', ...to.query } }) },
   { path: '/qna', redirect: (to) => ({ path: '/discover', query: { tab: 'qna', ...to.query } }) },
   { path: '/tags', redirect: (to) => ({ path: '/discover', query: { tab: 'views', view: 'tags' } }) },
-  { path: '/graph', redirect: (to) => ({ path: '/discover', query: { tab: 'views', view: 'graph' } }) },
-  { path: '/bases', redirect: (to) => ({ path: '/discover', query: { tab: 'views', view: 'bases' } }) },
+  { path: '/graph', redirect: (to) => ({ path: '/insights', query: { tab: 'graph', ...to.query } }) },
+  { path: '/bases', redirect: (to) => ({ path: '/insights', query: { tab: 'bases', ...to.query } }) },
   // 旧路由重定向到「回顾」容器
   { path: '/reports', redirect: (to) => ({ path: '/review', query: { tab: 'reports', ...to.query } }) },
   { path: '/todos', redirect: (to) => ({ path: '/review', query: { tab: 'tasks', sub: 'todos' } }) },
@@ -77,11 +77,7 @@ const routes = [
     name: 'trash',
     component: () => import('@/views/TrashView.vue'),
   },
-  {
-    path: '/compile',
-    name: 'compile',
-    component: () => import('@/views/CompileView.vue'),
-  },
+  { path: '/compile', redirect: (to) => ({ path: '/insights', query: { tab: 'compile', ...to.query } }) },
   {
     // 「发现」容器：搜索 / 语义问答 / 视图（标签·图谱·Bases）
     path: '/discover',
@@ -93,6 +89,12 @@ const routes = [
     path: '/review',
     name: 'review',
     component: () => import('@/views/ReviewView.vue'),
+  },
+  {
+    // 「洞察提炼」容器：图谱 / 编译 / Bases
+    path: '/insights',
+    name: 'insights',
+    component: () => import('@/views/InsightsView.vue'),
   },
   {
     path: '/settings',

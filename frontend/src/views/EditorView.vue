@@ -3,6 +3,9 @@ import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, 
 import { useRoute, useRouter } from 'vue-router'
 import EditorTabBar from '@/components/editor/EditorTabBar.vue'
 import EditorBacklinks from '@/components/editor/EditorBacklinks.vue'
+import EditorContextDrawer from '@/components/editor/EditorContextDrawer.vue'
+import type { OutlineItem } from '@/components/editor/EditorContextDrawer.vue'
+import { getActiveEditor } from '@/plugins/editorBridge'
 import EditorSummaryPanel from '@/components/editor/EditorSummaryPanel.vue'
 import FileTree from '@/components/editor/FileTree.vue'
 import type { FileNode } from '@/components/editor/FileTree.vue'
@@ -559,6 +562,38 @@ async function handleNewFileWithName(fileName: string) {
 // 反向链接
 const backlinks = ref<{ path: string; name: string }[]>([])
 
+// ---- 右侧辅助抽屉（Context Drawer）：大纲 + 反向链接 ----
+const drawerOpen = ref(false)
+const drawerTab = ref<'outline' | 'backlinks'>('outline')
+// 大纲：解析当前活动 Tab 的 Markdown 标题树（H1~H6），记录行号供跳转
+const outline = computed<OutlineItem[]>(() => {
+  const tab = tabs.value[activeTabIndex.value]
+  if (!tab) return []
+  const items: OutlineItem[] = []
+  let inCode = false
+  tab.content.split('\n').forEach((line, i) => {
+    if (/^\s*(```|~~~)/.test(line)) inCode = !inCode
+    if (inCode) return
+    const m = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line)
+    if (m) items.push({ level: m[1].length, text: m[2].trim(), line: i })
+  })
+  return items
+})
+
+function jumpToLine(line: number) {
+  const view = getActiveEditor()
+  if (!view) return
+  const target = Math.min(line, view.state.doc.lines - 1)
+  const pos = view.state.doc.line(target + 1).from
+  view.dispatch({ selection: { anchor: pos }, scrollIntoView: true })
+  view.focus()
+}
+
+function openDrawerPath(path: string) {
+  workspaceStore.openFile(path)
+  workspaceStore.incrementFileTreeVersion()
+}
+
 async function loadBacklinks() {
   if (!currentWorkspace.value || !activeTab.value) {
     backlinks.value = []
@@ -974,10 +1009,20 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       @save="saveCurrentTab"
       @toggle-view="toggleViewMode"
       @back="router.push('/knowledge')"
+      @toggle-drawer="drawerOpen = !drawerOpen"
     />
 
     <!-- 编辑器主区域 -->
     <div class="editor-main">
+    <!-- 右侧辅助抽屉（大纲 / 反向链接） -->
+    <EditorContextDrawer
+      v-model:tab="drawerTab"
+      :open="drawerOpen"
+      :outline="outline"
+      :backlinks="backlinks"
+      @jump-line="jumpToLine"
+      @open-path="openDrawerPath"
+    />
       <!-- 左侧文件树 -->
       <div class="file-tree-pane">
         <FileTree

@@ -18,6 +18,7 @@ import {
   FileDown,
   FileCode,
   ArrowLeft,
+  PanelRight,
 } from '@lucide/vue'
 
 const { t } = useI18n()
@@ -42,6 +43,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'back'): void
+  (e: 'toggle-drawer'): void
   (e: 'switch-tab', index: number): void
   (e: 'close-tab', index: number, event: Event): void
   (e: 'new-file'): void
@@ -77,6 +79,14 @@ const compileTooltip = computed(() => {
       @click="emit('back')"
     >
       <ArrowLeft :size="15" />
+    </button>
+    <button
+      class="tab-back"
+      data-testid="editor-drawer-toggle"
+      :title="t('editor.drawer.toggle')"
+      @click="emit('toggle-drawer')"
+    >
+      <PanelRight :size="15" />
     </button>
     <div class="tabs-container">
       <div

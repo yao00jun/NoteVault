@@ -25,6 +25,9 @@ import {
   Settings as SettingsIcon,
   ChevronsUpDown,
   Check,
+  Zap,
+  BookOpen,
+  Waypoints,
 } from '@lucide/vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -190,29 +193,31 @@ interface NavItem {
 // 被吸收入口的旧路由全部做了重定向（router/index.ts）。
 const navItems = computed<NavItem[]>(() => [
   {
-    id: 'knowledge',
-    label: t('sidebar.nav.knowledge'),
-    icon: Library,
+    id: 'workbench',
+    label: t('sidebar.nav.workbench'),
+    icon: Zap,
     route: '/knowledge',
     group: 'main',
-    // 知识库族：主页 / 编辑器 / 画布 / 归档 / 回收站（内容型页面归属知识库）
-    activeOn: ['/knowledge', '/editor', '/canvas', '/archive', '/trash'],
+    // 工作台族：个人指挥中心（今日待办/提醒/知识空间/快速捕获）
+    activeOn: ['/knowledge'],
   },
   {
-    id: 'discover',
-    label: t('sidebar.nav.discover'),
-    icon: Search,
-    route: '/discover',
+    id: 'knowledge',
+    label: t('sidebar.nav.knowledge'),
+    icon: BookOpen,
+    route: '/editor',
     group: 'main',
-    activeOn: ['/discover', '/search', '/qna', '/tags', '/graph', '/bases'],
+    // 知识库族：沉浸式三栏编辑 + 画布 + 归档 / 回收站
+    activeOn: ['/editor', '/canvas', '/archive', '/trash'],
   },
   {
-    id: 'review',
-    label: t('sidebar.nav.review'),
-    icon: History,
-    route: '/review',
+    id: 'insights',
+    label: t('sidebar.nav.insights'),
+    icon: Waypoints,
+    route: '/insights',
     group: 'main',
-    activeOn: ['/review', '/reports', '/todos', '/reminders', '/history'],
+    // 洞察提炼族：图谱 / 编译 / Bases
+    activeOn: ['/insights', '/graph', '/bases', '/compile'],
   },
 ])
 

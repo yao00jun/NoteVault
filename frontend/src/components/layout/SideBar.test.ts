@@ -96,8 +96,8 @@ describe('SideBar', () => {
     expect(navItems.length).toBe(3)
     const labels = navItems.map((w) => w.text())
     expect(labels.some((x) => x.includes('工作台'))).toBe(true)
-    expect(labels.some((x) => x.includes('发现'))).toBe(true)
-    expect(labels.some((x) => x.includes('回顾'))).toBe(true)
+    expect(labels.some((x) => x.includes('知识库'))).toBe(true)
+    expect(labels.some((x) => x.includes('洞察提炼'))).toBe(true)
   })
 
   it('点击导航项应触发路由跳转', async () => {
@@ -106,12 +106,12 @@ describe('SideBar', () => {
     const navItems = wrapper.findAll('.nav-item')
 
     // 按文案定位而不是下标：导航项顺序还会继续演进，位置断言已经两次被新入口挤歪
-    const discoverItem = navItems.find((w) => w.text().includes('发现'))
-    expect(discoverItem).toBeDefined()
-    await discoverItem!.trigger('click')
+    const insightsItem = navItems.find((w) => w.text().includes('洞察提炼'))
+    expect(insightsItem).toBeDefined()
+    await insightsItem!.trigger('click')
     await flushPromises()
     await nextTick()
-    expect(router.currentRoute.value.path).toBe('/discover')
+    expect(router.currentRoute.value.path).toBe('/insights')
   })
 
   it('折叠状态下应隐藏标签文字', async () => {

@@ -35,6 +35,9 @@ import {
   Square,
   PenLine,
   Hash,
+  Rocket,
+  Inbox,
+  BookOpen,
 } from '@lucide/vue'
 import KnowledgeFileBrowser from '@/components/knowledge/KnowledgeFileBrowser.vue'
 import WorkbenchWidgets from '@/components/knowledge/WorkbenchWidgets.vue'
@@ -101,19 +104,28 @@ async function quickCapture() {
   }
   capturing.value = true
   try {
-    const name = text.endsWith('.md') ? text : `${text}.md`
-    await FileService.CreateFile(currentWorkspace.value.path, name, `# ${name.replace(/\.md$/, '')}
+    const d = new Date()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    const inboxPath = `Inbox/${d.getFullYear()}-${mm}-${dd}.md`
+    let content: string
+    try {
+      content = await FileService.ReadFile(currentWorkspace.value.path, inboxPath)
+    } catch {
+      content = `# ${d.getFullYear()}-${mm}-${dd} 闪念
 
-`)
+`
+    }
+    const timeTag = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    content = `${content.replace(/\s*$/, '')}
+- ${timeTag} ${text}
+`
+    await FileService.SaveFile(currentWorkspace.value.path, inboxPath, content)
     captureText.value = ''
     workspaceStore.incrementFileTreeVersion()
-    toast.success(t('knowledge.workbench.captured', { name: name.replace(/\.md$/, '') }))
+    toast.success(t('knowledge.workbench.captured', { name: inboxPath }))
   } catch (e) {
-    if ((e as Error).message?.includes('exist')) {
-      toast.warning(t('knowledge.fileExists'))
-    } else {
-      toast.error(t('knowledge.workbench.captureFailed', { msg: (e as Error).message }))
-    }
+    toast.error(t('knowledge.workbench.captureFailed', { msg: (e as Error).message }))
   } finally {
     capturing.value = false
   }
@@ -144,6 +156,35 @@ async function loadHotTags() {
   } catch (e) {
     console.error('Failed to load tags:', e)
   }
+}
+
+// 知识空间：按约定目录聚合（蓝图 2.1 四大空间）
+const SPACE_DEFS = [
+  { key: 'learning', dir: 'Learning', icon: BookOpen },
+  { key: 'projects', dir: 'Projects', icon: Rocket },
+  { key: 'inbox', dir: 'Inbox', icon: Inbox },
+  { key: 'daily', dir: 'Daily', icon: Calendar },
+] as const
+
+const knowledgeSpaces = computed(() =>
+  SPACE_DEFS.map((def) => ({
+    ...def,
+    label: t(`knowledge.spaces.${def.key}.name`),
+    desc: t(`knowledge.spaces.${def.key}.desc`),
+    count: flatFiles.value.filter(
+      (f) => !f.isDir && (f.name.endsWith('.md') || f.name.endsWith('.markdown')) &&
+        normalizePath(f.path).startsWith(`${def.dir}/`),
+    ).length,
+  })),
+)
+
+function openSpace(space: { dir: string; key: string }) {
+  if (space.key === 'daily') {
+    createDailyNote()
+    return
+  }
+  // 直达知识库编辑页（目录在文件树中就地可见）
+  router.push({ path: '/editor', query: { folder: space.dir } })
 }
 
 // 星标文档（右列，top 5）
@@ -680,8 +721,31 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       </router-link>
     </div>
 
-    <!-- 今日焦点：可勾选待办 / 到期提醒 / 今日编辑 -->
+    <!-- 今日焦点：可勾选待办 / 到期提醒（倒计时） / 今日编辑 -->
     <WorkbenchWidgets />
+
+    <!-- 知识空间分类卡片（蓝图 2.1）：学习 / 项目 / 灵感收集箱 / 日记 -->
+    <section class="kv-spaces">
+      <button
+        v-for="space in knowledgeSpaces"
+        :key="space.key"
+        class="kv-space-card"
+        :data-testid="`space-${space.key}`"
+        @click="openSpace(space)"
+      >
+        <div class="kv-space-icon">
+          <component
+            :is="space.icon"
+            :size="18"
+          />
+        </div>
+        <div class="kv-space-body">
+          <div class="kv-space-name">{{ space.label }}</div>
+          <div class="kv-space-desc">{{ space.desc }}</div>
+        </div>
+        <span class="kv-space-count">{{ space.count }}</span>
+      </button>
+    </section>
 
     <!-- 双列内容区 -->
     <div class="kv-grid">
@@ -1018,6 +1082,64 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   padding: var(--space-4) var(--space-8);
   flex: 1;
   min-height: 0;
+}
+
+/* 知识空间卡片 */
+.kv-spaces {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-8) 0;
+}
+.kv-space-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+.kv-space-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-accent, var(--accent));
+  transform: translateY(-1px);
+}
+.kv-space-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-active);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.kv-space-body {
+  flex: 1;
+  min-width: 0;
+}
+.kv-space-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.kv-space-desc {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kv-space-count {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 /* 快速捕获条 */
