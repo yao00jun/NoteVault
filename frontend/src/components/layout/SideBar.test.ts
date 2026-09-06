@@ -90,15 +90,39 @@ describe('SideBar', () => {
     expect(wrapper.find('.sidebar').exists()).toBe(true)
   })
 
-  it('应只渲染 3 个顶层导航项（Codex 式收敛）', async () => {
+  it('应渲染 5 个核心工作流入口（UI-WORKBENCH-REDESIGN 平展导航）', async () => {
     const { wrapper } = mountSideBar()
     await flushPromises()
     const navItems = wrapper.findAll('.nav-item')
-    expect(navItems.length).toBe(3)
+    expect(navItems.length).toBe(5)
     const labels = navItems.map((w) => w.text())
     expect(labels.some((x) => x.includes('工作台'))).toBe(true)
-    expect(labels.some((x) => x.includes('知识库'))).toBe(true)
+    expect(labels.some((x) => x.includes('所有文档'))).toBe(true)
+    expect(labels.some((x) => x.includes('今日日记'))).toBe(true)
+    expect(labels.some((x) => x.includes('自由白板'))).toBe(true)
     expect(labels.some((x) => x.includes('洞察提炼'))).toBe(true)
+  })
+
+  it('侧栏底部应有回收站入口并跳转 /trash', async () => {
+    const { wrapper, router } = mountSideBar()
+    await flushPromises()
+    await wrapper.find('[data-testid="sidebar-trash"]').trigger('click')
+    await flushPromises()
+    await nextTick()
+    expect(router.currentRoute.value.path).toBe('/trash')
+  })
+
+  it('点击「今日日记」应触发日记创建动作（无工作区时留在工作台）', async () => {
+    const { wrapper, router } = mountSideBar()
+    await flushPromises()
+    const navItems = wrapper.findAll('.nav-item')
+    const dailyItem = navItems.find((w) => w.text().includes('今日日记'))
+    expect(dailyItem).toBeDefined()
+    await dailyItem!.trigger('click')
+    await flushPromises()
+    await nextTick()
+    // 无工作区：useDailyNote 引导回工作台而非报错
+    expect(router.currentRoute.value.path).toBe('/knowledge')
   })
 
   it('点击导航项应触发路由跳转', async () => {

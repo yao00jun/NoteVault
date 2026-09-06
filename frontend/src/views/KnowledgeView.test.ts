@@ -16,13 +16,14 @@ vi.mock('@/api', () => ({
   FileService: {
     GetFileTree: vi.fn(),
     CreateFile: vi.fn(),
-    CreateFolder: vi.fn(),
+    ReadFile: vi.fn(),
+    SaveFile: vi.fn(async () => undefined),
   },
-  TodoService: { GetAllTodos: vi.fn(), ToggleTodo: vi.fn() },
+  // WorkbenchWidgets（今日行动中心）会调用：mock 面必须覆盖组件树全部依赖
+  TodoService: { GetAllTodos: vi.fn(async () => []), ToggleTodo: vi.fn(async () => undefined) },
+  ReminderService: { GetAllReminders: vi.fn(async () => []) },
   TagService: { GetAllTags: vi.fn() },
   StatsService: { GetTodayStats: vi.fn(async () => null) },
-  ReminderService: { GetAllReminders: vi.fn(async () => []) },
-  TrashService: { MoveToTrash: vi.fn(async () => null) },
   ExportService: { ExportWorkspaceMarkdown: vi.fn() },
   TemplateService: {
     ListTemplates: vi.fn(async () => []),
@@ -36,12 +37,10 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import {
   FileService,
   TagService,
-  TodoService,
 } from '@/api'
 
 const mockedTree = vi.mocked(FileService.GetFileTree)
 const mockedCreateFile = vi.mocked(FileService.CreateFile)
-const mockedTodos = vi.mocked(TodoService.GetAllTodos)
 const mockedTags = vi.mocked(TagService.GetAllTags)
 
 enableAutoUnmount(afterEach)
@@ -56,10 +55,6 @@ function mountKnowledge() {
       { path: '/knowledge', component: KnowledgeView },
       { path: '/editor', component: { template: '<div />' } },
       { path: '/tags', component: { template: '<div />' } },
-      { path: '/todos', component: { template: '<div />' } },
-      { path: '/search', component: { template: '<div />' } },
-      { path: '/reminders', component: { template: '<div />' } },
-      { path: '/archive', component: { template: '<div />' } },
     ],
   })
   const workspaceStore = useWorkspaceStore()
@@ -73,16 +68,15 @@ function mountKnowledge() {
   const wrapper = mount(KnowledgeView, {
     global: { plugins: [pinia, router, i18n] },
   })
-  return { wrapper }
+  return { wrapper, router }
 }
 
-describe('KnowledgeView folder navigation', () => {
+describe('KnowledgeView 工作台（UI-WORKBENCH-REDESIGN 瘦身后）', () => {
   beforeEach(() => {
     localStorage.clear()
     ;(i18n.global.locale as any).value = 'zh-CN'
     mockedTree.mockReset()
     mockedCreateFile.mockReset()
-    mockedTodos.mockReset()
     mockedTags.mockReset()
     mockedTree.mockResolvedValue([
       {
@@ -90,8 +84,8 @@ describe('KnowledgeView folder navigation', () => {
         path: 'Java',
         isDir: true,
         children: [
-          { name: '基础.md', path: 'Java/基础.md', isDir: false, modTime: '2026-08-28T00:00:00Z' },
-          { name: '并发.md', path: 'Java/并发.md', isDir: false, modTime: '2026-08-28T00:00:00Z' },
+          { name: '基础.md', path: 'Java/基础.md', isDir: false, modTime: '2026-08-28T10:00:00Z' },
+          { name: '并发.md', path: 'Java/并发.md', isDir: false, modTime: '2026-08-29T10:00:00Z' },
         ],
       },
       {
@@ -99,50 +93,65 @@ describe('KnowledgeView folder navigation', () => {
         path: 'SQL',
         isDir: true,
         children: [
-          { name: '索引.md', path: 'SQL/索引.md', isDir: false, modTime: '2026-08-28T00:00:00Z' },
+          { name: '索引.md', path: 'SQL/索引.md', isDir: false, modTime: '2026-08-30T10:00:00Z' },
         ],
       },
     ] as any)
-    mockedTodos.mockResolvedValue([])
     mockedTags.mockResolvedValue([])
-    promptDialogMock.mockReset()
-    promptDialogMock.mockResolvedValue('新文档.md')
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
-  it('按文件夹展示数量，并切换文件夹过滤文档分组', async () => {
+  it('不再内嵌文件夹树与文件列表（目录树归 /editor 承载）', async () => {
     const { wrapper } = mountKnowledge()
     await flushPromises()
 
-    const folderItems = wrapper.findAll('[data-testid="folder-item"]')
-    expect(folderItems.some((item) => item.text().includes('Java') && item.text().includes('2'))).toBe(true)
-    expect(folderItems.some((item) => item.text().includes('SQL') && item.text().includes('1'))).toBe(true)
-    expect(wrapper.findAll('[data-testid="document-item"]')).toHaveLength(3)
-
-    const javaFolder = folderItems.find((item) => item.text().includes('Java'))!
-    await javaFolder.trigger('click')
-    const visibleDocuments = wrapper.findAll('[data-testid="document-item"]')
-    expect(visibleDocuments).toHaveLength(2)
-    expect(visibleDocuments.map((item) => item.text()).join(' ')).toContain('基础')
-    expect(visibleDocuments.map((item) => item.text()).join(' ')).not.toContain('索引')
+    expect(wrapper.find('[data-testid="folder-item"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="document-item"]').exists()).toBe(false)
+    expect(wrapper.find('.kv-launch-grid').exists()).toBe(false)
+    expect(wrapper.find('.kv-footer-links').exists()).toBe(false)
   })
 
-  it('在选中文件夹时，新文档创建到该文件夹', async () => {
-    mockedCreateFile.mockResolvedValue({ path: 'Java/新文档.md' } as any)
+  it('渲染五大知识空间卡片（学习/项目/资料收藏/收集箱/日记）', async () => {
     const { wrapper } = mountKnowledge()
     await flushPromises()
 
-    const javaFolder = wrapper.findAll('[data-testid="folder-item"]').find((item) => item.text().includes('Java'))!
-    await javaFolder.trigger('click')
+    const spaces = wrapper.findAll('.kv-space-card')
+    expect(spaces.length).toBe(5)
+    for (const key of ['learning', 'projects', 'resources', 'inbox', 'daily']) {
+      expect(wrapper.find(`[data-testid="space-${key}"]`).exists()).toBe(true)
+    }
+  })
+
+  it('最近编辑卡按修改时间降序展示（下区）', async () => {
+    const { wrapper } = mountKnowledge()
+    await flushPromises()
+
+    const recent = wrapper.find('[data-testid="recent-notes"]')
+    expect(recent.exists()).toBe(true)
+    const names = recent.findAll('.wb-side-item .wb-side-item, .wb-side-item').map((w) => w.text())
+    // 三篇全在，且最近修改的「索引」（08-30）排最前
+    const joined = names.join(' ')
+    expect(joined).toContain('索引')
+    expect(joined).toContain('并发')
+    expect(joined).toContain('基础')
+    expect(names[0]!).toContain('索引')
+  })
+
+  it('新建文档：无文件夹上下文时创建到工作区根', async () => {
+    promptDialogMock.mockResolvedValue('新文档.md')
+    mockedCreateFile.mockResolvedValue({ path: '新文档.md' } as any)
+    const { wrapper } = mountKnowledge()
+    await flushPromises()
+
     await wrapper.find('.kv-btn-primary').trigger('click')
     await flushPromises()
 
     expect(mockedCreateFile).toHaveBeenCalledWith(
       '/tmp/vault',
-      'Java/新文档.md',
+      '新文档.md',
       '# 新文档\n\n',
     )
   })

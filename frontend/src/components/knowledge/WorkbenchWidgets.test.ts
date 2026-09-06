@@ -62,13 +62,14 @@ afterEach(() => {
 })
 
 describe('WorkbenchWidgets', () => {
-  it('渲染三个部件：待办过滤已完成且高优先级在前，提醒含过期标记', async () => {
+  it('渲染双列看板：待办过滤已完成且高优先级在前，提醒含过期标记', async () => {
     const { wrapper } = mountWidgets()
     await flushPromises()
 
     expect(wrapper.find('[data-testid="wb-todos"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="wb-reminders"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="wb-edited"]').exists()).toBe(true)
+    // 「今日编辑」卡已并入工作台下区「最近编辑」，看板只剩双列
+    expect(wrapper.find('[data-testid="wb-edited"]').exists()).toBe(false)
 
     const todoTexts = wrapper.findAll('[data-testid="wb-todos"] .wb-item-text').map((w) => w.text())
     // 已完成的被过滤；空白内容的空复选框（日记模板留白）也不该出现
@@ -78,10 +79,6 @@ describe('WorkbenchWidgets', () => {
     const times = wrapper.findAll('[data-testid="wb-reminders"] .wb-time')
     expect(times[0]!.classes()).toContain('overdue')
     expect(times[1]!.classes()).not.toContain('overdue')
-
-    // 今日编辑来自 StatsService.recentFiles
-    const edited = wrapper.findAll('[data-testid="wb-edited"] .wb-item-text').map((w) => w.text())
-    expect(edited).toEqual(['Java基础', '索引设计'])
   })
 
   it('数据为空时显示空态而不是报错', async () => {
@@ -92,7 +89,7 @@ describe('WorkbenchWidgets', () => {
     await flushPromises()
 
     const empties = wrapper.findAll('.wb-empty')
-    expect(empties.length).toBe(3)
+    expect(empties.length).toBe(2)
   })
 
   it('单个数据源失败不拖垮其余部件', async () => {
@@ -101,6 +98,6 @@ describe('WorkbenchWidgets', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="wb-todos"] .wb-empty').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="wb-edited"] .wb-item-text').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="wb-reminders"]').exists()).toBe(true)
   })
 })

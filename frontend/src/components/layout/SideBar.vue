@@ -28,6 +28,7 @@ import {
   Zap,
   BookOpen,
   Waypoints,
+  Calendar,
 } from '@lucide/vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -37,8 +38,10 @@ import { useI18n } from 'vue-i18n'
 import { FileService, WorkspaceService } from '@/api'
 import { useToast } from '@/composables/useToast'
 import { promptDialog } from '@/composables/usePrompt'
+import { useDailyNote } from '@/composables/useDailyNote'
 
 const toast = useToast()
+const { openTodayNote } = useDailyNote()
 
 const { t } = useI18n()
 const settingsStore = useSettingsStore()
@@ -184,13 +187,15 @@ interface NavItem {
   icon: any
   route?: string
   group: string
+  /** 点击动作（route 为空时执行，如「今日日记」直达） */
+  action?: () => unknown
   /** 高亮使用：用于在当前页面时高亮 */
   activeOn?: string[]
 }
 
-// Codex 式架构（2026-09 重构）：侧栏只回答「在哪类工作」，不罗列功能。
-// 同族功能在各容器的 tab 里切换（发现/回顾），低频动作收进命令面板（Ctrl+P）。
-// 被吸收入口的旧路由全部做了重定向（router/index.ts）。
+// UI-WORKBENCH-REDESIGN（2026-09-07）：侧栏由 3 入口扩展为 5 个核心工作流入口，
+// 层级平展、一键直达——工具回归侧边栏，工作台还给专注（画布/日记不再藏在
+// 工作台右下角「快速入口」里套娃）。
 const navItems = computed<NavItem[]>(() => [
   {
     id: 'workbench',
@@ -198,17 +203,34 @@ const navItems = computed<NavItem[]>(() => [
     icon: Zap,
     route: '/knowledge',
     group: 'main',
-    // 工作台族：个人指挥中心（今日待办/提醒/知识空间/快速捕获）
+    // 工作台族：个人指挥中心（待办看板/提醒/五大空间/最近编辑）
     activeOn: ['/knowledge'],
   },
   {
-    id: 'knowledge',
-    label: t('sidebar.nav.knowledge'),
+    id: 'editor',
+    label: t('sidebar.nav.editor'),
     icon: BookOpen,
     route: '/editor',
     group: 'main',
-    // 知识库族：沉浸式三栏编辑 + 画布 + 归档 / 回收站
-    activeOn: ['/editor', '/canvas', '/archive', '/trash'],
+    // 知识库族：沉浸式三栏编辑（完整目录树在这里）
+    activeOn: ['/editor'],
+  },
+  {
+    id: 'daily',
+    label: t('sidebar.nav.daily'),
+    icon: Calendar,
+    group: 'main',
+    // 高频一键速记：直接创建/打开今日 Daily/YYYY-MM-DD.md
+    action: () => openTodayNote(),
+  },
+  {
+    id: 'canvas',
+    label: t('sidebar.nav.canvas'),
+    icon: Square,
+    route: '/canvas',
+    group: 'main',
+    // 自由白板：思维脑图与卡片连线
+    activeOn: ['/canvas'],
   },
   {
     id: 'insights',
@@ -228,6 +250,8 @@ function isActive(item: NavItem) {
 function navigate(item: NavItem) {
   if (item.route) {
     router.push(item.route)
+  } else if (item.action) {
+    void item.action()
   }
 }
 
@@ -361,8 +385,20 @@ const sidebarWidth = computed(() =>
       </button>
     </nav>
 
-    <!-- 底部：设置（Codex 式左下角入口） + 折叠按钮 -->
+    <!-- 底部：回收站/归档 + 设置（UI-WORKBENCH-REDESIGN 管理区） + 折叠按钮 -->
     <div class="sidebar-footer">
+      <button
+        class="footer-settings-btn"
+        data-testid="sidebar-trash"
+        :title="t('sidebar.nav.trash')"
+        @click="router.push('/trash')"
+      >
+        <Trash2 :size="16" />
+        <span
+          v-if="!settingsStore.settings.sidebarCollapsed"
+          class="settings-label"
+        >{{ t('sidebar.nav.trash') }}</span>
+      </button>
       <button
         class="footer-settings-btn"
         data-testid="sidebar-settings"

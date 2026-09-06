@@ -12,6 +12,8 @@ export default {
   sidebar: {
     nav: {
       workbench: 'Workbench',
+      editor: 'All Documents',
+      daily: 'Today\'s Note',
       knowledge: 'Knowledge',
       discover: 'Discover',
       review: 'Review',
@@ -906,6 +908,8 @@ export default {
     },
     starred: 'Starred',
     starredEmpty: '还没有Starred',
+    recentNotes: 'Recently Edited',
+    recentNotesEmpty: 'No notes yet — create one above to get started',
     tags: 'Tags',
     tagsEmpty: 'No tags yet',
   },

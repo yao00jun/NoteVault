@@ -12,6 +12,8 @@ export default {
   sidebar: {
     nav: {
       workbench: '工作台',
+      editor: '所有文档',
+      daily: '今日日记',
       knowledge: '知识库',
       discover: '发现',
       review: '回顾',
@@ -19,7 +21,7 @@ export default {
       graph: '知识图谱',
       reports: '写作报表',
       bases: '结构化视图',
-      canvas: '画布',
+      canvas: '自由白板',
       qna: 'AI 问答',
       import: '数据导入',
       plugins: '插件',
@@ -906,6 +908,8 @@ export default {
     },
     starred: '星标文档',
     starredEmpty: '还没有星标文档',
+    recentNotes: '最近编辑',
+    recentNotesEmpty: '还没有笔记，从上方新建一篇开始吧',
     tags: '标签速览',
     tagsEmpty: '还没有标签',
   },

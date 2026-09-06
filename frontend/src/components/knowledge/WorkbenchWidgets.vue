@@ -1,18 +1,18 @@
 <script setup lang="ts">
 /**
- * WorkbenchWidgets - 个人工作台的「今日焦点」部件行
+ * WorkbenchWidgets - 个人工作台的「今日行动中心」看板（UI-WORKBENCH-REDESIGN 上区）
  *
- * 三个可操作部件（认知负荷原则：能在工作台直接完成的就不让用户跳页）：
+ * 双列大看板（认知负荷原则：能在工作台直接完成的就不让用户跳页）：
  *  - 今日待办：未完成 top5，可直接勾选（ToggleTodo 写回源文档）
  *  - 到期提醒：未完成提醒按时间升序 top4，点击打开关联笔记
- *  - 今日编辑：今天改过的笔记 top5（StatsService 派生），点击打开
+ * （原「今日编辑」卡已上移合并为工作台下区「最近编辑」，职责不重复）
  *
  * 数据全部来自后端服务（文件派生），工作区切换 / 文件树变更自动刷新。
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { ListTodo, AlarmClock, FileEdit, Inbox, Plus } from '@lucide/vue'
+import { ListTodo, AlarmClock, Inbox, Plus } from '@lucide/vue'
 import {
   StatsService,
   TodoService,
@@ -115,8 +115,6 @@ const dueReminders = computed(() =>
     .slice(0, 4),
 )
 
-// 今日编辑：最近改动 top5（StatsService 已按时间排序）
-const editedFiles = computed(() => stats.value?.recentFiles ?? [])
 
 function isOverdue(remindAt: string): boolean {
   return !!remindAt && new Date(remindAt).getTime() < Date.now()
@@ -305,45 +303,13 @@ function openFile(path: string) {
       </ul>
     </div>
 
-    <!-- 今日编辑 -->
-    <div
-      class="wb-card"
-      data-testid="wb-edited"
-    >
-      <div class="wb-card-header">
-        <FileEdit :size="14" />
-        <span>{{ t('knowledge.workbench.edited') }}</span>
-        <span class="wb-count">{{ editedFiles.length }}</span>
-      </div>
-      <div
-        v-if="editedFiles.length === 0"
-        class="wb-empty"
-      >
-        <Inbox :size="18" />
-        <span>{{ t('knowledge.workbench.editedEmpty') }}</span>
-      </div>
-      <ul
-        v-else
-        class="wb-list"
-      >
-        <li
-          v-for="f in editedFiles"
-          :key="f"
-          class="wb-item"
-          :title="f"
-          @click="openFile(f)"
-        >
-          <span class="wb-item-text">{{ fileNameOf(f) }}</span>
-        </li>
-      </ul>
-    </div>
   </section>
 </template>
 
 <style scoped>
 .wb-widgets {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--space-3);
   padding: var(--space-3) var(--space-8) 0;
 }

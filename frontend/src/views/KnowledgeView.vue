@@ -9,36 +9,24 @@
  *  - 知识脉络：双向链接、标签云、待办摘要
  *  - 文档网格：所有文档的卡片视图（支持搜索、筛选、排序）
  */
-import { FileService, WorkspaceService, StatsService, TodoService, TagService, ReminderService, ExportService, TemplateService, TrashService, TodoItem, TagInfo } from '@/api'
+import { FileService, WorkspaceService, StatsService, TagService, ExportService, TemplateService, TagInfo } from '@/api'
 import { ref, computed, onMounted, watch } from 'vue'
 import {
   Library,
   FileText,
   Star,
-  StarOff,
-  ChevronRight,
-  ChevronDown,
-  Folder,
-  FolderPlus,
   FolderOpen,
-  Sparkles,
   FilePlus,
   Download,
   Loader2,
-  Archive,
-  Trash2,
-  Puzzle,
-  Upload,
   Flame,
-  Search,
-  GitGraph,
-  Square,
   PenLine,
   Hash,
+  History,
 } from '@lucide/vue'
-import KnowledgeFileBrowser from '@/components/knowledge/KnowledgeFileBrowser.vue'
 import WorkbenchWidgets from '@/components/knowledge/WorkbenchWidgets.vue'
 import TemplateCreateDialog from '@/components/knowledge/TemplateCreateDialog.vue'
+import { useDailyNote } from '@/composables/useDailyNote'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
@@ -152,21 +140,22 @@ async function loadHotTags() {
 }
 
 // 知识空间（分类扫描/统计/过滤已抽到 useWorkbenchSpaces，蓝图 2.1 五空间）
+const { openTodayNote } = useDailyNote()
 function openSpace(space: { dir: string; key: string }) {
   if (space.key === 'daily') {
-    createDailyNote()
+    void openTodayNote()
     return
   }
   // 直达知识库编辑页（目录在文件树中就地可见）
   router.push({ path: '/editor', query: { folder: space.dir } })
 }
 
-// 星标文档（右列，top 5）
+// 星标文档（下区右列，top 5）
 const starredFiles = computed(() =>
   documentFiles.value.filter((f) => isStarred(f.path)).slice(0, 5),
 )
 
-// 标签速览（右列，top 8，点击进发现·标签）
+// 标签速览（下区右列，top 8，点击进发现·标签）
 const tags = ref<{ name: string; count: number }[]>([])
 const hotTags = computed(() =>
   [...tags.value].sort((a, b) => b.count - a.count).slice(0, 8),
@@ -176,14 +165,7 @@ const { t, locale } = useI18n()
 
 // 状态
 const allFiles = ref<FileNode[]>([])
-const recentFiles = ref<{ path: string; title: string; modifiedAt: string }[]>([])
 
-const searchKeyword = ref('')
-const showOnlyStarred = ref(false)
-const sortBy = ref<'modified' | 'name' | 'created'>('modified')
-const selectedFolder = ref('')
-const expandedFolders = ref<Record<string, boolean>>({})
-const isLoading = ref(false)
 const errorMsg = ref('')
 
 // 固定的文档（保存在 localStorage）
@@ -239,112 +221,15 @@ function flattenFiles(nodes: FileNode[], depth = 0): { path: string; name: strin
 const flatFiles = computed(() => flattenFiles(allFiles.value))
 const { knowledgeSpaces } = useWorkbenchSpaces(flatFiles)
 
-function parentFolderPath(path: string): string {
-  const normalized = normalizePath(path)
-  const separator = normalized.lastIndexOf('/')
-  return separator >= 0 ? normalized.slice(0, separator) : ''
-}
-
 const documentFiles = computed(() => flatFiles.value.filter(isMarkdownFile))
 
-// 文件夹导航使用后端返回的目录树，文档列表则按父目录重新分组。
-const folderEntries = computed(() => flatFiles.value
-  .filter((file) => file.isDir)
-  .map((folder) => ({
-    path: normalizePath(folder.path),
-    name: folder.name,
-    depth: normalizePath(folder.path).split('/').length - 1,
-  }))
-  .sort((a, b) => a.path.localeCompare(b.path)))
-
-const folderDocumentCounts = computed(() => {
-  const counts: Record<string, number> = { '': documentFiles.value.length }
-  for (const file of documentFiles.value) {
-    const parts = parentFolderPath(file.path).split('/').filter(Boolean)
-    let path = ''
-    for (const part of parts) {
-      path = path ? `${path}/${part}` : part
-      counts[path] = (counts[path] || 0) + 1
-    }
-  }
-  return counts
-})
-
-const visibleFolderEntries = computed(() => folderEntries.value.filter((folder) => {
-  const segments = folder.path.split('/')
-  for (let i = 1; i < segments.length; i++) {
-    const parent = segments.slice(0, i).join('/')
-    if (expandedFolders.value[parent] === false) return false
-  }
-  return true
-}))
-
-const selectedFolderLabel = computed(() => {
-  if (!selectedFolder.value) return t('knowledge.allDocs')
-  return folderEntries.value.find((folder) => folder.path === selectedFolder.value)?.name || selectedFolder.value
-})
-
-// 文档列表（搜索/筛选/排序）
-const filteredFiles = computed(() => {
-  let list = documentFiles.value.slice()
-  if (selectedFolder.value) {
-    const folderPrefix = `${selectedFolder.value}/`
-    list = list.filter((file) => normalizePath(file.path).startsWith(folderPrefix))
-  }
-  if (showOnlyStarred.value) {
-    list = list.filter((f) => isStarred(f.path))
-  }
-  if (searchKeyword.value.trim()) {
-    const kw = searchKeyword.value.toLowerCase().trim()
-    list = list.filter(
-      (f) =>
-        f.name.toLowerCase().includes(kw) ||
-        f.path.toLowerCase().includes(kw) ||
-        f.name.toLowerCase().includes(kw.replace(/\.md$/, '')),
-    )
-  }
-  // 排序
-  if (sortBy.value === 'name') {
-    list = list.sort((a, b) => a.name.localeCompare(b.name))
-  } else if (sortBy.value === 'created') {
-    list = list.sort((a, b) => (a.modTime || '').localeCompare(b.modTime || ''))
-  } else {
-    list = list.sort((a, b) => (b.modTime || '').localeCompare(a.modTime || ''))
-  }
-  return list.slice(0, 50)
-})
-
-const groupedFiles = computed(() => {
-  const groups = new Map<string, { path: string; name: string; files: typeof filteredFiles.value }>()
-  for (const file of filteredFiles.value) {
-    const path = parentFolderPath(file.path)
-    if (!groups.has(path)) {
-      groups.set(path, {
-        path,
-        name: path ? path.split('/').pop() || path : t('knowledge.rootFolder'),
-        files: [],
-      })
-    }
-    groups.get(path)!.files.push(file)
-  }
-  return [...groups.values()].sort((a, b) => a.path.localeCompare(b.path))
-})
-
-function toggleFolder(path: string) {
-  expandedFolders.value[path] = expandedFolders.value[path] === false
-}
-
-function selectFolder(path: string) {
-  selectedFolder.value = path
-}
-
-function syncFolderExpansion() {
-  for (const folder of folderEntries.value) {
-    if (!(folder.path in expandedFolders.value)) {
-      expandedFolders.value[folder.path] = true
-    }
-  }
-}
+// 最近活跃编辑（UI-WORKBENCH-REDESIGN 下区）：全库按修改时间降序 top 8。
+// 承接原 WorkbenchWidgets「今日编辑」卡的职责并放宽到最近窗口，信息量更大。
+const recentNotes = computed(() =>
+  [...documentFiles.value]
+    .sort((a, b) => (b.modTime || '').localeCompare(a.modTime || ''))
+    .slice(0, 8),
+)
 
 async function ensureWorkspace(): Promise<boolean> {
   if (!currentWorkspace.value) {
@@ -368,36 +253,12 @@ async function ensureWorkspace(): Promise<boolean> {
 async function loadAll() {
   errorMsg.value = ''
   if (!await ensureWorkspace()) return
-  isLoading.value = true
   try {
     const tree = await FileService.GetFileTree(currentWorkspace.value!.path)
     allFiles.value = (tree as FileNode[]) || []
-    syncFolderExpansion()
   } catch (e) {
     console.error('Failed to load knowledge view:', e)
     errorMsg.value = t('knowledge.loadFailed', { msg: (e as Error).message })
-  } finally {
-    isLoading.value = false
-  }
-}
-
-// 移到回收站（可恢复）：确认 → 移动 → 刷新工作台数据
-async function handleDeleteDoc(file: { path: string; name: string }) {
-  if (!currentWorkspace.value) return
-  const ok = await confirmDialog({
-    message: t('knowledge.moveToTrashConfirm', { name: file.name }),
-    confirmText: t('knowledge.moveToTrash'),
-    danger: true,
-  })
-  if (!ok) return
-  try {
-    await TrashService.MoveToTrash(currentWorkspace.value.path, file.path)
-    workspaceStore.incrementFileTreeVersion()
-    await loadAll()
-    loadWorkbenchStats()
-    toast.success(t('knowledge.movedToTrash', { name: file.name }))
-  } catch (e) {
-    toast.error(t('knowledge.deleteFailed', { msg: (e as Error).message }))
   }
 }
 
@@ -407,7 +268,7 @@ function openFile(file: { path: string; name: string }) {
   router.push('/editor')
 }
 
-async function createNewDoc(folderPath = selectedFolder.value) {
+async function createNewDoc() {
   if (!currentWorkspace.value) {
     router.push('/')
     return
@@ -416,12 +277,9 @@ async function createNewDoc(folderPath = selectedFolder.value) {
   if (!name) return
   try {
     const cleanName = name.trim()
-    const relativePath = folderPath && !cleanName.includes('/')
-      ? `${folderPath}/${cleanName}`
-      : cleanName
     const node = await FileService.CreateFile(
       currentWorkspace.value.path,
-      relativePath,
+      cleanName,
       `# ${cleanName.replace(/\.(md|markdown)$/i, '')}\n\n`,
     )
     if (node) {
@@ -440,29 +298,6 @@ async function createNewDoc(folderPath = selectedFolder.value) {
 
 function handleCreateNewDoc() {
   void createNewDoc()
-}
-
-async function createFolder() {
-  if (!currentWorkspace.value) {
-    router.push('/')
-    return
-  }
-  const name = await promptDialog({ message: t('knowledge.promptFolderName'), defaultValue: t('knowledge.untitledFolder') })
-  if (!name?.trim()) return
-  const folderName = name.trim()
-  const relativePath = selectedFolder.value ? `${selectedFolder.value}/${folderName}` : folderName
-  try {
-    await FileService.CreateFolder(currentWorkspace.value.path, relativePath)
-    expandedFolders.value[relativePath] = true
-    selectedFolder.value = relativePath
-    workspaceStore.incrementFileTreeVersion()
-  } catch (e) {
-    if ((e as Error).message?.includes('exist')) {
-      toast.warning(t('knowledge.folderExists'))
-    } else {
-      toast.error(t('knowledge.createFolderFailed', { msg: (e as Error).message }))
-    }
-  }
 }
 
 // 导出整个工作区为 zip（Markdown 打包）
@@ -503,49 +338,9 @@ async function exportWorkspace() {
   }
 }
 
-/** 创建今日日记（Obsidian 风格：文件名格式 "Daily/2026-08-26.md"）。
- * P2-2：若工作区提供 Templates/Daily.md 则优先用模板渲染（可使用 {{date}} 等占位符），
- * 没有模板时回退到内置默认结构。 */
-async function createDailyNote() {
-  if (!currentWorkspace.value) {
-    router.push('/')
-    return
-  }
-  const now = new Date()
-  const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  const fileName = `Daily/${dateStr}.md`
-  try {
-    let node: unknown
-    try {
-      node = await TemplateService.CreateFromTemplate(
-        currentWorkspace.value.path,
-        'Daily',
-        fileName,
-        {},
-      )
-    } catch {
-      // 无 Daily 模板 → 内置默认结构
-      node = await FileService.CreateFile(
-        currentWorkspace.value.path,
-        fileName,
-        `# ${dateStr}\n\n## 📅 今日计划\n\n- [ ] \n\n## 📝 笔记\n\n## 💭 想法\n\n`,
-      )
-    }
-    if (node) {
-      workspaceStore.incrementFileTreeVersion()
-      workspaceStore.openFile((node as any).path)
-      router.push('/editor')
-    }
-  } catch (e) {
-    if ((e as Error).message?.includes('exist')) {
-      // 文件已存在，直接打开
-      workspaceStore.openFile(fileName)
-      router.push('/editor')
-    } else {
-      console.error('Failed to create daily note:', e)
-      toast.error(t('knowledge.dailyFailed', { msg: (e as Error).message }))
-    }
-  }
+/** 创建今日日记：实现已抽到 composables/useDailyNote.ts（侧栏「今日日记」直达共用） */
+function createDailyNote() {
+  void openTodayNote()
 }
 
 /** P2-2：模板创建成功后打开新笔记 */
@@ -635,22 +430,8 @@ watch(() => workspaceStore.fileTreeVersion, () => {
           class="kv-btn-primary"
           @click="handleCreateNewDoc"
         >
-          <FolderPlus
-            v-if="selectedFolder"
-            :size="14"
-          />
-          <FilePlus
-            v-else
-            :size="14"
-          />
-          <span>{{ selectedFolder ? t('knowledge.newDocInFolder') : t('knowledge.newDoc') }}</span>
-        </button>
-        <button
-          class="kv-btn-secondary"
-          @click="createDailyNote"
-        >
-          <Calendar :size="14" />
-          <span>{{ t('knowledge.dailyNote') }}</span>
+          <FilePlus :size="14" />
+          <span>{{ t('knowledge.newDoc') }}</span>
         </button>
         <button
           class="kv-btn-secondary"
@@ -714,78 +495,56 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       </button>
     </section>
 
-    <!-- 双列内容区 -->
-    <div class="kv-grid">
-      <!-- 主区：文档列表 -->
-      <KnowledgeFileBrowser
-        :filtered-files="filteredFiles"
-        :grouped-files="groupedFiles"
-        :folder-document-counts="folderDocumentCounts"
-        :visible-folder-entries="visibleFolderEntries"
-        :selected-folder="selectedFolder"
-        :selected-folder-label="selectedFolderLabel"
-        :expanded-folders="expandedFolders"
-        :is-loading="isLoading"
-        :search-keyword="searchKeyword"
-        :show-only-starred="showOnlyStarred"
-        :is-starred="isStarred"
-        :format-relative-time="formatRelativeTime"
-        @update:search-keyword="searchKeyword = $event"
-        @update:show-only-starred="showOnlyStarred = $event"
-        @update:sort-by="sortBy = $event as any"
-        @select-folder="selectFolder"
-        @toggle-folder="toggleFolder"
-        @open-file="openFile"
-        @delete-file="handleDeleteDoc"
-        @toggle-star="toggleStar"
-        @create-new="handleCreateNewDoc"
-        @create-folder="createFolder"
-      />
-
-      <!-- 右列：工作台出口 -->
-      <aside class="kv-side">
-        <!-- 快速入口 launchpad -->
-        <div class="kv-card">
-          <div class="kv-card-header">
-            <h3>
-              <Sparkles :size="14" />
-              <span>{{ t('knowledge.workbench.launchpad') }}</span>
-            </h3>
-          </div>
-          <div class="kv-launch-grid">
-            <button
-              class="kv-launch-btn"
-              data-testid="launch-search"
-              @click="router.push('/discover')"
-            >
-              <Search :size="16" />
-              <span>{{ t('knowledge.workbench.launch.search') }}</span>
-            </button>
-            <button
-              class="kv-launch-btn"
-              @click="router.push('/discover?tab=views&view=graph')"
-            >
-              <GitGraph :size="16" />
-              <span>{{ t('knowledge.workbench.launch.graph') }}</span>
-            </button>
-            <button
-              class="kv-launch-btn"
-              @click="router.push('/canvas')"
-            >
-              <Square :size="16" />
-              <span>{{ t('knowledge.workbench.launch.canvas') }}</span>
-            </button>
-            <button
-              class="kv-launch-btn"
-              @click="createDailyNote"
-            >
-              <Calendar :size="16" />
-              <span>{{ t('knowledge.workbench.launch.daily') }}</span>
-            </button>
-          </div>
+    <!-- 下区：最近活跃编辑 + 星标收藏 / 标签速览（UI-WORKBENCH-REDESIGN 4.2-4） -->
+    <div class="kv-lower">
+      <!-- 最近活跃编辑：全库按修改时间 top 8 -->
+      <div
+        class="kv-card"
+        data-testid="recent-notes"
+      >
+        <div class="kv-card-header">
+          <h3>
+            <History :size="14" />
+            <span>{{ t('knowledge.workbench.recentNotes') }}</span>
+            <span class="kv-space-count">{{ recentNotes.length }}</span>
+          </h3>
         </div>
+        <div
+          v-if="recentNotes.length === 0"
+          class="wb-side-empty"
+        >
+          {{ t('knowledge.workbench.recentNotesEmpty') }}
+        </div>
+        <ul
+          v-else
+          class="wb-side-list"
+        >
+          <li
+            v-for="f in recentNotes"
+            :key="f.path"
+            class="wb-side-item"
+            :title="f.path"
+            @click="openFile(f)"
+          >
+            <FileText :size="13" />
+            <span>{{ f.name.replace(/\.(md|markdown)$/, '') }}</span>
+            <span class="kv-recent-time">{{ formatRelativeTime(f.modTime) }}</span>
+            <button
+              class="kv-star-btn"
+              :title="t('knowledge.workbench.starred')"
+              @click.stop="toggleStar(f.path)"
+            >
+              <Star
+                :size="13"
+                :class="{ starred: isStarred(f.path) }"
+              />
+            </button>
+          </li>
+        </ul>
+      </div>
 
-        <!-- 星标文档 -->
+      <!-- 右列：星标速览 + 标签速览 -->
+      <div class="kv-lower-side">
         <div class="kv-card">
           <div class="kv-card-header">
             <h3>
@@ -816,7 +575,6 @@ watch(() => workspaceStore.fileTreeVersion, () => {
           </ul>
         </div>
 
-        <!-- 标签速览 -->
         <div class="kv-card">
           <div class="kv-card-header">
             <h3>
@@ -844,40 +602,8 @@ watch(() => workspaceStore.fileTreeVersion, () => {
             </button>
           </div>
         </div>
-      </aside>
+      </div>
     </div>
-
-    <!-- 低频出口：细线文字链接（Codex 式，低频功能不占视觉主体） -->
-    <footer class="kv-footer-links">
-      <button
-        class="kv-footer-link"
-        @click="router.push('/archive')"
-      >
-        <Archive :size="13" />
-        <span>{{ t('knowledge.archive') }}</span>
-      </button>
-      <button
-        class="kv-footer-link"
-        @click="router.push('/trash')"
-      >
-        <Trash2 :size="13" />
-        <span>{{ t('knowledge.trash') }}</span>
-      </button>
-      <button
-        class="kv-footer-link"
-        @click="router.push('/plugins')"
-      >
-        <Puzzle :size="13" />
-        <span>{{ t('knowledge.plugins') }}</span>
-      </button>
-      <button
-        class="kv-footer-link"
-        @click="router.push('/import')"
-      >
-        <Upload :size="13" />
-        <span>{{ t('knowledge.import') }}</span>
-      </button>
-    </footer>
 
     <!-- P2-2：从模板新建 -->
     <TemplateCreateDialog
@@ -1042,13 +768,12 @@ watch(() => workspaceStore.fileTreeVersion, () => {
 }
 
 /* 主内容：文档主体 + 右列工作台出口 */
-.kv-grid {
+/* 下区：最近活跃编辑 + 星标/标签（UI-WORKBENCH-REDESIGN 4.2-4） */
+.kv-lower {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 240px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 1fr);
   gap: var(--space-4);
   padding: var(--space-4) var(--space-8);
-  flex: 1;
-  min-height: 0;
 }
 
 /* 知识空间卡片 */
@@ -1156,38 +881,6 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   vertical-align: middle;
 }
 
-/* 右列：工作台出口 */
-.kv-side {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  min-height: 0;
-  overflow-y: auto;
-}
-.kv-launch-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-2);
-}
-.kv-launch-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: var(--space-3) var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
-}
-.kv-launch-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: var(--border-accent, var(--accent));
-}
 .wb-side-list {
   list-style: none;
   margin: 0;
@@ -1245,27 +938,36 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   color: var(--text-muted);
 }
 
-/* 低频出口链接 */
-.kv-footer-links {
-  display: flex;
-  gap: var(--space-5);
-  padding: 0 var(--space-8) var(--space-4);
+/* 下区布局细节：最近编辑时间戳与星标切换 */
+.kv-recent-time {
+  margin-left: auto;
   flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
-.kv-footer-link {
+.kv-lower-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+}
+.kv-star-btn {
   display: flex;
   align-items: center;
-  gap: 5px;
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: var(--text-xs);
   cursor: pointer;
-  padding: 4px 2px;
+  padding: 2px;
+  flex-shrink: 0;
   transition: color var(--transition-fast);
 }
-.kv-footer-link:hover {
-  color: var(--text-primary);
+.kv-star-btn:hover {
+  color: var(--warning, #e5a50a);
+}
+.kv-star-btn .starred {
+  color: var(--warning, #e5a50a);
+  fill: var(--warning, #e5a50a);
 }
 
 .kv-section {
@@ -1512,204 +1214,6 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   flex-shrink: 0;
   color: var(--text-muted);
   font-size: 10px;
-}
-
-.kv-document-pane {
-  min-width: 0;
-  overflow-y: auto;
-}
-
-.kv-document-context {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-4);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-}
-
-.kv-document-context > div {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.kv-document-context strong {
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.kv-context-new {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  padding: 5px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-}
-
-.kv-context-new:hover {
-  border-color: var(--border-accent);
-  color: var(--accent);
-  background: var(--bg-hover);
-}
-
-.kv-doc-group {
-  border-bottom: 1px solid var(--border);
-}
-
-.kv-doc-group:last-child {
-  border-bottom: 0;
-}
-
-.kv-doc-group-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: var(--space-2) var(--space-4) var(--space-1);
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  text-align: left;
-}
-
-.kv-doc-group-header:hover {
-  color: var(--accent);
-}
-
-/* 文档列表 */
-.kv-doc-list {
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-2);
-  overflow-y: auto;
-}
-
-.kv-doc-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.kv-doc-item:hover {
-  background: var(--bg-hover);
-}
-
-.kv-doc-icon {
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.kv-doc-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.kv-doc-title {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.kv-doc-meta {
-  display: flex;
-  gap: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-.kv-doc-path {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
-
-.kv-doc-delete {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  opacity: 0;
-  flex-shrink: 0;
-  transition: opacity var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
-}
-.kv-doc-item:hover .kv-doc-delete {
-  opacity: 1;
-}
-.kv-doc-delete:hover {
-  color: var(--error, #ef4444);
-  background: var(--bg-hover);
-}
-.kv-doc-star {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  transition: all var(--transition-fast);
-  opacity: 0;
-}
-
-.kv-doc-item:hover .kv-doc-star {
-  opacity: 1;
-}
-
-.kv-doc-star.active {
-  color: #eab308;
-  opacity: 1;
-}
-
-.kv-doc-star:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.kv-doc-arrow {
-  color: var(--text-muted);
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-}
-
-.kv-doc-item:hover .kv-doc-arrow {
-  opacity: 1;
-}
-
-/* 侧栏卡片 */
-.kv-section-side {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  background: transparent;
-  border: none;
-  padding: 0;
 }
 
 .kv-card {
