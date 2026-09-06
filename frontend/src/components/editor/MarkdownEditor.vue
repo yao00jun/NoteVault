@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isImeComposing } from '@/utils/ime'
 // ============================================================================
 // MarkdownEditor —— CodeMirror 6 编辑器核心。
 //
@@ -235,6 +236,7 @@ function applyBrushAuto() {
 }
 
 function onEditorKeydown(e: KeyboardEvent) {
+  if (isImeComposing(e)) return
   if (e.key === 'Escape' && brushActive.value) {
     brushActive.value = false
     brushTip.value = t('toolbar.brushOff')

@@ -12,8 +12,9 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { usePluginRuntimeStore } from '@/stores/pluginRuntime'
 import { useReminderNotifications } from '@/composables/useReminderNotifications'
-import { WorkspaceService } from '@bindings/github.com/notevault/notevault/index.js'
+import { WorkspaceService } from '@/api'
 import { applyInlineFormat, getActiveEditor } from '@/plugins/editorBridge'
+import { isImeComposing } from '@/utils/ime'
 
 const workspaceStore = useWorkspaceStore()
 const pluginRuntimeStore = usePluginRuntimeStore()
@@ -32,6 +33,8 @@ useReminderNotifications(() => workspaceStore.currentWorkspace?.path)
 
 // 全局快捷键
 function handleGlobalKeydown(e: KeyboardEvent) {
+  // IME 守卫：合成态按键一律放行原生输入行为（蓝图专项 2）
+  if (isImeComposing(e)) return
   // Ctrl+P：打开命令面板（搜索 + 命令的入口）
   if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p') {
     e.preventDefault()

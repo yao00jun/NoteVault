@@ -19,7 +19,7 @@ import {
   ReminderService,
   FileService,
   TemplateService,
-} from '@bindings/github.com/notevault/notevault/index.js'
+} from '@/api'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useToast } from '@/composables/useToast'
 import { promptDialog } from '@/composables/usePrompt'

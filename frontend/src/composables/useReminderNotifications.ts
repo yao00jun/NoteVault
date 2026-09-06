@@ -1,5 +1,5 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { ReminderService } from '@bindings/github.com/notevault/notevault/index.js'
+import { ReminderService } from '@/api'
 import { useSettingsStore } from '@/stores/settings'
 
 interface Reminder {

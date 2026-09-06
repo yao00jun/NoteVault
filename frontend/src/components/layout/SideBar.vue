@@ -34,7 +34,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { FileService, WorkspaceService } from '@bindings/github.com/notevault/notevault/index.js'
+import { FileService, WorkspaceService } from '@/api'
 import { useToast } from '@/composables/useToast'
 import { promptDialog } from '@/composables/usePrompt'
 

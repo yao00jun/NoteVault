@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isImeComposing } from '@/utils/ime'
 import { computed, ref } from 'vue'
 import { Tag, Plus, X } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
@@ -21,6 +22,11 @@ const normalizedTags = computed(() => props.tags)
 
 function removeTag(tag: string) {
   emit('update:tags', normalizedTags.value.filter((item) => item !== tag))
+}
+
+function onTagEnter(e: KeyboardEvent) {
+  if (isImeComposing(e)) return
+  commitInput()
 }
 
 function commitInput() {
@@ -91,7 +97,7 @@ function showInput() {
         type="text"
         :placeholder="t('editor.properties.tagPlaceholder')"
         autofocus
-        @keydown.enter.prevent="commitInput"
+        @keydown.enter="onTagEnter" 
         @keydown.esc="inputVisible = false"
         @blur="commitInput"
       >

@@ -70,7 +70,7 @@
                 type="text"
                 class="tcd-input"
                 :placeholder="name"
-                @keyup.enter="doCreate"
+                @keyup.enter="onEnterCreate"
               >
             </div>
           </div>
@@ -81,7 +81,7 @@
               v-model="targetPath"
               type="text"
               class="tcd-input tcd-target"
-              @keyup.enter="doCreate"
+              @keyup.enter="onEnterCreate"
             >
           </div>
 
@@ -124,12 +124,12 @@
 </template>
 
 <script setup lang="ts">
+import { TemplateService, TemplateInfo } from '@/api'
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { isImeComposing } from '@/utils/ime'
 import { FileText, Loader2 } from '@lucide/vue'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { TemplateService } from '@bindings/github.com/notevault/notevault/index.js'
-import type { TemplateInfo } from '@bindings/github.com/notevault/notevault/models.js'
 
 const emit = defineEmits<{
   close: []
@@ -197,6 +197,12 @@ onMounted(async () => {
 function onTemplateChange(): void {
   syncSelection()
   errorMsg.value = ''
+}
+
+function onEnterCreate(e: KeyboardEvent) {
+  // IME 守卫：合成态 Enter 是确认候选字
+  if (isImeComposing(e)) return
+  void doCreate()
 }
 
 async function doCreate(): Promise<void> {

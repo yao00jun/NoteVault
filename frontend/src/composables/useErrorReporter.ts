@@ -1,6 +1,6 @@
 import type { App } from 'vue'
-import { ErrorMonitor as ErrorMonitorService } from '@bindings/github.com/notevault/notevault/index.js'
-import type { ErrorReport } from '@bindings/github.com/notevault/notevault/models.js'
+import { ErrorMonitor as ErrorMonitorService } from '@/api'
+import type { ErrorReport } from '@/api'
 
 let installGuard = false
 let reportQueue: ErrorReport[] = []

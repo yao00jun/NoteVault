@@ -7,7 +7,7 @@ import { nextTick } from 'vue'
 import { i18n } from '@/i18n'
 
 // 模拟 wails bindings — SideBar 依赖 WorkspaceService 和 FileService
-vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+vi.mock('@/api', () => ({
   FileService: { CreateFile: vi.fn() },
   WorkspaceService: {
     ListWorkspaces: vi.fn().mockResolvedValue([]),

@@ -331,6 +331,7 @@
 </template>
 
 <script setup lang="ts">
+import { AppService, GitService, ImportService, ImportResult, GitStatus } from '@/api'
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -347,8 +348,6 @@ import {
   ArrowLeft,
 } from '@lucide/vue'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { AppService, GitService, ImportService } from '@bindings/github.com/notevault/notevault/index.js'
-import type { ImportResult, GitStatus } from '@bindings/github.com/notevault/notevault/models.js'
 
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()

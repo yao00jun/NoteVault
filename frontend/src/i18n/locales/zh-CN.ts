@@ -708,6 +708,17 @@ export default {
     loadFailed: '加载图谱失败：{msg}',
   },
   editor: {
+    conflict: {
+      banner: '⚠️ 「{name}」在外部被修改（如 Git 同步），本地有未保存草稿。请选择处理方式：',
+      reload: '放弃草稿并重载',
+      saveCopy: '保留草稿并另存副本',
+      viewDiff: '查看对比',
+      diffTitle: '冲突对比：{path}',
+      legendDisk: '磁盘内容（将被覆盖）',
+      legendDraft: '本地草稿（当前编辑器）',
+      copySaved: '草稿已另存为「{path}」',
+    },
+
     dropHint: '松开以打开 Markdown 文件',
     properties: {
       tags: '标签',

@@ -6,6 +6,7 @@
  */
 import { ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { isImeComposing } from '@/utils/ime'
 import { usePrompt } from '@/composables/usePrompt'
 
 const { t } = useI18n()
@@ -31,6 +32,8 @@ watch(
 )
 
 function handleGlobalKeydown(e: KeyboardEvent) {
+  // IME 守卫：合成态 Enter/ESC 是输入法行为，不是对话框指令
+  if (isImeComposing(e)) return
   if (e.key === 'Escape') {
     e.preventDefault()
     dismiss()

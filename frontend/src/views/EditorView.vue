@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Events } from '@wailsio/runtime'
+import { diffLines, type DiffRow } from '@/utils/textDiff'
 import EditorTabBar from '@/components/editor/EditorTabBar.vue'
 import EditorBacklinks from '@/components/editor/EditorBacklinks.vue'
 import EditorContextDrawer from '@/components/editor/EditorContextDrawer.vue'
@@ -17,7 +19,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
-import { FileService, WorkspaceService, SearchService, TagService, ArchiveService, TrashService, SummarizeService, ExportService, CompileService } from '@bindings/github.com/notevault/notevault/index.js'
+import { FileService, WorkspaceService, SearchService, TagService, ArchiveService, TrashService, SummarizeService, ExportService, CompileService } from '@/api'
 import { arrayBufferToBase64, generateMarkdownImage } from '@/utils/image'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
@@ -594,6 +596,95 @@ function openDrawerPath(path: string) {
   workspaceStore.incrementFileTreeVersion()
 }
 
+// ---- 外部修改冲突保护（蓝图专项 1）----
+// Git/Syncthing 拉取远端改动时 fsnotify 推 file-change：
+//  - 打开的 Tab 无草稿 → 静默重载磁盘内容；
+//  - 有未保存草稿 → 绝不自动覆盖，弹黄色冲突横幅供三选一。
+const conflictedPaths = ref<Set<string>>(new Set())
+const diffModal = ref<{ path: string; rows: DiffRow[] } | null>(null)
+let stopFileChangeSub: (() => void) | null = null
+
+function onExternalFileChange(payload: { type?: string; path?: string } | null) {
+  if (!payload?.path || payload.type !== 'modify') return
+  const rel = payload.path
+  const idx = findTabIndex(rel)
+  if (idx < 0) return
+  const tab = tabs.value[idx]!
+  if (rel === tabs.value[activeTabIndex.value]?.path && !tab.isDirty) {
+    // 无草稿：静默重载
+    void reloadTabFromDisk(idx)
+    return
+  }
+  if (tab.isDirty) {
+    const next = new Set(conflictedPaths.value)
+    next.add(rel)
+    conflictedPaths.value = next
+  }
+}
+
+async function reloadTabFromDisk(idx: number) {
+  const tab = tabs.value[idx]
+  if (!tab || !currentWorkspace.value) return
+  try {
+    tab.content = await FileService.ReadFile(currentWorkspace.value.path, tab.path)
+    tab.isDirty = false
+    clearConflict(tab.path)
+  } catch (e) {
+    console.error('[conflict] reload failed:', e)
+  }
+}
+
+function clearConflict(path: string) {
+  const next = new Set(conflictedPaths.value)
+  next.delete(path)
+  conflictedPaths.value = next
+}
+
+const activeConflictPath = computed(() => {
+  const active = tabs.value[activeTabIndex.value]?.path
+  if (active && conflictedPaths.value.has(active)) return active
+  for (const p of conflictedPaths.value) {
+    if (findTabIndex(p) >= 0) return p
+  }
+  return null
+})
+
+function abandonDraftAndReload(path: string) {
+  const idx = findTabIndex(path)
+  if (idx >= 0) void reloadTabFromDisk(idx)
+}
+
+// 保留本地草稿，另存副本（副本落在原目录，天然可检索）
+async function saveDraftAsCopy(path: string) {
+  const idx = findTabIndex(path)
+  const tab = tabs.value[idx]
+  if (!tab || !currentWorkspace.value) return
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  const ext = path.toLowerCase().endsWith('.markdown') ? '.markdown' : '.md'
+  const base = path.slice(0, path.length - ext.length)
+  const copyRel = `${base}.冲突副本-${ts}${ext}`
+  try {
+    await FileService.SaveFile(currentWorkspace.value.path, copyRel, tab.content)
+    clearConflict(path)
+    toast.success(t('editor.conflict.copySaved', { path: copyRel }))
+  } catch (e) {
+    toast.error((e as Error).message)
+  }
+}
+
+// 查看对比：磁盘内容 vs 本地草稿
+async function openConflictDiff(path: string) {
+  if (!currentWorkspace.value) return
+  try {
+    const disk = await FileService.ReadFile(currentWorkspace.value.path, path)
+    const idx = findTabIndex(path)
+    const draft = tabs.value[idx]?.content ?? ''
+    diffModal.value = { path, rows: diffLines(disk, draft) }
+  } catch (e) {
+    toast.error((e as Error).message)
+  }
+}
+
 async function loadBacklinks() {
   if (!currentWorkspace.value || !activeTab.value) {
     backlinks.value = []
@@ -911,6 +1002,7 @@ function flushDirtyTab() {
 }
 onDeactivated(flushDirtyTab)
 onBeforeUnmount(() => {
+  stopFileChangeSub?.()
   if (saveTimer) {
     clearTimeout(saveTimer)
     saveTimer = null
@@ -943,6 +1035,14 @@ watch(() => route.query.file, (val) => {
 })
 
 onMounted(async () => {
+  // 外部修改冲突保护：订阅后端 fsnotify 推送（蓝图专项 1）
+  try {
+    stopFileChangeSub = Events.On('workspace:file-changed', (ev: { data?: { path?: string; type?: string } }) => {
+      onExternalFileChange(ev?.data ?? null)
+    })
+  } catch (e) {
+    console.warn('[conflict] failed to subscribe file-change:', e)
+  }
   if (!currentWorkspace.value) {
     try {
       const ws = await WorkspaceService.GetCurrentWorkspace()
@@ -1011,6 +1111,40 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       @back="router.push('/knowledge')"
       @toggle-drawer="drawerOpen = !drawerOpen"
     />
+
+    <!-- 外部修改冲突横幅（蓝图专项 1）：有未保存草稿时禁止自动覆盖 -->
+    <div
+      v-if="activeConflictPath"
+      class="conflict-banner"
+      data-testid="conflict-banner"
+    >
+      <span class="conflict-text">
+        ⚠️ {{ t('editor.conflict.banner', { name: activeConflictPath }) }}
+      </span>
+      <div class="conflict-actions">
+        <button
+          class="conflict-btn"
+          data-testid="conflict-reload"
+          @click="abandonDraftAndReload(activeConflictPath)"
+        >
+          {{ t('editor.conflict.reload') }}
+        </button>
+        <button
+          class="conflict-btn"
+          data-testid="conflict-copy"
+          @click="saveDraftAsCopy(activeConflictPath)"
+        >
+          {{ t('editor.conflict.saveCopy') }}
+        </button>
+        <button
+          class="conflict-btn"
+          data-testid="conflict-diff"
+          @click="openConflictDiff(activeConflictPath)"
+        >
+          {{ t('editor.conflict.viewDiff') }}
+        </button>
+      </div>
+    </div>
 
     <!-- 编辑器主区域 -->
     <div class="editor-main">
@@ -1123,6 +1257,43 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       />
     </div>
   </div>
+    <!-- 冲突对比弹窗 -->
+    <div
+      v-if="diffModal"
+      class="conflict-diff-mask"
+      @click.self="diffModal = null"
+    >
+      <div
+        class="conflict-diff-modal"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div class="diff-header">
+          <span class="diff-title">{{ t('editor.conflict.diffTitle', { path: diffModal.path }) }}</span>
+          <button
+            class="diff-close"
+            @click="diffModal = null"
+          >
+            ✕
+          </button>
+        </div>
+        <div class="diff-legend">
+          <span class="legend-removed">{{ t('editor.conflict.legendDisk') }}</span>
+          <span class="legend-added">{{ t('editor.conflict.legendDraft') }}</span>
+        </div>
+        <div class="diff-body">
+          <div
+            v-for="(row, i) in diffModal.rows"
+            :key="i"
+            class="diff-row"
+            :class="row.type"
+          >
+            <span class="diff-sign">{{ row.type === 'removed' ? '-' : row.type === 'added' ? '+' : ' ' }}</span>
+            <span class="diff-text">{{ row.text || ' ' }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
 </template>
 
 <style scoped>
@@ -1278,4 +1449,124 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   margin: 0;
 }
 
+
+/* 外部修改冲突横幅（蓝图专项 1） */
+.conflict-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: rgba(245, 158, 11, 0.14);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.5);
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+.conflict-text {
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conflict-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+.conflict-btn {
+  padding: 4px 12px;
+  border: 1px solid rgba(245, 158, 11, 0.6);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.conflict-btn:hover {
+  background: rgba(245, 158, 11, 0.22);
+}
+
+/* 冲突对比弹窗 */
+.conflict-diff-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+.conflict-diff-modal {
+  width: min(860px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-window, #1e1f22);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.diff-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.diff-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.diff-close {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+.diff-legend {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+.legend-removed::before { content: '- '; color: #ef4444; }
+.legend-added::before { content: '+ '; color: #22c55e; }
+.diff-body {
+  flex: 1;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.diff-row {
+  display: flex;
+  gap: var(--space-2);
+  padding: 1px var(--space-3);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.diff-row.removed {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+}
+.diff-row.added {
+  background: rgba(34, 197, 94, 0.12);
+  color: #86efac;
+}
+.diff-sign {
+  width: 14px;
+  flex-shrink: 0;
+  text-align: center;
+  opacity: 0.7;
+}
+.diff-text {
+  flex: 1;
+}
 </style>

@@ -9,6 +9,7 @@
  *  - 知识脉络：双向链接、标签云、待办摘要
  *  - 文档网格：所有文档的卡片视图（支持搜索、筛选、排序）
  */
+import { FileService, WorkspaceService, StatsService, TodoService, TagService, ReminderService, ExportService, TemplateService, TrashService, TodoItem, TagInfo } from '@/api'
 import { ref, computed, onMounted, watch } from 'vue'
 import {
   Library,
@@ -46,20 +47,9 @@ import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useI18n } from 'vue-i18n'
-import {
-  FileService,
-  WorkspaceService,
-  StatsService,
-  TodoService,
-  TagService,
-  ReminderService,
-  ExportService,
-  TemplateService,
-  TrashService,
-} from '@bindings/github.com/notevault/notevault/index.js'
-import type { TodoItem, TagInfo } from '@bindings/github.com/notevault/notevault/models.js'
 import { useToast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirm'
+import { isImeComposing } from '@/utils/ime'
 import { promptDialog } from '@/composables/usePrompt'
 
 const toast = useToast()
@@ -95,6 +85,12 @@ const todayLabel = computed(() => {
 // 快速捕获：一行输入回车即建笔记（认知负荷原则——记想法不需要离开工作台）
 const captureText = ref('')
 const capturing = ref(false)
+function onCaptureEnter(e: KeyboardEvent) {
+  // IME 守卫：拼音合成态的 Enter 是确认候选字，不建笔记
+  if (isImeComposing(e)) return
+  void quickCapture()
+}
+
 async function quickCapture() {
   const text = captureText.value.trim()
   if (!text || capturing.value) return
@@ -660,7 +656,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
           :placeholder="t('knowledge.workbench.capturePlaceholder')"
           :disabled="!currentWorkspace"
           data-testid="quick-capture"
-          @keyup.enter="quickCapture"
+          @keyup.enter="onCaptureEnter"
         >
       </div>
       <div class="kv-banner-actions">

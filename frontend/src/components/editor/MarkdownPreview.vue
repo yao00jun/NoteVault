@@ -4,7 +4,7 @@ import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
-import { FileService } from '@bindings/github.com/notevault/notevault/index.js'
+import { FileService } from '@/api'
 
 const props = defineProps<{
   content: string

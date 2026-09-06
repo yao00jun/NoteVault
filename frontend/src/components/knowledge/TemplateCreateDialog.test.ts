@@ -4,7 +4,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { i18n } from '@/i18n'
 
-vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+vi.mock('@/api', () => ({
   TemplateService: {
     ListTemplates: vi.fn(async () => []),
     GetTemplateContent: vi.fn(async () => ''),
@@ -14,7 +14,7 @@ vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
 
 import TemplateCreateDialog from './TemplateCreateDialog.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { TemplateService } from '@bindings/github.com/notevault/notevault/index.js'
+import { TemplateService } from '@/api'
 
 const mockedList = vi.mocked(TemplateService.ListTemplates)
 const mockedCreate = vi.mocked(TemplateService.CreateFromTemplate)

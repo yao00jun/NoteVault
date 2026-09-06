@@ -8,7 +8,7 @@ import { useSettingsStore } from './settings'
 const saveCredential = vi.fn(async (..._args: unknown[]) => undefined)
 const getCredential = vi.fn(async (..._args: unknown[]) => '')
 
-vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+vi.mock('@/api', () => ({
   CredentialService: {
     SaveCredential: (...args: unknown[]) => saveCredential(...args),
     GetCredential: (...args: unknown[]) => getCredential(...args),

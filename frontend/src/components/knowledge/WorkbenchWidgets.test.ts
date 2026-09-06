@@ -10,7 +10,7 @@ const mocked = {
   reminders: vi.fn(),
 }
 
-vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+vi.mock('@/api', () => ({
   StatsService: { GetTodayStats: (...a: unknown[]) => mocked.stats(...a) },
   TodoService: {
     GetAllTodos: (...a: unknown[]) => mocked.todos(...a),

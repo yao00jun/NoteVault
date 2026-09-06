@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+vi.mock('@/api', () => ({
   GraphService: {
     GetLinkCandidates: vi.fn(),
   },
 }))
 
 import { createWikiLinkCompletionSource } from './wikiLinkAutocomplete'
-import { GraphService } from '@bindings/github.com/notevault/notevault/index.js'
+import { GraphService } from '@/api'
 
 // 最小 CompletionContext：仅实现 matchBefore，按光标前文本匹配并锚定到光标。
 function makeContext(doc: string, pos: number, explicit = false): any {

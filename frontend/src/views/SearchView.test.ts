@@ -5,7 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 
-vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+vi.mock('@/api', () => ({
   WorkspaceService: {
     GetCurrentWorkspace: vi.fn(),
   },
@@ -27,7 +27,7 @@ vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
 
 import SearchView from './SearchView.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { WorkspaceService, SearchService, QnAService } from '@bindings/github.com/notevault/notevault/index.js'
+import { WorkspaceService, SearchService, QnAService } from '@/api'
 
 const mockedGetCurrentWorkspace = vi.mocked(WorkspaceService.GetCurrentWorkspace)
 const mockedSearch = vi.mocked(SearchService.Search)

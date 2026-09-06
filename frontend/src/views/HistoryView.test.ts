@@ -10,7 +10,7 @@ vi.mock('@/composables/useConfirm', () => ({
   confirmDialog: (...args: unknown[]) => confirmDialogMock(...args),
 }))
 
-vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+vi.mock('@/api', () => ({
   SnapshotService: {
     ListSnapshotFiles: vi.fn(),
     ListSnapshots: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
 
 import HistoryView from './HistoryView.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { SnapshotService } from '@bindings/github.com/notevault/notevault/index.js'
+import { SnapshotService } from '@/api'
 
 const mocked = {
   listFiles: vi.mocked(SnapshotService.ListSnapshotFiles),

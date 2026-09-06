@@ -1,5 +1,5 @@
 import { type CompletionContext, type CompletionResult } from '@codemirror/autocomplete'
-import { GraphService } from '@bindings/github.com/notevault/notevault/index.js'
+import { GraphService } from '@/api'
 
 /**
  * 构造 [[ 自动补全源。

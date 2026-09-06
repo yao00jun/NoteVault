@@ -5,7 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 
-vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+vi.mock('@/api', () => ({
   WorkspaceService: { GetCurrentWorkspace: vi.fn() },
   TodoService: {
     GetAllTodos: vi.fn(async () => sampleTodos),
@@ -15,7 +15,7 @@ vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
 
 import TodosView from './TodosView.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { TodoService } from '@bindings/github.com/notevault/notevault/index.js'
+import { TodoService } from '@/api'
 
 const sampleTodos = [
   { id: '1', filePath: 'a.md', fileName: 'a.md', content: '任务A', lineIndex: 1, completed: false, priority: 'high' },

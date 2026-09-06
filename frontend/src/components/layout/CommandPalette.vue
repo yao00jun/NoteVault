@@ -3,6 +3,7 @@ import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { Search, FileText, Folder, Palette, Settings, Save, X, Columns, ChevronRight, MessageCircle, Upload, Puzzle, History, GitGraph, Table2, Square, BarChart3, Sparkles, Home } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { isImeComposing } from '@/utils/ime'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { usePluginRuntimeStore } from '@/stores/pluginRuntime'
@@ -276,6 +277,8 @@ function handleKeydown(e: KeyboardEvent) {
     e.preventDefault()
     selectedIndex.value = Math.max(selectedIndex.value - 1, 0)
   } else if (e.key === 'Enter') {
+    // IME 守卫：拼音合成态的 Enter 是「确认候选字」，不是执行命令
+    if (isImeComposing(e)) return
     e.preventDefault()
     selectCommand(selectedIndex.value)
   }

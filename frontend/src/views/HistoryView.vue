@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { SnapshotService, Snapshot, SnapshotDiff, SnapshotFileSummary, SnapshotStats } from '@/api'
 import { ref, computed, onMounted, watch } from 'vue'
 import {
   History,
@@ -14,13 +15,6 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { confirmDialog } from '@/composables/useConfirm'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { SnapshotService } from '@bindings/github.com/notevault/notevault/index.js'
-import type {
-  Snapshot,
-  SnapshotDiff,
-  SnapshotFileSummary,
-  SnapshotStats,
-} from '@bindings/github.com/notevault/notevault/models.js'
 
 type CompareMode = 'current' | 'previous'
 

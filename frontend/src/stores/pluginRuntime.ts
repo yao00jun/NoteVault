@@ -1,15 +1,7 @@
 import { defineStore } from 'pinia'
+import { FileService, GraphService, PluginService, SearchService, TagService, TodoService, FileNode } from '@/api'
 import { Events } from '@wailsio/runtime'
 import { ref, onScopeDispose } from 'vue'
-import {
-  FileService,
-  GraphService,
-  PluginService,
-  SearchService,
-  TagService,
-  TodoService,
-} from '@bindings/github.com/notevault/notevault/index.js'
-import type { FileNode } from '@bindings/github.com/notevault/notevault/models.js'
 import { PluginRuntimeHost } from '@/plugins/runtime'
 import { createMainThreadTransport } from '@/plugins/mainThreadTransport'
 import { createWorkerSource } from '@/plugins/workerSource'

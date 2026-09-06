@@ -21,6 +21,13 @@ jobs:
         run: go vet ./...
       - name: Go test
         run: go test -count=1 ./...
+      # 绑定漂移门禁（蓝图专项 7）：后端 Service 签名变更后未重新生成
+      # bindings 就提交 → 这里直接阻断
+      - name: Regenerate Wails bindings and detect drift
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.16
+          wails3 generate bindings ./... -f '-tags production -trimpath' -clean=true -ts -i -names
+          git diff --exit-code frontend/bindings/
 
   golangci:
     name: Golangci-lint

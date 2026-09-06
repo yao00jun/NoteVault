@@ -6,6 +6,7 @@
  */
 import { watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { isImeComposing } from '@/utils/ime'
 import { useConfirm } from '@/composables/useConfirm'
 
 const { t } = useI18n()
@@ -13,6 +14,7 @@ const { state, accept, chooseAlt, dismiss } = useConfirm()
 
 // 弹框期间接管 Esc（取消）与 Enter（确认），关闭后移除监听
 function handleKeydown(e: KeyboardEvent) {
+  if (isImeComposing(e)) return
   if (e.key === 'Escape') {
     e.preventDefault()
     dismiss()

@@ -293,6 +293,7 @@
 </template>
 
 <script setup lang="ts">
+import { PluginService, PluginInfo } from '@/api'
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -307,8 +308,6 @@ import {
   Hash as HashIcon,
   ArrowLeft,
 } from '@lucide/vue'
-import { PluginService } from '@bindings/github.com/notevault/notevault/index.js'
-import type { PluginInfo } from '@bindings/github.com/notevault/notevault/models.js'
 import type { PluginSettingItem } from '@/plugins/types'
 import { usePluginRuntimeStore } from '@/stores/pluginRuntime'
 import { useToast } from '@/composables/useToast'

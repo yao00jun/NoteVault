@@ -5,8 +5,8 @@ import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
-import { SearchService, WorkspaceService, QnAService } from '@bindings/github.com/notevault/notevault/index.js'
-import type { RerankProvider } from '@bindings/github.com/notevault/notevault/internal/service/models.js'
+import { SearchService, WorkspaceService, QnAService } from '@/api'
+import type { RerankProvider } from '@/api'
 import { cleanSnippet, highlightText } from '@/utils/text'
 
 interface SearchResult {

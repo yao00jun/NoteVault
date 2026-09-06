@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
-import { CredentialService } from '@bindings/github.com/notevault/notevault/index.js'
+import { CredentialService } from '@/api'
 import type { AppSettings, ThemeType } from '@/types'
 import { VISIBLE_DEFAULT, TOOLBAR_ORDER_DEFAULT } from '@/components/editor/toolbarButtons'
 import { setLocale, type Locale } from '@/i18n'

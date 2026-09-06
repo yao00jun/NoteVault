@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CompileService, CompileResult, CompileAllResult } from '@/api'
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
@@ -17,8 +18,6 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
 import { useToast } from '@/composables/useToast'
-import { CompileService } from '@bindings/github.com/notevault/notevault/index.js'
-import type { CompileResult, CompileAllResult } from '@bindings/github.com/notevault/notevault/models.js'
 
 const router = useRouter()
 const { t } = useI18n()

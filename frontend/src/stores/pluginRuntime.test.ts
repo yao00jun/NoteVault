@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
-vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+vi.mock('@/api', () => ({
   PluginService: {
     ListPlugins: vi.fn(),
   },
@@ -82,7 +82,7 @@ vi.mock('@/plugins/editorBridge', () => ({
   applyTransform: vi.fn(),
 }))
 
-import { FileService, PluginService } from '@bindings/github.com/notevault/notevault/index.js'
+import { FileService, PluginService } from '@/api'
 import { Events } from '@wailsio/runtime'
 import { PluginRuntimeHost } from '@/plugins/runtime'
 import { createWorkerSource } from '@/plugins/workerSource'

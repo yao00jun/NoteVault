@@ -4,7 +4,7 @@ import { GitGraph, RefreshCw, Circle, ZoomIn, ZoomOut, Maximize, AlertTriangle }
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
-import { GraphService } from '@bindings/github.com/notevault/notevault/index.js'
+import { GraphService } from '@/api'
 
 interface GNode {
   id: string

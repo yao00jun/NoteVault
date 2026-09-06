@@ -5,7 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 
-vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+vi.mock('@/api', () => ({
   StatsService: { GetWritingActivity: vi.fn(), GetOnThisDay: vi.fn(async () => []) },
   GraphService: { GetGraph: vi.fn() },
   ReportService: { GenerateWeeklyReport: vi.fn() },
@@ -14,7 +14,7 @@ vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
 }))
 
 import ReportsView from './ReportsView.vue'
-import { StatsService, GraphService, ReportService, ReviewService, ReminderService } from '@bindings/github.com/notevault/notevault/index.js'
+import { StatsService, GraphService, ReportService, ReviewService, ReminderService } from '@/api'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const mockedActivity = vi.mocked(StatsService.GetWritingActivity)

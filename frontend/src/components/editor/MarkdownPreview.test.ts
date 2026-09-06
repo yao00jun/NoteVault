@@ -10,7 +10,7 @@ import { createI18n } from 'vue-i18n'
 // Mock FileService —— MarkdownPreview 在嵌入渲染时会调 ReadFile
 // 同步 mock CredentialService 让 settings store 启动时不报错
 const readFileMock = vi.fn()
-vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+vi.mock('@/api', () => ({
   FileService: {
     ReadFile: (...args: unknown[]) => readFileMock(...args),
   },

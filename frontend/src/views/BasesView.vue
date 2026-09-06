@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { BaseService, WorkspaceService, BaseDef, BaseFilter, BaseFilterGroup, BaseResult, BaseSummary, BaseView, BuiltinTemplate, PropertyMeta } from '@/api'
 import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
 import {
   Table2,
@@ -22,17 +23,6 @@ import { confirmDialog } from '@/composables/useConfirm'
 import { useI18n } from 'vue-i18n'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
-import { BaseService, WorkspaceService } from '@bindings/github.com/notevault/notevault/index.js'
-import type {
-  BaseDef,
-  BaseFilter,
-  BaseFilterGroup,
-  BaseResult,
-  BaseSummary,
-  BaseView,
-  BuiltinTemplate,
-  PropertyMeta,
-} from '@bindings/github.com/notevault/notevault/models.js'
 
 const router = useRouter()
 const { t } = useI18n()

@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
 import { confirmDialog } from '@/composables/useConfirm'
-import { TrashService } from '@bindings/github.com/notevault/notevault/index.js'
+import { TrashService } from '@/api'
 import { useToast } from '@/composables/useToast'
 
 const toast = useToast()

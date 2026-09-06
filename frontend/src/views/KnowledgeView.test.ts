@@ -10,7 +10,7 @@ vi.mock('@/composables/usePrompt', () => ({
   promptDialog: (...args: unknown[]) => promptDialogMock(...args),
 }))
 
-vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+vi.mock('@/api', () => ({
   WorkspaceService: { GetCurrentWorkspace: vi.fn() },
   FileService: {
     GetFileTree: vi.fn(),
@@ -33,7 +33,7 @@ import {
   FileService,
   TagService,
   TodoService,
-} from '@bindings/github.com/notevault/notevault/index.js'
+} from '@/api'
 
 const mockedTree = vi.mocked(FileService.GetFileTree)
 const mockedCreateFile = vi.mocked(FileService.CreateFile)

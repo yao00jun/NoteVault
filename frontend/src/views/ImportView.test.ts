@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
+import { GitService, Workspace } from '@/api'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 
-vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+vi.mock('@/api', () => ({
   AppService: {
     OpenFolderDialog: vi.fn(async () => ''),
     OpenFileDialog: vi.fn(async () => ''),
@@ -24,8 +25,6 @@ vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
 
 import ImportView from './ImportView.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { GitService } from '@bindings/github.com/notevault/notevault/index.js'
-import type { Workspace } from '@bindings/github.com/notevault/notevault/models.js'
 
 const mockedStatus = vi.mocked(GitService.Status)
 const mockedInit = vi.mocked(GitService.InitRepo)

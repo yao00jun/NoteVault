@@ -5,7 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 
-vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+vi.mock('@/api', () => ({
   LLMConfigService: {
     Presets: vi.fn(),
     Probe: vi.fn(),
@@ -19,7 +19,7 @@ vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
 
 import SettingsView from './SettingsView.vue'
 import { useSettingsStore } from '@/stores/settings'
-import { LLMConfigService } from '@bindings/github.com/notevault/notevault/index.js'
+import { LLMConfigService } from '@/api'
 
 const mockedPresets = vi.mocked(LLMConfigService.Presets)
 const mockedProbe = vi.mocked(LLMConfigService.Probe)

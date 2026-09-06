@@ -15,7 +15,7 @@ import {
 } from '@lucide/vue'
 import { useSettingsStore } from '@/stores/settings'
 import type { ThemeType } from '@/types'
-import { AppService } from '@bindings/github.com/notevault/notevault/index.js'
+import { AppService } from '@/api'
 
 // Wails v3 窗口控制 API（动态导入，避免模块加载时初始化失败导致整个应用崩溃）
 let currentWindow: any = null

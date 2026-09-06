@@ -4,7 +4,7 @@ import { Archive, RotateCcw, FileText, FolderOpen, ArrowLeft } from '@lucide/vue
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
-import { ArchiveService } from '@bindings/github.com/notevault/notevault/index.js'
+import { ArchiveService } from '@/api'
 import { useToast } from '@/composables/useToast'
 
 const toast = useToast()

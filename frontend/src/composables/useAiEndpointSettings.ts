@@ -5,12 +5,11 @@
  * 从 SettingsView 抽出（模板与样式原地不动，纯逻辑搬运）：
  * 三块共享同一组预设与自检状态，全部直接读写全局 settingsStore。
  */
+import { LLMConfigService, LLMEndpointPreset, LLMProbeResult, RerankProbeResult, EmbeddingProbeResult } from '@/api'
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
-import { LLMConfigService } from '@bindings/github.com/notevault/notevault/index.js'
-import type { LLMEndpointPreset, LLMProbeResult, RerankProbeResult, EmbeddingProbeResult } from '@bindings/github.com/notevault/notevault/models.js'
-import type { RerankProvider } from '@bindings/github.com/notevault/notevault/internal/service/models.js'
+import type { RerankProvider } from '@/api'
 
 export function useAiEndpointSettings() {
   const { t } = useI18n()

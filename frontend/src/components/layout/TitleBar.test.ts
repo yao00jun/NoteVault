@@ -19,13 +19,13 @@ vi.mock('@wailsio/runtime', () => {
   }
 })
 
-vi.mock('@bindings/github.com/notevault/notevault/index.js', () => ({
+vi.mock('@/api', () => ({
   AppService: { ForceQuit: vi.fn(() => Promise.resolve()) },
 }))
 
 import TitleBar from './TitleBar.vue'
 import { Application, Window } from '@wailsio/runtime'
-import { AppService } from '@bindings/github.com/notevault/notevault/index.js'
+import { AppService } from '@/api'
 
 const mockedQuit = vi.mocked(Application.Quit)
 const mockedWindowClose = vi.mocked(Window.Close)

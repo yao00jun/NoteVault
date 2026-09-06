@@ -11,7 +11,7 @@
 // 二是 bindings 目录里任何手工文件都活不过一次构建。
 //
 // 这里把所有服务聚合成一个扁平出口，业务代码继续用
-//   import { FileService } from '@bindings/github.com/notevault/notevault/index.js'
+//   import { FileService } from '@/api'
 // 由 tsconfig / vite 的 alias 指到本文件（见 vite.config.ts 与 tsconfig.json）。
 // 新增 Go 服务时，在这里补一行导出即可。
 

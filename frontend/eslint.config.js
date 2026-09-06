@@ -27,6 +27,20 @@ export default [
     },
   },
   {
+    // API 防腐层门禁（蓝图专项 7）：业务代码禁止裸 import bindings，
+    // 必须走 '@/api' 统一出口——上游 Beta 签名变更只允许破坏 api/ 一处
+    files: ['src/**/*.{ts,vue}'],
+    ignores: ['src/api/**', 'src/bindings/**'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['@bindings', '@bindings/*'],
+          message: '请从 @/api 导入后端服务与模型（API 防腐层，蓝图专项 7）。',
+        }],
+      }],
+    },
+  },
+  {
     rules: {
       // 现有代码大量使用 any（Wails 绑定返回值为 any），关闭以避免噪音
       '@typescript-eslint/no-explicit-any': 'off',

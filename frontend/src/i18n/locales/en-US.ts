@@ -708,6 +708,17 @@ export default {
     loadFailed: 'Failed to load graph: {msg}',
   },
   editor: {
+    conflict: {
+      banner: '⚠️ "{name}" was modified externally (e.g. Git sync) with unsaved local draft. Choose an action:',
+      reload: 'Discard & reload',
+      saveCopy: 'Keep draft & save copy',
+      viewDiff: 'View diff',
+      diffTitle: 'Conflict diff: {path}',
+      legendDisk: 'Disk content (will be overwritten)',
+      legendDraft: 'Local draft (current editor)',
+      copySaved: 'Draft saved as "{path}"',
+    },
+
     dropHint: 'Drop to open a Markdown file',
     properties: {
       tags: 'Tags',

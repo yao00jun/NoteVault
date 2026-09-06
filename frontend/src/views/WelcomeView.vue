@@ -15,7 +15,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { WorkspaceService, FileService } from '@bindings/github.com/notevault/notevault/index.js'
+import { WorkspaceService, FileService } from '@/api'
 import { useToast } from '@/composables/useToast'
 
 const toast = useToast()

@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useI18n } from 'vue-i18n'
-import { TagService, WorkspaceService } from '@bindings/github.com/notevault/notevault/index.js'
+import { TagService, WorkspaceService } from '@/api'
 
 interface TagInfo {
   name: string
