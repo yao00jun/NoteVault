@@ -1,13 +1,13 @@
 /**
- * useWorkbenchSpaces - 工作台四大知识空间的分类扫描、统计与过滤
+ * useWorkbenchSpaces - 工作台知识空间的分类扫描、统计与过滤
  *
- * 蓝图 2.1：按约定目录（Learning/Projects/Inbox/Daily）聚合文档，
+ * 蓝图 2.1：按约定目录（Learning/Projects/Resources/Inbox/Daily）聚合文档，
  * 提供目录计数与 i18n 文案。扫描纯前端派生（输入是已扁平化的文件列表），
  * 不发起任何后端调用；列表为空时各空间计数自然为 0，无需降级分支。
  */
 import { computed, type ComputedRef, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BookOpen, Rocket, Inbox, Calendar } from '@lucide/vue'
+import { BookOpen, Rocket, Inbox, Calendar, Globe } from '@lucide/vue'
 
 export interface FlatFileEntry {
   path: string
@@ -19,10 +19,12 @@ export interface FlatFileEntry {
   modTime?: string
 }
 
-// 四大空间的约定目录（与工作区种子结构一致；命名经用户工作流验证，勿随意改）
+// 知识空间的约定目录（与工作区种子结构一致；命名经用户工作流验证，勿随意改）。
+// resources：用户定向需求（2026-09-07）——网络收集的学习资料专用目录（PARA 的 Resources 语义）。
 export const SPACE_DEFS = [
   { key: 'learning', dir: 'Learning', icon: BookOpen },
   { key: 'projects', dir: 'Projects', icon: Rocket },
+  { key: 'resources', dir: 'Resources', icon: Globe },
   { key: 'inbox', dir: 'Inbox', icon: Inbox },
   { key: 'daily', dir: 'Daily', icon: Calendar },
 ] as const

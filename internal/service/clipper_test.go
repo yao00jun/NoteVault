@@ -108,9 +108,16 @@ func TestClipper_RejectsMissingOrWrongToken(t *testing.T) {
 	if resp := env.post(t, "wrong-token", clipBody()); resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("wrong token: expected 401, got %d", resp.StatusCode)
 	}
-	// Token 不能旁路：文件没被写出来
-	if _, err := os.Stat(filepath.Join(env.wsPath, "Inbox")); !os.IsNotExist(err) {
-		t.Error("Inbox should not be created when auth fails")
+	// Token 不能旁路：Inbox 里没有任何剪藏文件落盘
+	// （脚手架在建区时就会创建 Inbox 目录并放入使用引导.md，保护对象是"剪藏文件不被写入"）
+	entries, err := os.ReadDir(filepath.Join(env.wsPath, "Inbox"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read Inbox failed: %v", err)
+	}
+	for _, e := range entries {
+		if e.Name() != "使用引导.md" { // 脚手架引导文件是建区时合法写入的
+			t.Errorf("no clip file should land in Inbox when auth fails, got: %s", e.Name())
+		}
 	}
 }
 

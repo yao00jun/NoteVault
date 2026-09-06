@@ -170,6 +170,11 @@ func (s *WorkspaceService) CreateWorkspace(name string, path string) (*Workspace
 		return nil, err
 	}
 
+	// 脚手架：幂等初始化约定目录与引导文件（失败不阻断建区，退化为惰性创建）
+	if err := EnsureWorkspaceScaffold(path); err != nil {
+		fmt.Printf("[scaffold] 新工作区初始化警告: %v\n", err)
+	}
+
 	// 设置为当前工作区
 	if err := s.SetCurrentWorkspace(id); err != nil {
 		return nil, err
@@ -230,6 +235,11 @@ func (s *WorkspaceService) SetCurrentWorkspace(workspaceID string) error {
 
 	for i := range workspaces {
 		if workspaces[i].ID == workspaceID {
+			// 脚手架补齐（老工作区升级路径）：幂等，缺什么补什么，
+			// 已有文件绝不覆盖；失败只记日志不阻断打开
+			if err := EnsureWorkspaceScaffold(workspaces[i].Path); err != nil {
+				fmt.Printf("[scaffold] 打开工作区补齐警告: %v\n", err)
+			}
 			workspaces[i].LastOpenedAt = time.Now().Format(time.RFC3339)
 			break
 		}

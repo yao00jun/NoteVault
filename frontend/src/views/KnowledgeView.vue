@@ -151,7 +151,7 @@ async function loadHotTags() {
   }
 }
 
-// 知识空间（分类扫描/统计/过滤已抽到 useWorkbenchSpaces，蓝图 2.1 四大空间）
+// 知识空间（分类扫描/统计/过滤已抽到 useWorkbenchSpaces，蓝图 2.1 五空间）
 function openSpace(space: { dir: string; key: string }) {
   if (space.key === 'daily') {
     createDailyNote()
@@ -691,7 +691,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
     <!-- 今日焦点：可勾选待办 / 到期提醒（倒计时） / 今日编辑 -->
     <WorkbenchWidgets />
 
-    <!-- 知识空间分类卡片（蓝图 2.1）：学习 / 项目 / 灵感收集箱 / 日记 -->
+    <!-- 知识空间分类卡片（蓝图 2.1）：学习 / 项目 / 资料收藏 / 灵感收集箱 / 日记 -->
     <section class="kv-spaces">
       <button
         v-for="space in knowledgeSpaces"
@@ -1054,7 +1054,8 @@ watch(() => workspaceStore.fileTreeVersion, () => {
 /* 知识空间卡片 */
 .kv-spaces {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* 五个空间（learning/projects/resources/inbox/daily）：自适应换行，窄屏不挤爆 */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: var(--space-3);
   padding: var(--space-3) var(--space-8) 0;
 }

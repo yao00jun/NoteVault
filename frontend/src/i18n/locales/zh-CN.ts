@@ -900,6 +900,7 @@ export default {
     spaces: {
       learning: { name: '📘 学习知识', desc: '按专题归类的长效知识' },
       projects: { name: '🚀 项目知识', desc: '进行中项目的交付物' },
+      resources: { name: '🌐 资料收藏', desc: '网络收集的学习资料' },
       inbox: { name: '📥 灵感收集箱', desc: '待整理的原始素材' },
       daily: { name: '📅 日记', desc: '每日记录与回顾' },
     },

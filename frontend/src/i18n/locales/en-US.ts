@@ -900,6 +900,7 @@ export default {
     spaces: {
       learning: { name: '📘 Learning', desc: 'Long-term knowledge by topic' },
       projects: { name: '🚀 Projects', desc: 'Deliverables in progress' },
+      resources: { name: '🌐 Resources', desc: 'Collected learning materials' },
       inbox: { name: '📥 Inbox', desc: 'Raw material to process' },
       daily: { name: '📅 Daily', desc: 'Daily journal' },
     },
