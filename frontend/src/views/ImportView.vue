@@ -1,6 +1,14 @@
 <template>
   <div class="import-view">
     <header class="iv-header">
+      <button
+        class="back-btn"
+        data-testid="import-back"
+        @click="router.push('/knowledge')"
+      >
+        <ArrowLeft :size="16" />
+        <span>{{ t('common.backToKnowledge') }}</span>
+      </button>
       <h1>
         <Upload :size="22" />
         <span>{{ t('import.title') }}</span>
@@ -336,6 +344,7 @@ import {
   CheckCircle2,
   AlertCircle,
   GitBranch,
+  ArrowLeft,
 } from '@lucide/vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { AppService, GitService, ImportService } from '@bindings/github.com/notevault/notevault/index.js'
@@ -511,6 +520,8 @@ async function doGitCommit(): Promise<void> {
   flex-direction: column;
   gap: var(--space-1);
 }
+.back-btn { display: flex; align-items: center; gap: 5px; align-self: flex-start; border: none; background: transparent; color: var(--text-muted); font-size: var(--text-sm); cursor: pointer; padding: 5px 10px; border-radius: var(--radius-sm); transition: background var(--transition-fast), color var(--transition-fast); }
+.back-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .iv-header h1 {
   display: flex;
   align-items: center;

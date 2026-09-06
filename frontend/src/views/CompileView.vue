@@ -11,6 +11,7 @@ import {
   History,
   Settings as SettingsIcon,
   FileText,
+  ArrowLeft,
 } from '@lucide/vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
@@ -153,9 +154,19 @@ watch(() => workspaceStore.currentWorkspace?.id, loadInbox)
 <template>
   <div class="compile-view">
     <div class="compile-header">
-      <h2 class="compile-title">
-        <Sparkles :size="20" /> {{ t('compile.title') }}
-      </h2>
+      <div class="compile-header-left">
+        <button
+          class="back-btn"
+          data-testid="compile-back"
+          @click="router.push('/knowledge')"
+        >
+          <ArrowLeft :size="16" />
+          <span>{{ t('common.backToKnowledge') }}</span>
+        </button>
+        <h2 class="compile-title">
+          <Sparkles :size="20" /> {{ t('compile.title') }}
+        </h2>
+      </div>
       <button
         class="compile-all-btn"
         :disabled="notes.length === 0 || isCompilingAll || !hasApiKey"
@@ -354,6 +365,9 @@ watch(() => workspaceStore.currentWorkspace?.id, loadInbox)
 <style scoped>
 .compile-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .compile-header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-6) var(--space-8); border-bottom: 1px solid var(--border); background: var(--bg-window); }
+.compile-header-left { display: flex; align-items: center; gap: var(--space-3); }
+.back-btn { display: flex; align-items: center; gap: 5px; border: none; background: transparent; color: var(--text-muted); font-size: var(--text-sm); cursor: pointer; padding: 5px 10px; border-radius: var(--radius-sm); transition: background var(--transition-fast), color var(--transition-fast); }
+.back-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .compile-title { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xl); font-weight: 700; margin: 0; color: var(--text-primary); }
 .compile-all-btn { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-2) var(--space-4); border: none; border-radius: var(--radius-md); background: var(--accent); color: white; font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
 .compile-all-btn:disabled { opacity: 0.5; cursor: not-allowed; }

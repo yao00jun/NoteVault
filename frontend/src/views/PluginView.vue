@@ -1,6 +1,14 @@
 <template>
   <div class="plugin-view">
     <header class="pv-header">
+      <button
+        class="back-btn"
+        data-testid="plugin-back"
+        @click="router.push('/knowledge')"
+      >
+        <ArrowLeft :size="16" />
+        <span>{{ t('common.backToKnowledge') }}</span>
+      </button>
       <h1>
         <Puzzle :size="22" />
         <span>{{ t('plugins.title') }}</span>
@@ -287,6 +295,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import {
   Puzzle,
   FolderOpen,
@@ -296,6 +305,7 @@ import {
   AlertTriangle,
   FileCode,
   Hash as HashIcon,
+  ArrowLeft,
 } from '@lucide/vue'
 import { PluginService } from '@bindings/github.com/notevault/notevault/index.js'
 import type { PluginInfo } from '@bindings/github.com/notevault/notevault/models.js'
@@ -306,6 +316,7 @@ import { useToast } from '@/composables/useToast'
 const toast = useToast()
 
 const { t } = useI18n()
+const router = useRouter()
 const pluginRuntimeStore = usePluginRuntimeStore()
 // 插件声明的设置 schema（#29），按 pluginId 索引
 const pluginSettings = computed(() => pluginRuntimeStore.pluginSettings)
@@ -432,6 +443,8 @@ onMounted(async () => {
   flex-direction: column;
   gap: var(--space-2);
 }
+.back-btn { display: flex; align-items: center; gap: 5px; align-self: flex-start; border: none; background: transparent; color: var(--text-muted); font-size: var(--text-sm); cursor: pointer; padding: 5px 10px; border-radius: var(--radius-sm); transition: background var(--transition-fast), color var(--transition-fast); }
+.back-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .pv-header h1 {
   display: flex;
   align-items: center;
