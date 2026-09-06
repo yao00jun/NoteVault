@@ -21,7 +21,7 @@ const defaultSettings: AppSettings = {
   sidebarCollapsed: false,
   autoSaveInterval: 500,
   editorMode: 'split',
-  fontSize: 13,
+  fontSize: 14,
   uiFont: 'theme',
   monoFont: 'theme',
   ai: {

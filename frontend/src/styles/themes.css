@@ -125,7 +125,7 @@ html[data-theme="macos"] ::-webkit-scrollbar-thumb:hover {
 /* Segoe UI Variable 打头，云母底透出 */
 html[data-theme="winui"] body {
   font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI",
-    -apple-system, "Inter", sans-serif;
+    -apple-system, sans-serif;
 }
 html[data-theme="winui"] .app-container {
   background: var(--bg-desktop);

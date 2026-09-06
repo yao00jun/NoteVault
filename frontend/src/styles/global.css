@@ -17,6 +17,9 @@ html, body, #app {
 body {
   font-family: var(--font-sans);
   font-size: var(--text-base);
+  /* 中文正文 1.6 行高比 1.5 明显更透气；数字用等宽数字避免跳动 */
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
   color: var(--text-primary);
   background: var(--bg-window);
   -webkit-font-smoothing: antialiased;

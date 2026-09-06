@@ -7,17 +7,23 @@
 /* ---------- 通用变量（所有主题共享） ---------- */
 :root {
   /* 字体 */
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI Variable",
-    "Segoe UI", "PingFang SC", "Microsoft YaHei UI", sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+  /* 系统字体栈（Codex/ChatGPT 桌面版同款思路）：不依赖打包字体，
+     Win11 用 Segoe UI Variable，中文回退微软雅黑 UI；mac 上 PingFang。
+     Inter 未随应用打包，放首位只会造成「装了才好看」的割裂体验 */
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", -apple-system,
+    BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei",
+    sans-serif;
+  --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "Courier New",
+    monospace;
 
-  /* 字号 */
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-base: 13px;
-  --text-lg: 15px;
-  --text-xl: 18px;
-  --text-2xl: 22px;
+  /* 字号：整体上调一档对齐 Codex/ChatGPT 桌面版（正文 14px 起步）。
+     旧值 11/12/13 是 2010 年代桌面软件密度，中文在低分屏上发虚 */
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
 
   /* 间距 */
   --space-1: 4px;
@@ -176,7 +182,7 @@
   /* 背景层：底板比岛屿更深，岛屿靠色阶与描边浮起 */
   --bg-desktop: #17181b;
   --bg-window: #17181b;
-  --bg-sidebar: #2b2d30;
+  --bg-sidebar: rgba(43, 45, 48, 0.85);
   --bg-content: #1e1f22;
   --bg-card: #2b2d30;
   --bg-hover: #393b40;
