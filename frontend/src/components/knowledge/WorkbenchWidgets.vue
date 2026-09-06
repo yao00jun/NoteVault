@@ -11,15 +11,20 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ListTodo, AlarmClock, FileEdit, Inbox } from '@lucide/vue'
+import { useRouter } from 'vue-router'
+import { ListTodo, AlarmClock, FileEdit, Inbox, Plus } from '@lucide/vue'
 import {
   StatsService,
   TodoService,
   ReminderService,
+  FileService,
+  TemplateService,
 } from '@bindings/github.com/notevault/notevault/index.js'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { promptDialog } from '@/composables/usePrompt'
 
 const { t } = useI18n()
+const router = useRouter()
 const workspaceStore = useWorkspaceStore()
 
 interface TodayStats {
@@ -122,6 +127,43 @@ function formatTime(iso: string): string {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
 }
 
+function todayPath(): string {
+  const d = new Date()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `Daily/${d.getFullYear()}-${mm}-${dd}.md`
+}
+
+// 新建待办：写入今天日记（待办的天然归宿），日记不存在时按内置 Daily 模板创建
+async function addTodo() {
+  const ws = workspaceStore.currentWorkspace
+  if (!ws?.path) return
+  const text = await promptDialog({ message: t('knowledge.workbench.addTodoPrompt') })
+  if (!text || !text.trim()) return
+  const path = todayPath()
+  try {
+    let content: string
+    try {
+      content = await FileService.ReadFile(ws.path, path)
+    } catch {
+      await TemplateService.CreateFromTemplate(ws.path, 'Daily', path, {})
+      content = await FileService.ReadFile(ws.path, path)
+    }
+    content = `${content.replace(/\s*$/, '')}
+- [ ] ${text.trim()}
+`
+    await FileService.SaveFile(ws.path, path, content)
+    await load()
+  } catch (e) {
+    console.error('[workbench] add todo failed:', e)
+  }
+}
+
+// 新建提醒：提醒是挂在笔记上的服务数据（非 Markdown 模板），进入提醒管理页创建
+function addReminder() {
+  router.push('/review?tab=tasks&sub=reminders')
+}
+
 function fileNameOf(path: string): string {
   return path.split('/').pop()?.replace(/\.md$/i, '') ?? path
 }
@@ -140,6 +182,7 @@ async function toggleTodo(todo: TodoItem) {
 function openFile(path: string) {
   workspaceStore.openFile(path)
   workspaceStore.incrementFileTreeVersion()
+  router.push('/editor')
 }
 </script>
 
@@ -154,10 +197,19 @@ function openFile(path: string) {
         <ListTodo :size="14" />
         <span>{{ t('knowledge.workbench.todos') }}</span>
         <span class="wb-count">{{ pendingTodos.length }}</span>
+        <button
+          class="wb-add"
+          data-testid="wb-add-todo"
+          :title="t('knowledge.workbench.addTodo')"
+          @click="addTodo"
+        >
+          <Plus :size="14" />
+        </button>
       </div>
       <div
         v-if="pendingTodos.length === 0"
-        class="wb-empty"
+        class="wb-empty wb-empty-action"
+        @click="addTodo"
       >
         <Inbox :size="18" />
         <span>{{ t('knowledge.workbench.todosEmpty') }}</span>
@@ -195,6 +247,14 @@ function openFile(path: string) {
         <AlarmClock :size="14" />
         <span>{{ t('knowledge.workbench.reminders') }}</span>
         <span class="wb-count">{{ dueReminders.length }}</span>
+        <button
+          class="wb-add"
+          data-testid="wb-add-reminder"
+          :title="t('knowledge.workbench.addReminder')"
+          @click="addReminder"
+        >
+          <Plus :size="14" />
+        </button>
       </div>
       <div
         v-if="dueReminders.length === 0"
@@ -295,6 +355,34 @@ function openFile(path: string) {
   font-size: var(--text-xs);
   color: var(--text-muted);
   font-weight: 500;
+}
+
+.wb-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.wb-add:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.wb-empty-action {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.wb-empty-action:hover {
+  color: var(--text-secondary);
+  opacity: 1;
 }
 
 .wb-list {
