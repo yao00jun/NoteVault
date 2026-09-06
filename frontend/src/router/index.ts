@@ -107,3 +107,16 @@ export const router = createRouter({
   history: createWebHashHistory(),
   routes,
 })
+
+// 应用更新后旧 WebView2 缓存里的 index.html 仍引用已不存在的懒加载
+// chunk → 动态 import 失败 → 路由组件加载不出（整页空白）。
+// 自动整页刷新一次拿最新 index.html；同一会话只重试一次防循环。
+router.onError((error, to) => {
+  const msg = String(error?.message ?? '')
+  const isChunkFail = /importing a module|Failed to fetch dynamically|Loading chunk|dynamically imported module/i.test(msg)
+  if (!isChunkFail) return
+  const key = 'nv-chunk-reload:' + (to?.fullPath ?? '')
+  if (sessionStorage.getItem(key)) return
+  sessionStorage.setItem(key, '1')
+  window.location.reload()
+})
