@@ -16,26 +16,17 @@ const routes = [
     name: 'editor',
     component: () => import('@/views/EditorView.vue'),
   },
-  {
-    path: '/search',
-    name: 'search',
-    component: () => import('@/views/SearchView.vue'),
-  },
-  {
-    path: '/tags',
-    name: 'tags',
-    component: () => import('@/views/TagsView.vue'),
-  },
-  {
-    path: '/graph',
-    name: 'graph',
-    component: () => import('@/views/GraphView.vue'),
-  },
-  {
-    path: '/reports',
-    name: 'reports',
-    component: () => import('@/views/ReportsView.vue'),
-  },
+  // 旧路由重定向到「发现」容器（Codex 式架构收敛，2026-09）
+  { path: '/search', redirect: (to) => ({ path: '/discover', query: { tab: 'search', ...to.query } }) },
+  { path: '/qna', redirect: (to) => ({ path: '/discover', query: { tab: 'qna', ...to.query } }) },
+  { path: '/tags', redirect: (to) => ({ path: '/discover', query: { tab: 'views', view: 'tags' } }) },
+  { path: '/graph', redirect: (to) => ({ path: '/discover', query: { tab: 'views', view: 'graph' } }) },
+  { path: '/bases', redirect: (to) => ({ path: '/discover', query: { tab: 'views', view: 'bases' } }) },
+  // 旧路由重定向到「回顾」容器
+  { path: '/reports', redirect: (to) => ({ path: '/review', query: { tab: 'reports', ...to.query } }) },
+  { path: '/todos', redirect: (to) => ({ path: '/review', query: { tab: 'tasks', sub: 'todos' } }) },
+  { path: '/reminders', redirect: (to) => ({ path: '/review', query: { tab: 'tasks', sub: 'reminders' } }) },
+  { path: '/history', redirect: (to) => ({ path: '/review', query: { tab: 'versions', ...to.query } }) },
   {
     path: '/bases',
     name: 'bases',
@@ -90,6 +81,18 @@ const routes = [
     path: '/compile',
     name: 'compile',
     component: () => import('@/views/CompileView.vue'),
+  },
+  {
+    // 「发现」容器：搜索 / 语义问答 / 视图（标签·图谱·Bases）
+    path: '/discover',
+    name: 'discover',
+    component: () => import('@/views/DiscoverView.vue'),
+  },
+  {
+    // 「回顾」容器：报表 / 任务（待办·提醒）/ 版本
+    path: '/review',
+    name: 'review',
+    component: () => import('@/views/ReviewView.vue'),
   },
   {
     path: '/settings',

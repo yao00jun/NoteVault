@@ -185,53 +185,39 @@ interface NavItem {
   activeOn?: string[]
 }
 
-// 侧边栏导航按"使用频率 + 功能类别"重分组：
-// - library 知识库浏览（高频）：知识库、知识图谱
-// - tasks 任务管理（高频 GTD）：待办、提醒
-// - workspace 工作区浏览（高频）：文档、搜索、标签
-// - manage 工具与数据管理（低频）：AI 问答、插件、数据导入、版本历史、归档、回收站
+// Codex 式架构（2026-09 重构）：侧栏只回答「在哪类工作」，不罗列功能。
+// 同族功能在各容器的 tab 里切换（发现/回顾），低频动作收进命令面板（Ctrl+P）。
+// 被吸收入口的旧路由全部做了重定向（router/index.ts）。
 const navItems = computed<NavItem[]>(() => [
-  { id: 'knowledge', label: t('sidebar.nav.knowledge'), icon: Library, route: '/knowledge', group: 'library' },
-  { id: 'graph', label: t('sidebar.nav.graph'), icon: GitGraph, route: '/graph', group: 'library' },
-  { id: 'reports', label: t('sidebar.nav.reports'), icon: BarChart3, route: '/reports', group: 'library' },
-  { id: 'bases', label: t('sidebar.nav.bases'), icon: Table2, route: '/bases', group: 'library' },
-  { id: 'canvas', label: t('sidebar.nav.canvas'), icon: Square, route: '/canvas', group: 'library' },
-  { id: 'todos', label: t('sidebar.nav.todos'), icon: CheckSquare, route: '/todos', group: 'tasks' },
-  { id: 'reminders', label: t('sidebar.nav.reminders'), icon: Clock, route: '/reminders', group: 'tasks' },
-  { id: 'files', label: t('sidebar.nav.files'), icon: FolderOpen, route: '/editor', group: 'workspace' },
-  { id: 'search', label: t('sidebar.nav.search'), icon: Search, route: '/search', group: 'workspace' },
-  { id: 'tags', label: t('sidebar.nav.tags'), icon: Tags, route: '/tags', group: 'workspace' },
-  { id: 'qna', label: t('sidebar.nav.qna'), icon: MessageCircle, route: '/qna', group: 'manage' },
-  { id: 'plugins', label: t('sidebar.nav.plugins'), icon: Puzzle, route: '/plugins', group: 'manage' },
-  { id: 'import', label: t('sidebar.nav.import'), icon: Upload, route: '/import', group: 'manage' },
-  { id: 'history', label: t('sidebar.nav.history'), icon: History, route: '/history', group: 'manage' },
-  { id: 'archive', label: t('sidebar.nav.archive'), icon: Archive, route: '/archive', group: 'manage' },
-  { id: 'trash', label: t('sidebar.nav.trash'), icon: Trash2, route: '/trash', group: 'manage' },
-  { id: 'compile', label: t('sidebar.nav.compile'), icon: Sparkles, route: '/compile', group: 'manage' },
+  {
+    id: 'knowledge',
+    label: t('sidebar.nav.knowledge'),
+    icon: Library,
+    route: '/knowledge',
+    group: 'main',
+    // 知识库族：主页 / 编辑器 / 画布 / 归档 / 回收站（内容型页面归属知识库）
+    activeOn: ['/knowledge', '/editor', '/canvas', '/archive', '/trash'],
+  },
+  {
+    id: 'discover',
+    label: t('sidebar.nav.discover'),
+    icon: Search,
+    route: '/discover',
+    group: 'main',
+    activeOn: ['/discover', '/search', '/qna', '/tags', '/graph', '/bases'],
+  },
+  {
+    id: 'review',
+    label: t('sidebar.nav.review'),
+    icon: History,
+    route: '/review',
+    group: 'main',
+    activeOn: ['/review', '/reports', '/todos', '/reminders', '/history'],
+  },
 ])
 
-const groupedItems = computed(() => {
-  const groups: Record<string, NavItem[]> = {}
-  for (const item of navItems.value) {
-    if (!groups[item.group]) groups[item.group] = []
-    groups[item.group].push(item)
-  }
-  return groups
-})
-
-const groupLabels = computed<Record<string, string>>(() => ({
-  library: t('sidebar.groups.library'),
-  tasks: t('sidebar.groups.tasks'),
-  workspace: t('sidebar.groups.workspace'),
-  manage: t('sidebar.groups.manage'),
-}))
-
-function toggleGroup(group: string) {
-  expandedGroups.value[group] = !expandedGroups.value[group]
-}
-
 function isActive(item: NavItem) {
-  return item.route === route.path
+  return (item.activeOn ?? [item.route]).includes(route.path)
 }
 
 function navigate(item: NavItem) {
@@ -342,61 +328,48 @@ const sidebarWidth = computed(() =>
       </button>
     </div>
 
-    <!-- 导航列表 -->
+    <!-- 导航列表：3 个顶层工作类入口 -->
     <nav class="nav-list">
-      <template
-        v-for="(items, group) in groupedItems"
-        :key="group"
+      <button
+        v-for="item in navItems"
+        :key="item.id"
+        class="nav-item"
+        :data-testid="`nav-${item.id}`"
+        :class="{
+          collapsed: settingsStore.settings.sidebarCollapsed,
+          active: isActive(item),
+        }"
+        :title="settingsStore.settings.sidebarCollapsed ? item.label : ''"
+        @click="navigate(item)"
       >
-        <!-- 分组标题 -->
-        <div
+        <component
+          :is="item.icon"
+          :size="16"
+          class="nav-icon"
+        />
+        <span
           v-if="!settingsStore.settings.sidebarCollapsed"
-          class="nav-group-header"
-          @click="toggleGroup(group)"
+          class="nav-label"
         >
-          <component
-            :is="expandedGroups[group] ? ChevronDown : ChevronRight"
-            :size="12"
-            class="group-chevron"
-          />
-          <span class="group-label">{{ groupLabels[group] }}</span>
-        </div>
-
-        <!-- 分组项 -->
-        <div
-          v-show="expandedGroups[group]"
-          class="nav-group-items"
-        >
-          <button
-            v-for="item in items"
-            :key="item.id"
-            class="nav-item"
-            :data-testid="`nav-${item.id}`"
-            :class="{
-              collapsed: settingsStore.settings.sidebarCollapsed,
-              active: isActive(item),
-            }"
-            :title="settingsStore.settings.sidebarCollapsed ? item.label : ''"
-            @click="navigate(item)"
-          >
-            <component
-              :is="item.icon"
-              :size="16"
-              class="nav-icon"
-            />
-            <span
-              v-if="!settingsStore.settings.sidebarCollapsed"
-              class="nav-label"
-            >
-              {{ item.label }}
-            </span>
-          </button>
-        </div>
-      </template>
+          {{ item.label }}
+        </span>
+      </button>
     </nav>
 
-    <!-- 底部：折叠按钮 -->
+    <!-- 底部：设置（Codex 式左下角入口） + 折叠按钮 -->
     <div class="sidebar-footer">
+      <button
+        class="footer-settings-btn"
+        data-testid="sidebar-settings"
+        :title="t('titlebar.settings')"
+        @click="router.push('/settings')"
+      >
+        <SettingsIcon :size="16" />
+        <span
+          v-if="!settingsStore.settings.sidebarCollapsed"
+          class="settings-label"
+        >{{ t('titlebar.settings') }}</span>
+      </button>
       <button
         class="collapse-btn"
         :title="settingsStore.settings.sidebarCollapsed ? t('sidebar.expandSidebar') : t('sidebar.collapseSidebar')"
@@ -416,6 +389,9 @@ const sidebarWidth = computed(() =>
   display: flex;
   flex-direction: column;
   background: var(--bg-sidebar);
+  /* Codex 式玻璃侧栏：主题的 --bg-sidebar 都是半透明值，blur 让内容透出柔光 */
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid var(--border);
   flex-shrink: 0;
   transition: width var(--transition-base);
@@ -666,5 +642,32 @@ const sidebarWidth = computed(() =>
 .collapse-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.footer-settings-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: var(--space-1);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.footer-settings-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.footer-settings-btn .settings-label {
+  white-space: nowrap;
+}
+.nav-item.collapsed ~ .sidebar-footer .footer-settings-btn,
+.sidebar .footer-settings-btn:has(~ .collapse-btn.collapsed) {
+  justify-content: center;
 }
 </style>

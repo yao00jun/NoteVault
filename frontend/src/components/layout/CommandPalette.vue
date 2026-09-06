@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
-import { Search, FileText, Folder, Palette, Settings, Save, X, Columns, ChevronRight, MessageCircle, Upload, Puzzle, History } from '@lucide/vue'
+import { Search, FileText, Folder, Palette, Settings, Save, X, Columns, ChevronRight, MessageCircle, Upload, Puzzle, History, GitGraph, Table2, Square, BarChart3, Sparkles, Home } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
@@ -110,6 +110,48 @@ const allCommands = computed<Command[]>(() => [
     description: t('palette.commands.qna.desc'),
     icon: MessageCircle,
     action: () => { router.push('/qna'); close() },
+  },
+  {
+    id: 'knowledge',
+    label: t('palette.commands.knowledge.label'),
+    description: t('palette.commands.knowledge.desc'),
+    icon: Home,
+    action: () => { router.push('/knowledge'); close() },
+  },
+  {
+    id: 'graph',
+    label: t('palette.commands.graph.label'),
+    description: t('palette.commands.graph.desc'),
+    icon: GitGraph,
+    action: () => { router.push('/graph'); close() },
+  },
+  {
+    id: 'bases',
+    label: t('palette.commands.bases.label'),
+    description: t('palette.commands.bases.desc'),
+    icon: Table2,
+    action: () => { router.push('/bases'); close() },
+  },
+  {
+    id: 'canvas',
+    label: t('palette.commands.canvas.label'),
+    description: t('palette.commands.canvas.desc'),
+    icon: Square,
+    action: () => { router.push('/canvas'); close() },
+  },
+  {
+    id: 'reports',
+    label: t('palette.commands.reports.label'),
+    description: t('palette.commands.reports.desc'),
+    icon: BarChart3,
+    action: () => { router.push('/reports'); close() },
+  },
+  {
+    id: 'compile',
+    label: t('palette.commands.compile.label'),
+    description: t('palette.commands.compile.desc'),
+    icon: Sparkles,
+    action: () => { router.push('/compile'); close() },
   },
   {
     id: 'import',

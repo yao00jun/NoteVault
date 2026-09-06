@@ -89,18 +89,15 @@ describe('SideBar', () => {
     expect(wrapper.find('.sidebar').exists()).toBe(true)
   })
 
-  it('应渲染所有导航项', async () => {
+  it('应只渲染 3 个顶层导航项（Codex 式收敛）', async () => {
     const { wrapper } = mountSideBar()
     await flushPromises()
     const navItems = wrapper.findAll('.nav-item')
-    expect(navItems.length).toBe(17)
-  })
-
-  it('应包含四个分组标题', async () => {
-    const { wrapper } = mountSideBar()
-    await flushPromises()
-    const headers = wrapper.findAll('.nav-group-header')
-    expect(headers.length).toBe(4)
+    expect(navItems.length).toBe(3)
+    const labels = navItems.map((w) => w.text())
+    expect(labels.some((x) => x.includes('知识库'))).toBe(true)
+    expect(labels.some((x) => x.includes('发现'))).toBe(true)
+    expect(labels.some((x) => x.includes('回顾'))).toBe(true)
   })
 
   it('点击导航项应触发路由跳转', async () => {
@@ -109,12 +106,12 @@ describe('SideBar', () => {
     const navItems = wrapper.findAll('.nav-item')
 
     // 按文案定位而不是下标：导航项顺序还会继续演进，位置断言已经两次被新入口挤歪
-    const searchItem = navItems.find((w) => w.text().includes('搜索'))
-    expect(searchItem).toBeDefined()
-    await searchItem!.trigger('click')
+    const discoverItem = navItems.find((w) => w.text().includes('发现'))
+    expect(discoverItem).toBeDefined()
+    await discoverItem!.trigger('click')
     await flushPromises()
     await nextTick()
-    expect(router.currentRoute.value.path).toBe('/search')
+    expect(router.currentRoute.value.path).toBe('/discover')
   })
 
   it('折叠状态下应隐藏标签文字', async () => {
@@ -162,13 +159,12 @@ describe('SideBar', () => {
     expect(settingsStore.settings.sidebarCollapsed).toBe(!before)
   })
 
-  it('点击分组标题应切换展开状态', async () => {
-    const { wrapper } = mountSideBar()
+  it('底部设置入口应跳转设置页', async () => {
+    const { wrapper, router } = mountSideBar()
     await flushPromises()
-    const headers = wrapper.findAll('.nav-group-header')
-    expect(headers.length).toBe(4)
-    await headers[0].trigger('click')
-    const groupItems = wrapper.findAll('.nav-group-items')
-    expect(groupItems.length).toBeGreaterThan(0)
+    await wrapper.find('[data-testid="sidebar-settings"]').trigger('click')
+    await flushPromises()
+    await nextTick()
+    expect(router.currentRoute.value.path).toBe('/settings')
   })
 })

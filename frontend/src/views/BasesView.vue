@@ -82,6 +82,30 @@ const activeView = computed<BaseView | null>(() => {
 
 const propertyNames = computed(() => properties.value.map((p) => p.name))
 
+// 内置（隐式）属性的本地化标签：UI 显示中文，原始键名通过 title 提示。
+// 自定义 frontmatter 属性没有内置映射，原样显示。
+const PROP_LABEL_KEYS: Record<string, string> = {
+  'file.title': 'propFileTitle',
+  'file.name': 'propFileName',
+  'file.basename': 'propFileBasename',
+  'file.ext': 'propFileExt',
+  'file.folder': 'propFileFolder',
+  'file.path': 'propFilePath',
+  'file.mtime': 'propFileMtime',
+  'file.size': 'propFileSize',
+  'file.words': 'propFileWords',
+  'file.links': 'propFileLinks',
+  'file.backlinks': 'propFileBacklinks',
+  'tags': 'propTags',
+  'todo.done': 'propTodoDone',
+  'todo.pending': 'propTodoPending',
+  'todo.total': 'propTodoTotal',
+}
+function propLabel(name: string): string {
+  const key = PROP_LABEL_KEYS[name]
+  return key ? t(`bases.${key}`) : name
+}
+
 /** 用于列选择器：把隐式属性排在自定义属性之后（后端已排好，这里只取名字） */
 const columnCandidates = computed(() => properties.value)
 
@@ -621,7 +645,7 @@ watch(() => currentWorkspace.value?.id, init)
                   :key="p.name"
                   :value="p.name"
                 >
-                  {{ p.name }}{{ p.implicit ? '' : ` (${p.count})` }}
+                  {{ propLabel(p.name) }}{{ p.implicit ? '' : ` (${p.count})` }}
                 </option>
               </select>
               <select
@@ -693,7 +717,7 @@ watch(() => currentWorkspace.value?.id, init)
                 :key="p.name"
                 :value="p.name"
               >
-                {{ p.name }}
+                {{ propLabel(p.name) }}
               </option>
             </select>
             <button
@@ -724,7 +748,7 @@ watch(() => currentWorkspace.value?.id, init)
                 :key="p.name"
                 :value="p.name"
               >
-                {{ p.name }}
+                {{ propLabel(p.name) }}
               </option>
             </select>
           </div>
@@ -739,10 +763,11 @@ watch(() => currentWorkspace.value?.id, init)
               :key="p.name"
               class="chip"
               :class="{ on: isColumnOn(p.name) }"
+              :title="p.name"
               data-testid="bases-column-chip"
               @click="toggleColumn(p.name)"
             >
-              {{ p.name }}
+              {{ propLabel(p.name) }}
             </button>
           </div>
         </div>
@@ -899,9 +924,10 @@ watch(() => currentWorkspace.value?.id, init)
                     :key="col"
                     :class="{ sorted: col === sortProperty }"
                     data-testid="bases-th"
+                    :title="col"
                     @click="setSortProperty(col === sortProperty && sortDesc ? '' : col)"
                   >
-                    {{ col }}
+                    {{ propLabel(col) }}
                     <component
                       v-if="col === sortProperty"
                       :is="sortDesc ? ArrowDown : ArrowUp"

@@ -57,8 +57,8 @@ describe('CommandPalette', () => {
     await flushPromises()
 
     const items = wrapper.findAll('.command-item')
-    // 内置命令 18 条（含「版本历史」）+ 插件命令 1 条
-    expect(items).toHaveLength(19)
+    // 内置命令 24 条（功能入口 18 + 主题 3 + 保存/视图/设置/主页等）+ 插件命令 1 条
+    expect(items).toHaveLength(25)
     expect(items[items.length - 1].text()).toContain('E2E Plugin Notify')
     const pluginItems = wrapper.findAll('[data-testid="plugin-command"]')
     expect(pluginItems[0].attributes('data-plugin-id')).toBe('p1')
