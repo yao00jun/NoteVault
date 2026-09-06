@@ -52,9 +52,11 @@ import {
   ReminderService,
   ExportService,
   TemplateService,
+  TrashService,
 } from '@bindings/github.com/notevault/notevault/index.js'
 import type { TodoItem, TagInfo } from '@bindings/github.com/notevault/notevault/models.js'
 import { useToast } from '@/composables/useToast'
+import { confirmDialog } from '@/composables/useConfirm'
 import { promptDialog } from '@/composables/usePrompt'
 
 const toast = useToast()
@@ -371,6 +373,26 @@ async function loadAll() {
   }
 }
 
+// 移到回收站（可恢复）：确认 → 移动 → 刷新工作台数据
+async function handleDeleteDoc(file: { path: string; name: string }) {
+  if (!currentWorkspace.value) return
+  const ok = await confirmDialog({
+    message: t('knowledge.moveToTrashConfirm', { name: file.name }),
+    confirmText: t('knowledge.moveToTrash'),
+    danger: true,
+  })
+  if (!ok) return
+  try {
+    await TrashService.MoveToTrash(currentWorkspace.value.path, file.path)
+    workspaceStore.incrementFileTreeVersion()
+    await loadAll()
+    loadWorkbenchStats()
+    toast.success(t('knowledge.movedToTrash', { name: file.name }))
+  } catch (e) {
+    toast.error(t('knowledge.deleteFailed', { msg: (e as Error).message }))
+  }
+}
+
 function openFile(file: { path: string; name: string }) {
   workspaceStore.openFile(file.path)
   workspaceStore.incrementFileTreeVersion()
@@ -683,6 +705,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
         @select-folder="selectFolder"
         @toggle-folder="toggleFolder"
         @open-file="openFile"
+        @delete-file="handleDeleteDoc"
         @toggle-star="toggleStar"
         @create-new="handleCreateNewDoc"
         @create-folder="createFolder"
@@ -1531,6 +1554,28 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   min-width: 0;
 }
 
+.kv-doc-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+}
+.kv-doc-item:hover .kv-doc-delete {
+  opacity: 1;
+}
+.kv-doc-delete:hover {
+  color: var(--error, #ef4444);
+  background: var(--bg-hover);
+}
 .kv-doc-star {
   display: flex;
   align-items: center;

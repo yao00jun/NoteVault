@@ -21,6 +21,7 @@ import {
   Sparkles,
   FilePlus,
   Library,
+  Trash2,
 } from '@lucide/vue'
 
 const { t } = useI18n()
@@ -67,6 +68,7 @@ const emit = defineEmits<{
   (e: 'toggle-folder', path: string): void
   (e: 'open-file', file: BrowserFile): void
   (e: 'toggle-star', path: string): void
+  (e: 'delete-file', file: { path: string; name: string }): void
   (e: 'create-new'): void
   (e: 'create-folder'): void
 }>()
@@ -275,6 +277,14 @@ const emit = defineEmits<{
                   v-else
                   :size="14"
                 />
+              </button>
+              <button
+                class="kv-doc-delete"
+                :title="t('knowledge.moveToTrash')"
+                data-testid="doc-delete"
+                @click.stop="emit('delete-file', file)"
+              >
+                <Trash2 :size="14" />
               </button>
               <ChevronRight
                 :size="14"
