@@ -425,6 +425,27 @@ function openRow(path: string) {
 
 const groupedResult = computed(() => result.value?.groups?.filter(Boolean) ?? [])
 const flatRows = computed(() => result.value?.rows?.filter(Boolean) ?? [])
+
+// ---- 表格虚拟滚动（蓝图 Phase 6）：固定行高窗口化 ----
+const tableScrollRef = ref<HTMLElement | null>(null)
+const tableScrollTop = ref(0)
+const basesRowHeight = 44
+const tableSpacerTop = computed(() => {
+  const s = Math.min(Math.floor(tableScrollTop.value / basesRowHeight) - 8, Math.max(0, flatRows.value.length))
+  return Math.max(0, s) * basesRowHeight
+})
+const visibleTableRows = computed(() => {
+  const start = Math.max(0, Math.floor(tableScrollTop.value / basesRowHeight) - 8)
+  const viewportH = tableScrollRef.value?.clientHeight ?? 600
+  const count = Math.ceil(viewportH / basesRowHeight) + 16
+  return flatRows.value.slice(start, start + count)
+})
+const tableSpacerBottom = computed(() =>
+  Math.max(0, flatRows.value.length - (tableSpacerTop.value / basesRowHeight + visibleTableRows.value.length)) * basesRowHeight,
+)
+function onTableScroll(e: Event) {
+  tableScrollTop.value = (e.target as HTMLElement).scrollTop
+}
 const hasGroups = computed(() => groupedResult.value.length > 0)
 
 onMounted(init)
@@ -903,8 +924,10 @@ watch(() => currentWorkspace.value?.id, init)
           <!-- 表格（默认） -->
           <div
             v-else
+            ref="tableScrollRef"
             class="table-wrap"
             data-testid="bases-table"
+            @scroll.passive="onTableScroll"
           >
             <table class="table">
               <thead>
@@ -927,8 +950,16 @@ watch(() => currentWorkspace.value?.id, init)
                 </tr>
               </thead>
               <tbody>
+                <!-- 虚拟滚动（蓝图 Phase 6）：万级行只渲染可视窗口 -->
                 <tr
-                  v-for="row in flatRows"
+                  v-if="tableSpacerTop > 0"
+                  aria-hidden="true"
+                  :style="{ height: tableSpacerTop + 'px' }"
+                >
+                  <td :colspan="result?.columns?.length || 1" />
+                </tr>
+                <tr
+                  v-for="row in visibleTableRows"
                   :key="row!.path"
                   data-testid="bases-tr"
                   @click="openRow(row!.path)"
@@ -952,6 +983,13 @@ watch(() => currentWorkspace.value?.id, init)
                       {{ cell.display }}
                     </template>
                   </td>
+                </tr>
+                <tr
+                  v-if="tableSpacerBottom > 0"
+                  aria-hidden="true"
+                  :style="{ height: tableSpacerBottom + 'px' }"
+                >
+                  <td :colspan="result?.columns?.length || 1" />
                 </tr>
               </tbody>
             </table>
@@ -1354,7 +1392,17 @@ watch(() => currentWorkspace.value?.id, init)
 }
 
 .table-wrap {
-  overflow-x: auto;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+/* 虚拟滚动要求行高一致 */
+.table tbody td {
+  height: 44px;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .table {

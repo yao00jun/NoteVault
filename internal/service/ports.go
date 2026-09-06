@@ -23,6 +23,10 @@ type FileOperator interface {
 	RenameFile(workspacePath string, oldRelativePath string, newName string) (*FileNode, error)
 	CreateFolder(workspacePath string, relativePath string) (*FileNode, error)
 	SaveImage(workspacePath string, fileName string, data []byte) (string, error)
+	// ScanOrphanAssets / MoveOrphansToTrash 媒体资产 GC（蓝图专项 6）：
+	// 扫描 assets/ 孤立附件并安全移入回收站
+	ScanOrphanAssets(workspacePath string) ([]string, error)
+	MoveOrphansToTrash(workspacePath string, relPaths []string) (int, error)
 }
 
 // ---------------------------------------------------------------------------

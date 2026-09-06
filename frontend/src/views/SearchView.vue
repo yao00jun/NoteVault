@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { SearchService, WorkspaceService, QnAService } from '@/api'
 import type { RerankProvider } from '@/api'
 import { cleanSnippet, highlightText } from '@/utils/text'
+import VirtualList from '@/components/common/VirtualList.vue'
 
 interface SearchResult {
   path: string
@@ -445,8 +446,13 @@ onBeforeUnmount(() => {
           ref="resultsListRef"
           class="results-list"
         >
+        <VirtualList
+          :items="sortedResults"
+          :row-height="72"
+          class="results-virtual"
+        >
+        <template #default="{ item: result }">
         <div
-          v-for="result in sortedResults"
           :key="result.path"
           class="result-item"
           data-testid="search-result"
@@ -477,6 +483,8 @@ onBeforeUnmount(() => {
               />
             </div>
           </div>
+        </template>
+        </VirtualList>
         </div>
       </div>
 
@@ -771,6 +779,17 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  flex: 1;
+  min-height: 0;
+}
+.results-virtual {
+  height: 100%;
+}
+/* 虚拟滚动要求行高一致（蓝图 Phase 6） */
+.results-virtual .result-item {
+  height: 72px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .result-item {
