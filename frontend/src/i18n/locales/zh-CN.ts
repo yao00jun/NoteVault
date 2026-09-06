@@ -1,5 +1,6 @@
 export default {
   common: {
+    backToKnowledge: '返回知识库',
     loading: '加载中...',
     cancel: '取消',
     confirm: '确定',

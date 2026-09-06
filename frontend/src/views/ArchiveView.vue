@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { Archive, RotateCcw, FileText, FolderOpen } from '@lucide/vue'
+import { Archive, RotateCcw, FileText, FolderOpen, ArrowLeft } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
@@ -68,9 +68,19 @@ watch(() => currentWorkspace.value?.id, loadFiles)
 <template>
   <div class="archive-view">
     <div class="archive-header">
-      <h2 class="archive-title">
-        <Archive :size="20" /> {{ t('archive.title') }}
-      </h2>
+      <div class="archive-header-left">
+        <button
+          class="back-btn"
+          data-testid="archive-back"
+          @click="router.push('/knowledge')"
+        >
+          <ArrowLeft :size="16" />
+          <span>{{ t('common.backToKnowledge') }}</span>
+        </button>
+        <h2 class="archive-title">
+          <Archive :size="20" /> {{ t('archive.title') }}
+        </h2>
+      </div>
       <span class="archive-count">{{ t('archive.total', { count: files.length }) }}</span>
     </div>
     <div class="archive-content">
@@ -126,6 +136,9 @@ watch(() => currentWorkspace.value?.id, loadFiles)
 <style scoped>
 .archive-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .archive-header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-6) var(--space-8); border-bottom: 1px solid var(--border); background: var(--bg-window); }
+.archive-header-left { display: flex; align-items: center; gap: var(--space-3); }
+.back-btn { display: flex; align-items: center; gap: 5px; border: none; background: transparent; color: var(--text-muted); font-size: var(--text-sm); cursor: pointer; padding: 5px 10px; border-radius: var(--radius-sm); transition: background var(--transition-fast), color var(--transition-fast); }
+.back-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .archive-title { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xl); font-weight: 700; margin: 0; color: var(--text-primary); }
 .archive-count { font-size: var(--text-sm); color: var(--text-muted); }
 .archive-content { flex: 1; overflow-y: auto; padding: var(--space-6) var(--space-8); }

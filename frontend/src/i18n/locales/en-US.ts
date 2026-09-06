@@ -1,5 +1,6 @@
 export default {
   common: {
+    backToKnowledge: 'Back to Knowledge',
     loading: 'Loading...',
     cancel: 'Cancel',
     confirm: 'OK',

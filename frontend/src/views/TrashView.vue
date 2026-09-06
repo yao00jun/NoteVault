@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { Trash2, RotateCcw, FileText, AlertTriangle } from '@lucide/vue'
+import { Trash2, RotateCcw, FileText, AlertTriangle, ArrowLeft } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
@@ -95,6 +95,14 @@ watch(() => currentWorkspace.value?.id, loadFiles)
   <div class="trash-view">
     <div class="trash-header">
       <div class="header-left">
+        <button
+          class="back-btn"
+          data-testid="trash-back"
+          @click="router.push('/knowledge')"
+        >
+          <ArrowLeft :size="16" />
+          <span>{{ t('common.backToKnowledge') }}</span>
+        </button>
         <h2 class="trash-title">
           <Trash2 :size="20" /> {{ t('trash.title') }}
         </h2>
@@ -176,6 +184,8 @@ watch(() => currentWorkspace.value?.id, loadFiles)
 <style scoped>
 .trash-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .trash-header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-6) var(--space-8); border-bottom: 1px solid var(--border); background: var(--bg-window); }
+.back-btn { display: flex; align-items: center; gap: 5px; border: none; background: transparent; color: var(--text-muted); font-size: var(--text-sm); cursor: pointer; padding: 5px 10px; border-radius: var(--radius-sm); transition: background var(--transition-fast), color var(--transition-fast); }
+.back-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .header-left { display: flex; align-items: center; gap: var(--space-4); }
 .trash-title { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xl); font-weight: 700; margin: 0; color: var(--text-primary); }
 .trash-count { font-size: var(--text-sm); color: var(--text-muted); }
