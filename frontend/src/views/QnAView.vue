@@ -1,115 +1,26 @@
 <script setup lang="ts">
-import { QnAService, QnACitation } from '@/api'
-import { ref, computed, nextTick, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessageCircle, Send, Trash2, FileText, Loader2, Sparkles } from '@lucide/vue'
-import { marked } from 'marked'
-import { sanitizeHtml } from '@/utils/sanitize'
-import type { RerankProvider } from '@/api'
-import { useWorkspaceStore } from '@/stores/workspace'
-import { useSettingsStore } from '@/stores/settings'
-import { isLocalBaseURL } from '@/utils/localEndpoint'
+// 问答状态机已抽离为 useAIChat（AI-COPILOT-FLOATING-ORB 蓝图 Step 1），
+// 本视图只保留「全页问答」这一种呈现形态。
+import { useAIChat } from '@/composables/useAIChat'
 
 const { t } = useI18n()
-const router = useRouter()
-const workspaceStore = useWorkspaceStore()
-const settingsStore = useSettingsStore()
 
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-  citations?: QnACitation[]
-  error?: boolean
-}
+const {
+  messages,
+  question,
+  isAsking,
+  canAsk,
+  ask,
+  clearConversation,
+  onKeydown,
+  openCitation,
+  renderMarkdown,
+} = useAIChat()
 
-const messages = ref<ChatMessage[]>([])
-const question = ref('')
-const isAsking = ref(false)
 const messagesRef = ref<HTMLElement | null>(null)
-
-const canAsk = computed(() => question.value.trim().length > 0 && !isAsking.value)
-
-const currentWorkspace = computed(() => workspaceStore.currentWorkspace)
-
-async function ask() {
-  const q = question.value.trim()
-  if (!q || isAsking.value) return
-
-  if (!currentWorkspace.value) {
-    messages.value.push({ role: 'assistant', content: t('qna.noWorkspace'), error: true })
-    return
-  }
-  const ai = settingsStore.settings.ai
-  const emb = settingsStore.settings.embedding
-  const rerank = settingsStore.settings.rerank
-  // 本机端点（Ollama / LM Studio）免 Key——与后端 requireCredential 同口径；
-  // 云端端点仍必须填 Key
-  if (!isLocalBaseURL(ai.baseURL) && (!ai.apiKey || !ai.apiKey.trim())) {
-    messages.value.push({ role: 'assistant', content: t('qna.noApiKey'), error: true })
-    return
-  }
-
-  messages.value.push({ role: 'user', content: q })
-  question.value = ''
-  isAsking.value = true
-  await scrollToBottom()
-  try {
-    const resp = await QnAService.Answer(
-      ai.apiKey,
-      ai.baseURL,
-      ai.model,
-      ai.protocol,
-      emb.baseURL,
-      emb.model,
-      emb.apiKey,
-      {
-        provider: rerank.provider as unknown as RerankProvider,
-        baseURL: rerank.baseURL,
-        model: rerank.model,
-        apiKey: rerank.apiKey,
-      },
-      currentWorkspace.value.path,
-      q,
-    )
-    messages.value.push({
-      role: 'assistant',
-      content: (resp?.answer ?? '').trim() || t('qna.emptyTitle'),
-      citations: resp?.citations ?? [],
-    })
-  } catch (e) {
-    messages.value.push({
-      role: 'assistant',
-      content: t('qna.askFailed', { msg: (e as Error).message }),
-      error: true,
-    })
-  } finally {
-    isAsking.value = false
-    await scrollToBottom()
-  }
-}
-
-function clearConversation() {
-  if (isAsking.value) return
-  messages.value = []
-}
-
-async function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault()
-    await ask()
-  }
-}
-
-function openCitation(path: string) {
-  workspaceStore.openFile(path)
-  router.push('/editor')
-}
-
-function renderMarkdown(content: string): string {
-  // AI 回答同样经过清洗：模型输出也可能带注入 HTML
-  return sanitizeHtml(marked.parse(content, { async: false }) as string)
-}
 
 async function scrollToBottom() {
   await nextTick()
@@ -224,7 +135,7 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
       <button
         class="btn-ask"
         :disabled="!canAsk"
-        @click="ask"
+        @click="ask()"
       >
         <Send :size="14" />
         <span>{{ t('qna.ask') }}</span>

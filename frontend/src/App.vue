@@ -9,6 +9,8 @@ import ToastHost from '@/components/layout/ToastHost.vue'
 import ConfirmDialog from '@/components/layout/ConfirmDialog.vue'
 import OmniSearch from '@/components/layout/OmniSearch.vue'
 import PromptDialog from '@/components/layout/PromptDialog.vue'
+import FloatingAssistantOrb from '@/components/layout/FloatingAssistantOrb.vue'
+import AICopilotDrawer from '@/components/layout/AICopilotDrawer.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { usePluginRuntimeStore } from '@/stores/pluginRuntime'
@@ -26,6 +28,8 @@ const router = useRouter()
 const showCommandPalette = ref(false)
 // 全局检索与 AI 问答浮层（蓝图 2.4）：任意界面 Ctrl+K 唤起
 const showOmniSearch = ref(false)
+// 全局 AI 悬浮球 + Copilot 伴生抽屉（AI-COPILOT-FLOATING-ORB 蓝图）：Ctrl+J 唤起
+const showCopilot = ref(false)
 
 // 欢迎页和设置页有自己的独立布局，需要隐藏主应用侧边栏
 const hideSidebarRoutes = ['/', '/settings']
@@ -48,6 +52,12 @@ function handleGlobalKeydown(e: KeyboardEvent) {
   if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
     e.preventDefault()
     showOmniSearch.value = !showOmniSearch.value
+    return
+  }
+  // Ctrl+J：全局 AI Copilot 抽屉（AI-COPILOT-FLOATING-ORB 蓝图 Step 2）
+  if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
+    e.preventDefault()
+    showCopilot.value = !showCopilot.value
     return
   }
   // Ctrl+,：打开设置
@@ -167,6 +177,16 @@ function handleNewFileFromPalette() {
       :visible="showOmniSearch"
       @close="showOmniSearch = false"
       @open-file="openFileFromOmni"
+    />
+    <!-- 全局 AI 伴侣（AI-COPILOT-FLOATING-ORB）：悬浮球常驻，抽屉右侧伴生。
+         跟随主布局可见性——欢迎页/设置页不出现，避免遮挡独立布局。 -->
+    <FloatingAssistantOrb
+      v-if="showSidebar"
+      @toggle="showCopilot = !showCopilot"
+    />
+    <AICopilotDrawer
+      :visible="showCopilot"
+      @close="showCopilot = false"
     />
     <div class="plugin-notification-stack">
       <div

@@ -236,6 +236,29 @@ export function replaceEditorSelection(text: string): void {
 }
 
 /**
+ * 在当前光标处插入文本，不替换已有选区（AI Copilot「插入当前笔记」专用，
+ * AI-COPILOT-FLOATING-ORB 蓝图 Step 3）。
+ * 与 replaceEditorSelection 的区别：后者会吞掉选区——用户复制了一段文字
+ * 再点「插入」时，绝不能把选区内容顶掉。
+ * 返回是否成功（没有活动编辑器时为 false，由调用方降级提示）。
+ */
+export function insertAtCursor(text: string): boolean {
+  const view = activeEditor
+  if (!view) return false
+  const { state } = view
+  const pos = state.selection.main.head
+  view.dispatch(
+    state.update({
+      changes: { from: pos, insert: text },
+      selection: EditorSelection.cursor(pos + text.length),
+      userEvent: 'input',
+    }),
+  )
+  view.focus()
+  return true
+}
+
+/**
  * 应用插件声明的文本变换到当前选区/光标（宿主在真实编辑器上执行）。
  * UI 注册协议的落点：插件只能声明 transform，宿主拿到按钮点击后在这里真正改文本。
  */

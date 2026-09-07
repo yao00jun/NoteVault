@@ -613,6 +613,18 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   loadBacklinks()
 })
 
+// 工作台空间卡直达（?folder=Learning 等）：路由 query 变化时更新聚焦目录，
+// 由 FileTree 展开祖先链并短暂高亮。keep-alive 下本组件不重挂载，
+// query 变化只能靠 watcher 接住。
+const focusFolder = ref<string | null>(null)
+watch(
+  () => route.query.folder,
+  (val) => {
+    focusFolder.value = typeof val === 'string' && val.trim() ? val : null
+  },
+  { immediate: true },
+)
+
 // 文件拖拽支持
 const isDragOver = ref(false)
 
@@ -1003,6 +1015,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
         <FileTree
           :nodes="fileTree"
           :active-file-path="activeTab?.path"
+          :focus-folder="focusFolder"
           @open-file="openFile"
           @new-file="handleNewFile"
           @delete="handleDeleteFile"

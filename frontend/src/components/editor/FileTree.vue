@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { ChevronRight, ChevronDown, FileText, Folder, FolderOpen, MoreVertical, Archive, Trash2 } from '@lucide/vue'
 
 export interface FileNode {
@@ -12,9 +12,11 @@ export interface FileNode {
   modTime?: string
 }
 
-defineProps<{
+const props = defineProps<{
   nodes: FileNode[]
   activeFilePath?: string | null
+  /** 工作台空间卡直达：展开并高亮指定目录（相对路径，如 "Learning/Java"） */
+  focusFolder?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -29,6 +31,8 @@ const emit = defineEmits<{
 
 const expandedDirs = ref<Set<string>>(new Set())
 const contextMenu = ref<{ x: number; y: number; node: FileNode | null; parentPath: string } | null>(null)
+/** 被聚焦高亮的目录路径（空间卡直达时短暂高亮，点击别处后清除） */
+const focusedDir = ref<string | null>(null)
 
 function toggleDir(node: FileNode) {
   if (expandedDirs.value.has(node.path)) {
@@ -41,6 +45,38 @@ function toggleDir(node: FileNode) {
 function isExpanded(node: FileNode) {
   return expandedDirs.value.has(node.path)
 }
+
+/**
+ * 聚焦指定目录：递归树的每一层实例只负责展开自己这一段，
+ * 剩余路径通过 focus-folder 转发给子层实例（子层有自己的 expandedDirs）。
+ * 树未加载时（异步 GetFileTree）暂时匹配不到，由 nodes 变化触发重试。
+ */
+const childFocusFolder = ref<string | null>(null)
+
+watch(
+  () => [props.focusFolder, props.nodes] as const,
+  ([folder]) => {
+    if (typeof folder !== 'string' || !folder.trim()) return
+    const segments = folder.split(/[\\/]+/).filter(Boolean)
+    if (segments.length === 0) return
+    const head = segments[0]
+    const dir = props.nodes.find(
+      (n) => n.isDir && (n.path === segments.join('/') || n.name === head),
+    )
+    if (!dir) return
+    expandedDirs.value.add(dir.path)
+    if (segments.length > 1) {
+      childFocusFolder.value = segments.slice(1).join('/')
+    } else {
+      focusedDir.value = dir.path
+      // 高亮 2.4s 后自然消退，避免常亮干扰
+      window.setTimeout(() => {
+        if (focusedDir.value === dir.path) focusedDir.value = null
+      }, 2400)
+    }
+  },
+  { immediate: true },
+)
 
 function handleFileClick(node: FileNode) {
   if (node.isDir) {
@@ -106,6 +142,7 @@ function handleTrash(node: FileNode) {
           :class="{
             'is-dir': node.isDir,
             'is-active': !node.isDir && activeFilePath === node.path,
+            'is-focused': node.isDir && focusedDir === node.path,
           }"
           @click="handleFileClick(node)"
           @contextmenu="handleContextMenu($event, node, node.isDir ? node.path : node.path.substring(0, node.path.lastIndexOf('/')))"
@@ -152,6 +189,7 @@ function handleTrash(node: FileNode) {
         <FileTree
           :nodes="node.children"
             :active-file-path="activeFilePath"
+            :focus-folder="childFocusFolder"
             @open-file="(n) => emit('open-file', n)"
             @new-file="(p) => emit('new-file', node.path + '/' + p)"
             @new-folder="(p) => emit('new-folder', node.path + '/' + p)"
@@ -264,6 +302,14 @@ export default { name: 'FileTree' }
 .tree-node.is-active {
   background: var(--bg-active);
   color: var(--accent);
+}
+
+/* 空间卡直达的高亮（短暂）：用 accent 描边吸睛，2.4s 后自动消退 */
+.tree-node.is-focused {
+  background: var(--bg-active);
+  color: var(--accent);
+  outline: 1px solid var(--border-accent, var(--accent));
+  border-radius: var(--radius-sm);
 }
 
 .node-indent {

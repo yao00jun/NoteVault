@@ -57,6 +57,13 @@ const colorInputRef = ref<HTMLInputElement | null>(null)
 const bgInputRef = ref<HTMLInputElement | null>(null)
 let editorView: EditorView | null = null
 
+// store 必须先于下方 watch 声明：watch 的源 getter 在注册时同步执行一次，
+// 若引用尚未初始化的 const 会抛 TDZ ReferenceError（打包产物里表现为
+// 「Cannot access '_' before initialization」，EditorView 挂载即白屏——
+// 见 errors.log 2026-09-06 起的成串崩溃记录）。
+const settingsStore = useSettingsStore()
+const pluginStore = usePluginRuntimeStore()
+
 // 插件声明的编辑器扩展放进独立的 Compartment：
 // 插件随时可能注册/卸载，装饰集合变化时热替换这一格即可，
 // 不必重建整个编辑器状态（那样会丢光标、丢撤销历史）。
@@ -86,9 +93,6 @@ watch(
   ],
   () => reconfigurePluginExtensions(),
 )
-
-const settingsStore = useSettingsStore()
-const pluginStore = usePluginRuntimeStore()
 
 const saveKeymap = keymap.of([
   {

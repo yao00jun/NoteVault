@@ -33,35 +33,35 @@ export function useDailyNote() {
     const fileName = todayNotePath()
     const dateStr = fileName.slice('Daily/'.length, -'.md'.length)
     try {
-      let node: unknown
       try {
         // P2-2：工作区提供 Templates/Daily.md 则优先用模板渲染（支持 {{date}} 等占位符）
-        node = await TemplateService.CreateFromTemplate(ws.path, 'Daily', fileName, {})
+        await TemplateService.CreateFromTemplate(ws.path, 'Daily', fileName, {})
       } catch {
         // 无 Daily 模板 → 内置默认结构
-        node = await FileService.CreateFile(
+        await FileService.CreateFile(
           ws.path,
           fileName,
           `# ${dateStr}\n\n## 📅 今日计划\n\n- [ ] \n\n## 📝 笔记\n\n## 💭 想法\n\n`,
         )
       }
-      if (node) {
-        workspaceStore.incrementFileTreeVersion()
-        workspaceStore.openFile((node as { path?: string })?.path ?? fileName)
-      }
-      router.push('/editor')
-      return true
     } catch (e) {
-      if ((e as Error).message?.includes('exist')) {
-        // 文件已存在，直接打开
-        workspaceStore.openFile(fileName)
-        router.push('/editor')
-        return true
+      // 两个创建通道都失败，绝大多数情况 = 今日日记已存在（FileService 原子创建
+      // O_EXCL）。判定不能只看英文 'exist'：NVError 的 Message 是中文
+      // 「文件已存在」，Cause 才渲染出 "The file exists."——两边都要兜住。
+      // 真正的磁盘故障（权限等）则照常提示并中止。
+      const msg = (e as Error).message ?? ''
+      if (!/exist|已存在/i.test(msg)) {
+        console.error('Failed to create daily note:', e)
+        toast.error(t('knowledge.dailyFailed', { msg }))
+        return false
       }
-      console.error('Failed to create daily note:', e)
-      toast.error(t('knowledge.dailyFailed', { msg: (e as Error).message }))
-      return false
     }
+    // 无论创建路径走没走通，路径是确定的：直接打开它（不存在时 ReadFile 会
+    // 在 openFileByPath 里报错并被 console 记录，但那种情况只可能是磁盘故障）
+    workspaceStore.openFile(fileName)
+    workspaceStore.incrementFileTreeVersion()
+    router.push('/editor')
+    return true
   }
 
   return { openTodayNote, todayNotePath }

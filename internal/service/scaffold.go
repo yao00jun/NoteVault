@@ -16,7 +16,9 @@ package service
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"strings"
 )
 
 // scaffoldDirs 脚手架目录清单（相对工作区根）。
@@ -119,6 +121,61 @@ AI 会生成摘要、标签与双链建议，并把成稿移入 Compiled/。
 `,
 }
 
+// legacyMigrationReserved 遗留目录迁移的保留名：脚手架约定目录 + 编译产物目录。
+// 命中保留名（或点前缀系统目录）的根目录条目一律原地不动。
+var legacyMigrationReserved = func() map[string]bool {
+	m := map[string]bool{"Compiled": true}
+	for _, d := range scaffoldDirs {
+		m[d] = true
+	}
+	return m
+}()
+
+// migrateLegacyFolders 把根目录下游离的主题目录收进 Learning/（2026-09-07 用户指令：
+// 「Java SQL 怎么还在外面？说好的整理文件夹呢？」）。
+//
+// 规则（与脚手架铁律一致，零破坏）：
+//   - 只处理【目录】，文件一律不动；跳过点前缀目录（.trash/.notevault/.archive）
+//     与保留名（scaffoldDirs + Compiled）；
+//   - 目标 Learning/<名> 已存在时跳过——绝不合并、绝不覆盖；
+//   - 同卷 os.Rename 原子完成；移动后根目录不再有该目录，天然幂等。
+func migrateLegacyFolders(workspacePath string) []error {
+	entries, err := os.ReadDir(workspacePath)
+	if err != nil {
+		return []error{fmt.Errorf("读工作区根目录失败: %w", err)}
+	}
+	var errs []error
+	for _, entry := range entries {
+		name := entry.Name()
+		if !entry.IsDir() || strings.HasPrefix(name, ".") || legacyMigrationReserved[name] {
+			continue
+		}
+		srcPath, err := confineToWorkspace(workspacePath, name)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("路径校验 %s 失败: %w", name, err))
+			continue
+		}
+		targetRel := "Learning/" + name
+		targetPath, err := confineToWorkspace(workspacePath, targetRel)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("路径校验 %s 失败: %w", targetRel, err))
+			continue
+		}
+		if _, err := os.Stat(targetPath); err == nil {
+			continue // 目标已存在：保留原样，不合并不覆盖
+		} else if !os.IsNotExist(err) {
+			errs = append(errs, fmt.Errorf("检查 %s 失败: %w", targetRel, err))
+			continue
+		}
+		if err := os.Rename(srcPath, targetPath); err != nil {
+			errs = append(errs, fmt.Errorf("迁移目录 %s 失败: %w", name, err))
+			continue
+		}
+		log.Printf("[scaffold] 根目录主题目录 %s 已迁入 %s", name, targetRel)
+	}
+	return errs
+}
+
 // EnsureWorkspaceScaffold 幂等初始化工作区约定目录与引导文件。
 // 返回值只反映"是否有致命失败"；单条失败不阻断其余条目（继续初始化别的），
 // 最后汇总为 error 供调用方记日志。
@@ -158,6 +215,9 @@ func EnsureWorkspaceScaffold(workspacePath string) error {
 			errs = append(errs, fmt.Errorf("写入 %s 失败: %w", rel, err))
 		}
 	}
+
+	// 3. 遗留目录迁移：根目录游离的主题目录（如 Java、SQL）收进 Learning/
+	errs = append(errs, migrateLegacyFolders(workspacePath)...)
 
 	if len(errs) > 0 {
 		return fmt.Errorf("scaffold: %d 项初始化失败: %w", len(errs), errs[0])

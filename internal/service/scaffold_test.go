@@ -93,3 +93,64 @@ func TestCreateWorkspace_RunsScaffold(t *testing.T) {
 		t.Errorf("meeting template should exist after CreateWorkspace: %v", err)
 	}
 }
+
+// TestEnsureWorkspaceScaffold_MigratesLegacyFolders 遗留目录迁移（2026-09-07 用户指令）：
+// 根目录游离的主题目录（Java、SQL）收进 Learning/；保留名、点前缀目录与文件不动；
+// Learning 下已有同名目录时绝不合并/覆盖；重跑幂等。
+func TestEnsureWorkspaceScaffold_MigratesLegacyFolders(t *testing.T) {
+	root := t.TempDir()
+	mkdir := func(rel string) {
+		if err := os.MkdirAll(filepath.Join(root, rel), 0o750); err != nil {
+			t.Fatalf("mkdir %s failed: %v", rel, err)
+		}
+	}
+	write := func(rel, content string) {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s failed: %v", rel, err)
+		}
+	}
+
+	// 根目录的遗留主题目录 + 应当原地不动的条目
+	mkdir("Java")
+	mkdir("SQL")
+	write("Java/基础.md", "# Java")
+	mkdir("Learning")
+	mkdir("Learning/SQL") // 目标已存在 → 不得覆盖
+	mkdir(".trash")
+	mkdir("assets")
+	write("根目录文件.md", "# keep")
+
+	if err := EnsureWorkspaceScaffold(root); err != nil {
+		t.Fatalf("EnsureWorkspaceScaffold failed: %v", err)
+	}
+
+	// Java 整体迁入 Learning/Java，原位置消失
+	if _, err := os.Stat(filepath.Join(root, "Learning", "Java", "基础.md")); err != nil {
+		t.Errorf("Java should be migrated into Learning/Java with content: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Java")); !os.IsNotExist(err) {
+		t.Errorf("root Java should be gone after migration, stat err: %v", err)
+	}
+	// SQL：Learning/SQL 已存在 → 跳过，根目录 SQL 保留原样
+	if _, err := os.Stat(filepath.Join(root, "SQL")); err != nil {
+		t.Errorf("root SQL must stay when Learning/SQL already exists: %v", err)
+	}
+	// 保留名与系统目录原地不动
+	for _, keep := range []string{"assets", ".trash"} {
+		if info, err := os.Stat(filepath.Join(root, keep)); err != nil || !info.IsDir() {
+			t.Errorf("%s must stay at root", keep)
+		}
+	}
+	// 文件不动
+	if _, err := os.Stat(filepath.Join(root, "根目录文件.md")); err != nil {
+		t.Errorf("root files must never be touched: %v", err)
+	}
+
+	// 幂等：重跑不报错、不再有新动作
+	if err := EnsureWorkspaceScaffold(root); err != nil {
+		t.Fatalf("rerun failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Learning", "Java", "基础.md")); err != nil {
+		t.Errorf("migrated content must survive rerun: %v", err)
+	}
+}
