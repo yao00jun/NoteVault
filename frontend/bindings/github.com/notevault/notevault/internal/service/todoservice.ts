@@ -14,6 +14,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+export function AddWorkbenchTask(workspacePath: string, projectFolder: string, title: string, kind: string, due: string, date: string): $CancellablePromise<void> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.TodoService.AddWorkbenchTask", workspacePath, projectFolder, title, kind, due, date);
+}
+
 /**
  * GetAllTodos 获取工作区中所有待办事项
  */
@@ -29,8 +33,37 @@ export function GetTodoStats(workspacePath: string): $CancellablePromise<{ [_ in
 }
 
 /**
+ * GetWorkbench derives every field from the current Markdown, without a cache or database.
+ */
+export function GetWorkbench(workspacePath: string, date: string): $CancellablePromise<$models.WorkbenchSnapshot | null> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.TodoService.GetWorkbench", workspacePath, date);
+}
+
+export function ReadDailyReport(workspacePath: string, date: string): $CancellablePromise<string> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.TodoService.ReadDailyReport", workspacePath, date);
+}
+
+/**
+ * ReviewInterviewCard updates only known JSON values inside the original comment.
+ */
+export function ReviewInterviewCard(workspacePath: string, filePath: string, lineIndex: number, expectedComment: string, level: string, date: string): $CancellablePromise<void> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.TodoService.ReviewInterviewCard", workspacePath, filePath, lineIndex, expectedComment, level, date);
+}
+
+export function SaveDailyReport(workspacePath: string, date: string, content: string, expectedContent: string): $CancellablePromise<string> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.TodoService.SaveDailyReport", workspacePath, date, content, expectedContent);
+}
+
+/**
  * ToggleTodo 切换待办事项的完成状态
  */
 export function ToggleTodo(workspacePath: string, filePath: string, lineIndex: number): $CancellablePromise<void> {
     return $Call.ByName("github.com/notevault/notevault/internal/service.TodoService.ToggleTodo", workspacePath, filePath, lineIndex);
+}
+
+/**
+ * UpdateWorkbenchTask compares the current source line before touching the note.
+ */
+export function UpdateWorkbenchTask(workspacePath: string, filePath: string, lineIndex: number, expectedLine: string, action: string, value: string, date: string): $CancellablePromise<void> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.TodoService.UpdateWorkbenchTask", workspacePath, filePath, lineIndex, expectedLine, action, value, date);
 }

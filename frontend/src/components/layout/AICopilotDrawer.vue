@@ -9,17 +9,21 @@ import { isLocalBaseURL } from '@/utils/localEndpoint'
 import { useAIChat } from '@/composables/useAIChat'
 import { insertAtCursor } from '@/plugins/editorBridge'
 import { useToast } from '@/composables/useToast'
+import type { CopilotRequest } from '@/composables/useCopilotRequest'
 
 // AI-COPILOT-FLOATING-ORB 蓝图 Step 3：右侧伴生 AI 抽屉。
 // 非阻塞覆盖：无遮罩层，主工作区（左侧编辑器）照常可交互，
 // 由「点外部 / Esc / 右上角 X」三种方式关闭。
-const props = defineProps<{ visible: boolean }>()
+const props = defineProps<{ visible: boolean; request?: CopilotRequest | null }>()
 const emit = defineEmits<{ close: [] }>()
 
 const { t } = useI18n()
 const workspaceStore = useWorkspaceStore()
 const settingsStore = useSettingsStore()
 const toast = useToast()
+const activeRequest = ref<CopilotRequest | null>(null)
+const requestAnswerStart = ref(0)
+let consumedRequest = ''
 
 /** 注入 Prompt 的文档内容上限：防止超长文档把请求撑爆 */
 const CONTEXT_LIMIT = 8000
@@ -27,32 +31,44 @@ const CONTEXT_LIMIT = 8000
 /** 当前活动文档内容缓存：打开抽屉 / 切换活动文件时惰性拉取 */
 const docContent = ref('')
 const docContentLoaded = ref(false)
+let documentGeneration = 0
+let disposed = false
+
+function invalidateDocContent() {
+  documentGeneration++
+  docContent.value = ''
+  docContentLoaded.value = false
+}
+
+watch(() => [workspaceStore.currentWorkspace?.path, workspaceStore.activeFile], invalidateDocContent, { flush: 'sync' })
 
 async function loadDocContent() {
-  const ws = workspaceStore.currentWorkspace
+  const workspacePath = workspaceStore.currentWorkspace?.path
   const path = workspaceStore.activeFile
-  docContentLoaded.value = false
-  if (!ws?.path || !path) {
-    docContent.value = ''
-    return
-  }
+  invalidateDocContent()
+  const generation = documentGeneration
+  const isCurrent = () => !disposed && generation === documentGeneration && workspacePath === workspaceStore.currentWorkspace?.path && path === workspaceStore.activeFile
+  if (!workspacePath || !path) return
   try {
-    const content = await FileService.ReadFile(ws.path, path)
+    const content = await FileService.ReadFile(workspacePath, path)
+    if (!isCurrent()) return
     docContent.value = content.length > CONTEXT_LIMIT ? `${content.slice(0, CONTEXT_LIMIT)}\n…` : content
     docContentLoaded.value = true
   } catch (e) {
+    if (!isCurrent()) return
     console.warn('[AICopilotDrawer] 读取当前文档失败:', e)
     docContent.value = ''
   }
 }
 
 const activeFileName = computed(() => {
+  if (activeRequest.value) return ({ 'daily-report': '今日日报', project: '项目进展', learning: '面试与学习' } as Record<string, string>)[activeRequest.value.source || ''] || '工作台上下文'
   if (!workspaceStore.activeFile) return ''
   const parts = workspaceStore.activeFile.split('/')
   return parts[parts.length - 1] ?? ''
 })
 
-const hasActiveDoc = computed(() => !!workspaceStore.activeFile)
+const hasActiveDoc = computed(() => !!workspaceStore.activeFile || !!activeRequest.value)
 
 const attachContext = ref(true)
 
@@ -68,11 +84,46 @@ const {
   renderMarkdown,
 } = useAIChat({
   buildContext: (force) => {
+    if (activeRequest.value && (attachContext.value || force)) return activeRequest.value.context
     // 勾选「关联当前文档上下文」或快捷指令强制注入时，带上文档内容
     if ((!attachContext.value && !force) || !docContentLoaded.value) return null
     return docContent.value
   },
 })
+
+// Queue domain requests while a previous answer is finishing instead of losing clicks.
+watch(() => [props.request?.id, props.visible, isAsking.value, workspaceStore.currentWorkspace?.path], () => {
+  const request = props.request
+  if (!props.visible || !request || request.id === consumedRequest || isAsking.value) return
+  if (request.workspacePath && request.workspacePath !== workspaceStore.currentWorkspace?.path) return
+  consumedRequest = request.id
+  activeRequest.value = request
+  attachContext.value = true
+  requestAnswerStart.value = messages.value.length
+  void ask(request.prompt, { forceContext: true })
+}, { immediate: true })
+
+watch(() => workspaceStore.currentWorkspace?.path, () => {
+  activeRequest.value = null
+  requestAnswerStart.value = 0
+  // A request queued before the switch belongs to the previous workspace, even
+  // if its caller did not supply an explicit workspacePath.
+  consumedRequest = props.request?.id ?? ''
+  attachContext.value = true
+}, { flush: 'sync' })
+
+function clearChat() {
+  if (isAsking.value) return
+  clearConversation()
+  requestAnswerStart.value = 0
+}
+
+function applyToReport(content: string) {
+  const request = activeRequest.value
+  if (!request?.onApply || (request.workspacePath && request.workspacePath !== workspaceStore.currentWorkspace?.path)) return
+  request.onApply(content)
+  emit('close')
+}
 
 // 4 个高频快捷胶囊（蓝图 3.2）：needsDoc 的指令点击时强制携带文档上下文
 interface QuickChip {
@@ -149,7 +200,6 @@ watch(
     if (visible) {
       document.addEventListener('mousedown', onDocMousedown, true)
       window.addEventListener('keydown', onWindowKeydown)
-      void loadDocContent()
       void nextTick(() => inputRef.value?.focus())
     } else {
       document.removeEventListener('mousedown', onDocMousedown, true)
@@ -160,11 +210,14 @@ watch(
   { immediate: true },
 )
 
-watch(() => workspaceStore.activeFile, () => {
-  if (props.visible) void loadDocContent()
-})
+watch(() => [props.visible, workspaceStore.currentWorkspace?.path, workspaceStore.activeFile], ([visible]) => {
+  if (visible) void loadDocContent()
+  else invalidateDocContent()
+}, { immediate: true })
 
 onBeforeUnmount(() => {
+  disposed = true
+  invalidateDocContent()
   document.removeEventListener('mousedown', onDocMousedown, true)
   window.removeEventListener('keydown', onWindowKeydown)
 })
@@ -197,7 +250,7 @@ onBeforeUnmount(() => {
           class="icon-btn"
           :title="t('copilot.clear')"
           :disabled="isAsking"
-          @click="clearConversation"
+          @click="clearChat"
         >
           <Trash2 :size="15" />
         </button>
@@ -221,7 +274,7 @@ onBeforeUnmount(() => {
       <span
         v-if="hasActiveDoc"
         class="context-name"
-        :title="workspaceStore.activeFile ?? ''"
+        :title="activeRequest ? activeFileName : workspaceStore.activeFile ?? ''"
       >{{ t('copilot.contextDoc') }}: {{ activeFileName }}</span>
       <span
         v-else
@@ -237,6 +290,16 @@ onBeforeUnmount(() => {
         >
         <span>{{ t('copilot.attachContext') }}</span>
       </label>
+      <button
+        v-if="activeRequest"
+        type="button"
+        class="icon-btn"
+        aria-label="回到当前文档上下文"
+        title="回到当前文档上下文"
+        @click="activeRequest = null"
+      >
+        <X :size="12" />
+      </button>
     </div>
 
     <!-- 快捷行动胶囊 -->
@@ -320,6 +383,17 @@ onBeforeUnmount(() => {
             v-if="msg.role === 'assistant' && !msg.error && msg.content"
             class="msg-actions"
           >
+            <button
+              v-if="activeRequest?.source === 'daily-report' && activeRequest.onApply && i >= requestAnswerStart"
+              type="button"
+              class="insert-btn"
+              data-testid="apply-report-answer"
+              :disabled="isAsking"
+              @click="applyToReport(msg.content)"
+            >
+              <FileText :size="13" />
+              <span>应用到日报</span>
+            </button>
             <button
               type="button"
               class="insert-btn"

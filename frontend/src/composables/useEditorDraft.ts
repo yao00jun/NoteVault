@@ -43,6 +43,7 @@ export function useEditorDraft(options: {
 
   const isSaving = ref(false)
   let saveTimer: ReturnType<typeof setTimeout> | null = null
+  const reloadVersions = new WeakMap<EditorTab, number>()
 
   function activeTab(): EditorTab | null {
     const i = options.activeTabIndex.value
@@ -53,16 +54,20 @@ export function useEditorDraft(options: {
   async function saveTab(index: number) {
     const tab = options.tabs.value[index]
     const wsPath = options.workspacePath.value
-    if (!tab || !wsPath) return
+    if (!tab || !wsPath || conflictedPaths.value.has(tab.path)) return false
 
+    const content = tab.content
     isSaving.value = true
     try {
-      await FileService.SaveFile(wsPath, tab.path, tab.content)
+      await FileService.SaveFile(wsPath, tab.path, content)
       await options.onSaved?.()
-      tab.isDirty = false
+      if (wsPath !== options.workspacePath.value || !options.tabs.value.includes(tab)) return false
+      tab.isDirty = tab.content !== content
       tab.lastSavedAt = new Date().toLocaleTimeString()
+      return !tab.isDirty
     } catch (e) {
       console.error('Failed to save file:', e)
+      return false
     } finally {
       isSaving.value = false
     }
@@ -90,30 +95,38 @@ export function useEditorDraft(options: {
   const diffModal = ref<{ path: string; rows: DiffRow[] } | null>(null)
   let stopFileChangeSub: (() => void) | null = null
 
+  function markConflict(path: string) {
+    conflictedPaths.value = new Set([...conflictedPaths.value, path])
+  }
+
   function onExternalFileChange(payload: { type?: string; path?: string } | null) {
-    if (!payload?.path || payload.type !== 'modify') return
+    if (!payload?.path || !['modify', 'create'].includes(payload.type ?? '')) return
     const rel = payload.path
     const idx = options.findTabIndex(rel)
     if (idx < 0) return
     const tab = options.tabs.value[idx]!
-    if (rel === activeTab()?.path && !tab.isDirty) {
-      // 无草稿：静默重载
-      void reloadTabFromDisk(idx)
-      return
-    }
-    if (tab.isDirty) {
-      const next = new Set(conflictedPaths.value)
-      next.add(rel)
-      conflictedPaths.value = next
-    }
+    // Atomic Markdown writes emit create; every open tab must see them.
+    // Pause pending saves before asynchronously checking a dirty draft.
+    if (tab.isDirty) markConflict(rel)
+    void reloadTabFromDisk(idx)
   }
 
-  async function reloadTabFromDisk(idx: number) {
+  async function reloadTabFromDisk(idx: number, discardDraft = false) {
     const tab = options.tabs.value[idx]
     const wsPath = options.workspacePath.value
     if (!tab || !wsPath) return
+    const content = tab.content
+    const version = (reloadVersions.get(tab) ?? 0) + 1
+    reloadVersions.set(tab, version)
     try {
-      tab.content = await FileService.ReadFile(wsPath, tab.path)
+      const disk = await FileService.ReadFile(wsPath, tab.path)
+      if (wsPath !== options.workspacePath.value || !options.tabs.value.includes(tab) || reloadVersions.get(tab) !== version) return
+      if (disk === tab.content) { clearConflict(tab.path); return }
+      if (tab.content !== content || (tab.isDirty && !discardDraft)) {
+        markConflict(tab.path)
+        return
+      }
+      tab.content = disk
       tab.isDirty = false
       clearConflict(tab.path)
     } catch (e) {
@@ -138,7 +151,7 @@ export function useEditorDraft(options: {
 
   function abandonDraftAndReload(path: string) {
     const idx = options.findTabIndex(path)
-    if (idx >= 0) void reloadTabFromDisk(idx)
+    if (idx >= 0) void reloadTabFromDisk(idx, true)
   }
 
   // 保留本地草稿，另存副本（副本落在原目录，天然可检索）

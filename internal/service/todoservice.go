@@ -1,111 +1,55 @@
 package service
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-	"regexp"
 	"sort"
-	"strings"
 	"sync"
+	"time"
 )
 
 // TodoItem 表示一个待办事项
 type TodoItem struct {
-	ID        string `json:"id"`
-	FilePath  string `json:"filePath"`
-	FileName  string `json:"fileName"`
-	Content   string `json:"content"`
-	LineIndex int    `json:"lineIndex"`
-	Completed bool   `json:"completed"`
-	Priority  string `json:"priority"` // high, medium, low
+	ID          string              `json:"id"`
+	FilePath    string              `json:"filePath"`
+	FileName    string              `json:"fileName"`
+	Content     string              `json:"content"`
+	LineIndex   int                 `json:"lineIndex"`
+	Completed   bool                `json:"completed"`
+	Priority    string              `json:"priority"` // high, medium, low
+	SourceLine  string              `json:"sourceLine"`
+	Title       string              `json:"title"`
+	Type        string              `json:"type"`
+	Project     string              `json:"project"`
+	ProjectPath string              `json:"projectPath"`
+	Due         string              `json:"due"`
+	Date        string              `json:"date"`
+	CompletedAt string              `json:"completedAt"`
+	Status      string              `json:"status"`
+	Blocker     string              `json:"blocker"`
+	Progress    []WorkbenchProgress `json:"progress"`
 }
 
 // TodoService 提供待办事项管理功能
 type TodoService struct {
-	todoRegex *regexp.Regexp
+	workbenchMu sync.RWMutex
 }
 
 // NewTodoService 创建待办服务实例
 func NewTodoService() *TodoService {
-	return &TodoService{
-		// 匹配 - [ ] 或 - [x] 格式的待办事项
-		todoRegex: regexp.MustCompile(`^\s*[-*]\s+\[([ xX])\]\s+(.*)$`),
-	}
+	return &TodoService{}
 }
 
 // GetAllTodos 获取工作区中所有待办事项
 func (s *TodoService) GetAllTodos(workspacePath string) ([]*TodoItem, error) {
-	// 获取所有 Markdown 文件
-	var allFiles []string
-	err := filepath.Walk(workspacePath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if info.IsDir() {
-			if strings.HasPrefix(info.Name(), ".") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(path))
-		if ext == ".md" || ext == ".markdown" {
-			allFiles = append(allFiles, path)
-		}
-		return nil
-	})
+	s.workbenchMu.RLock()
+	defer s.workbenchMu.RUnlock()
+	files, _, err := readWorkbenchFiles(workspacePath)
 	if err != nil {
 		return nil, err
 	}
-
-	// 并发提取待办事项（有界 worker 池；旧实现每文件一个 goroutine）
-	var todos []*TodoItem
-	var mu sync.Mutex
-
-	forEachFileBounded(allFiles, func(fp string) {
-		content, err := os.ReadFile(fp)
-		if err != nil {
-			return
-		}
-		lines := strings.Split(string(content), "\n")
-		relPath, _ := filepath.Rel(workspacePath, fp)
-		relPath = filepath.ToSlash(relPath)
-		fileName := filepath.Base(fp)
-
-		for i, line := range lines {
-			matches := s.todoRegex.FindStringSubmatch(line)
-			if matches == nil {
-				continue
-			}
-			completed := matches[1] == "x" || matches[1] == "X"
-			todoContent := strings.TrimSpace(matches[2])
-
-			// 检测优先级（! 高优先级，!! 更高）
-			priority := "medium"
-			if strings.HasPrefix(todoContent, "!!") {
-				priority = "high"
-				todoContent = strings.TrimPrefix(todoContent, "!!")
-			} else if strings.HasPrefix(todoContent, "!") {
-				priority = "high"
-				todoContent = strings.TrimPrefix(todoContent, "!")
-			}
-			todoContent = strings.TrimSpace(todoContent)
-
-			id := relPath + ":" + string(rune(i))
-
-			mu.Lock()
-			todos = append(todos, &TodoItem{
-				ID:        id,
-				FilePath:  relPath,
-				FileName:  fileName,
-				Content:   todoContent,
-				LineIndex: i,
-				Completed: completed,
-				Priority:  priority,
-			})
-			mu.Unlock()
-		}
-	})
+	todos := make([]*TodoItem, 0)
+	for _, file := range files {
+		todos = append(todos, parseWorkbenchTasks(file)...)
+	}
 
 	// 排序：未完成在前，高优先级在前（sort.Slice 稳定且 O(n log n)）
 	priorityOrder := map[string]int{"high": 0, "medium": 1, "low": 2}
@@ -121,39 +65,20 @@ func (s *TodoService) GetAllTodos(workspacePath string) ([]*TodoItem, error) {
 
 // ToggleTodo 切换待办事项的完成状态
 func (s *TodoService) ToggleTodo(workspacePath string, filePath string, lineIndex int) error {
-	// 防路径穿越：与 confineToWorkspace 同一口径
-	fullPath, err := confineToWorkspace(workspacePath, filePath)
-	if err != nil {
-		return fmt.Errorf("非法文件路径：%s", filePath)
-	}
-	content, err := os.ReadFile(fullPath)
+	s.workbenchMu.Lock()
+	defer s.workbenchMu.Unlock()
+	change, err := readWorkbenchChange(workspacePath, filePath)
 	if err != nil {
 		return err
 	}
-
-	lines := strings.Split(string(content), "\n")
-	if lineIndex < 0 || lineIndex >= len(lines) {
-		return nil
+	file := newWorkbenchFile(change.relative, change.before, "")
+	for _, task := range parseWorkbenchTasks(file) {
+		if task.LineIndex == lineIndex {
+			return s.updateWorkbenchTask(workspacePath, filePath, lineIndex, task.SourceLine, "toggle", "", time.Now())
+		}
 	}
-
-	line := lines[lineIndex]
-	matches := s.todoRegex.FindStringSubmatch(line)
-	if matches == nil {
-		return nil
-	}
-
-	// 切换完成状态
-	if matches[1] == " " {
-		line = strings.Replace(line, "[ ]", "[x]", 1)
-	} else {
-		line = strings.Replace(line, "[x]", "[ ]", 1)
-		line = strings.Replace(line, "[X]", "[ ]", 1)
-	}
-	lines[lineIndex] = line
-
-	// #nosec G703 -- fullPath 已在上方通过 filepath.Rel 校验确保位于工作区内
-	// 原子写：这里写回的是用户的笔记正文，崩溃时不能留下半截文件
-	return atomicWrite(fullPath, []byte(strings.Join(lines, "\n")), 0644)
+	// Historical callers treat a missing/non-task line as an idempotent no-op.
+	return nil
 }
 
 // GetTodoStats 获取待办事项统计

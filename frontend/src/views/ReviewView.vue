@@ -7,7 +7,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { BarChart3, CheckSquare, History } from '@lucide/vue'
+import { BarChart3, CheckSquare, History, ArrowLeft } from '@lucide/vue'
 import ReportsView from '@/views/ReportsView.vue'
 import TodosView from '@/views/TodosView.vue'
 import RemindersView from '@/views/RemindersView.vue'
@@ -46,6 +46,14 @@ function setQuery(patch: Record<string, string>) {
 <template>
   <div class="review-view">
     <header class="review-header">
+      <button
+        class="back-btn"
+        data-testid="review-back"
+        @click="router.push('/knowledge')"
+      >
+        <ArrowLeft :size="16" />
+        <span>{{ t('common.backToKnowledge') }}</span>
+      </button>
       <div class="review-title">
         {{ t('review.title') }}
       </div>
@@ -107,6 +115,23 @@ function setQuery(patch: Record<string, string>) {
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4) 0;
   flex-shrink: 0;
+}
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.back-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 .review-title {
   font-size: var(--text-base);

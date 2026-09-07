@@ -56,11 +56,15 @@ export function useDailyNote() {
         return false
       }
     }
-    // 无论创建路径走没走通，路径是确定的：直接打开它（不存在时 ReadFile 会
-    // 在 openFileByPath 里报错并被 console 记录，但那种情况只可能是磁盘故障）
+    // 无论创建路径走没走通，路径是确定的：直接打开它。必须带 ?file= query：
+    // 只 push 路径 + openFile 有一个真 no-op 盲区——用户已停在 /editor 且
+    // 活动标签恰好就是今日日记时，activeFile 写同值不触发 watcher、
+    // push 同路径是重复导航，点击表现为「无反应」。query.file 的变化
+    // 会命中 EditorView 的 route.query.file watcher（openFileByPath 对已开
+    // tab 只切换不覆盖草稿，安全）。
     workspaceStore.openFile(fileName)
     workspaceStore.incrementFileTreeVersion()
-    router.push('/editor')
+    router.push({ path: '/editor', query: { file: fileName } })
     return true
   }
 

@@ -25,14 +25,23 @@ func AtomicWrite(path string, data []byte, perm os.FileMode) error {
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, perm); err != nil {
+	file, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		// rename 失败时清掉临时文件，避免下次调用把它当成残留脏数据
+	tmp := file.Name()
+	defer func() {
+		_ = file.Close()
 		_ = os.Remove(tmp)
+	}()
+	if _, err := file.Write(data); err != nil {
 		return err
 	}
-	return nil
+	if err := file.Chmod(perm); err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }

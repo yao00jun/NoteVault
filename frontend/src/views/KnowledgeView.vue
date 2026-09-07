@@ -168,32 +168,12 @@ const allFiles = ref<FileNode[]>([])
 
 const errorMsg = ref('')
 
-// 固定的文档（保存在 localStorage）
-const STARRED_KEY = 'notevault_starred'
-const starredPaths = ref<string[]>([])
-
-function loadStarred() {
-  try {
-    const raw = localStorage.getItem(STARRED_KEY)
-    starredPaths.value = raw ? (JSON.parse(raw) as string[]) : []
-  } catch {
-    starredPaths.value = []
-  }
-}
-
-function saveStarred() {
-  localStorage.setItem(STARRED_KEY, JSON.stringify(starredPaths.value))
-}
-
 function toggleStar(path: string) {
-  const idx = starredPaths.value.indexOf(path)
-  if (idx >= 0) starredPaths.value.splice(idx, 1)
-  else starredPaths.value.unshift(path)
-  saveStarred()
+  if (!workspaceStore.togglePin(path)) toast.warning('最多固定 8 项，请先取消一个固定项')
 }
 
 function isStarred(path: string): boolean {
-  return starredPaths.value.includes(path)
+  return workspaceStore.isPinned(path)
 }
 
 const currentWorkspace = computed(() => workspaceStore.currentWorkspace)
@@ -369,7 +349,6 @@ function formatRelativeTime(modTime?: string): string {
 }
 
 onMounted(() => {
-  loadStarred()
   loadAll()
   loadWorkbenchStats()
   loadHotTags()

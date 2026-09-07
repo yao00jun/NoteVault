@@ -208,4 +208,64 @@ describe('useAIChat', () => {
     chat.clearConversation()
     expect(chat.messages.value).toHaveLength(0)
   })
+
+  it('切换工作区会丢弃等待中的上下文并保留新工作区输入', async () => {
+    let finishContext!: (value: string) => void
+    const chat = mountHost(() => new Promise<string>(resolve => { finishContext = resolve }))
+    useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
+    const ws = useWorkspaceStore()
+    ws.setCurrentWorkspace({ id: 'a', name: 'A', path: 'C:/notes-a', createdAt: '', lastOpenedAt: '' })
+    chat.question.value = 'A 的问题'
+    const pending = chat.ask()
+    const busyWhileReading = chat.isAsking.value
+
+    ws.setCurrentWorkspace({ id: 'b', name: 'B', path: 'C:/notes-b', createdAt: '', lastOpenedAt: '' })
+    chat.question.value = 'B 尚未发送的草稿'
+    finishContext('A 的私有上下文')
+    await pending
+    await flushPromises()
+
+    expect(busyWhileReading).toBe(true)
+    expect(answerMock).not.toHaveBeenCalled()
+    expect(chat.messages.value).toEqual([])
+    expect(chat.question.value).toBe('B 尚未发送的草稿')
+    expect(chat.isAsking.value).toBe(false)
+    expect(isAIAnswering.value).toBe(false)
+  })
+
+  it.each(['resolve', 'reject'] as const)('切换后丢弃旧工作区的 %s 回答，同时保留新请求与全局回答状态', async (completion) => {
+    type Response = Awaited<ReturnType<typeof QnAService.Answer>>
+    let finishOld!: (response: Response) => void
+    let failOld!: (error: Error) => void
+    let finishNew!: (response: Response) => void
+    answerMock.mockReturnValueOnce(new Promise<Response>((resolve, reject) => { finishOld = resolve; failOld = reject }) as ReturnType<typeof QnAService.Answer>)
+      .mockReturnValueOnce(new Promise<Response>(resolve => { finishNew = resolve }) as ReturnType<typeof QnAService.Answer>)
+    const chat = mountHost()
+    useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
+    const ws = useWorkspaceStore()
+    ws.setCurrentWorkspace({ id: 'a', name: 'A', path: 'C:/notes-a', createdAt: '', lastOpenedAt: '' })
+    const oldRequest = chat.ask('A 的问题')
+    await flushPromises()
+    chat.question.value = 'A 尚未发送的草稿'
+
+    ws.setCurrentWorkspace({ id: 'b', name: 'B', path: 'C:/notes-b', createdAt: '', lastOpenedAt: '' })
+    const afterSwitch = { messages: [...chat.messages.value], question: chat.question.value, busy: chat.isAsking.value, globalBusy: isAIAnswering.value }
+    const newRequest = chat.ask('B 的问题')
+    await flushPromises()
+    if (completion === 'resolve') finishOld({ answer: 'A 的私有回答', citations: [] } as Response)
+    else failOld(new Error('A 的私有错误'))
+    await oldRequest
+    await flushPromises()
+    const afterOldFinishes = { messages: [...chat.messages.value], busy: chat.isAsking.value, globalBusy: isAIAnswering.value }
+    finishNew({ answer: 'B 的回答', citations: [] } as Response)
+    await newRequest
+    await flushPromises()
+
+    expect(afterSwitch).toEqual({ messages: [], question: '', busy: false, globalBusy: true })
+    expect(afterOldFinishes).toEqual({ messages: [{ role: 'user', content: 'B 的问题' }], busy: true, globalBusy: true })
+    expect(chat.messages.value).toEqual([{ role: 'user', content: 'B 的问题' }, { role: 'assistant', content: 'B 的回答', citations: [] }])
+    expect(answerMock.mock.calls.map(call => call[8])).toEqual(['C:/notes-a', 'C:/notes-b'])
+    expect(chat.isAsking.value).toBe(false)
+    expect(isAIAnswering.value).toBe(false)
+  })
 })

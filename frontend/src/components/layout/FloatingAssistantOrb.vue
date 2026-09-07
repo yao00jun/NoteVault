@@ -1,24 +1,124 @@
 <script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Sparkles } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { isAIAnswering } from '@/composables/useAIChat'
 
 // AI-COPILOT-FLOATING-ORB 蓝图 Step 2：全局常驻微光悬浮球。
 // 单例挂载在 App.vue 最外层，脱离路由页面生命周期——任何页面都能一键唤起抽屉。
+// 支持任意拖动：按住拖走即换位，位置记忆在 localStorage；未拖动过保持右下默认位。
 const { t } = useI18n()
 
-defineEmits<{ toggle: [] }>()
+const emit = defineEmits<{ toggle: [] }>()
+
+// ---- 拖拽状态机 ----
+const ORB_SIZE = 44
+const EDGE_MARGIN = 8
+const DRAG_THRESHOLD = 3 // px，超过视为拖动而非点击
+const POS_KEY = 'notevault.aiOrbPos'
+
+/** null = 未拖过，走 CSS 默认右下角；一旦拖动改用 left/top 定位 */
+const pos = ref<{ x: number; y: number } | null>(null)
+const dragging = ref(false)
+let pressStart: { px: number; py: number; ox: number; oy: number; moved: boolean } | null = null
+/** click 抑制标记：本次按压发生过真实拖动则吞掉 click */
+let suppressClick = false
+
+const dragStyle = computed(() =>
+  pos.value
+    ? { left: `${pos.value.x}px`, top: `${pos.value.y}px`, right: 'auto', bottom: 'auto' }
+    : undefined,
+)
+
+function clamp(x: number, y: number): { x: number; y: number } {
+  const maxX = window.innerWidth - ORB_SIZE - EDGE_MARGIN
+  // 底部避开常驻状态栏
+  const maxY = window.innerHeight - ORB_SIZE - EDGE_MARGIN - 28
+  return {
+    x: Math.min(Math.max(x, EDGE_MARGIN), Math.max(maxX, EDGE_MARGIN)),
+    y: Math.min(Math.max(y, EDGE_MARGIN), Math.max(maxY, EDGE_MARGIN)),
+  }
+}
+
+function loadPersistedPos() {
+  try {
+    const raw = localStorage.getItem(POS_KEY)
+    if (!raw) return
+    const saved = JSON.parse(raw) as { x: number; y: number }
+    if (typeof saved?.x === 'number' && typeof saved?.y === 'number') {
+      pos.value = clamp(saved.x, saved.y)
+    }
+  } catch {
+    // 坏数据当作没拖过
+  }
+}
+
+function onPointerDown(e: PointerEvent) {
+  if (e.button !== 0) return
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  pressStart = { px: e.clientX, py: e.clientY, ox: rect.left, oy: rect.top, moved: false }
+  // 捕获后 move/up 都派发到球本身，拖出球体也不丢事件；无实现环境（jsdom）静默跳过
+  ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+}
+
+function onPointerMove(e: PointerEvent) {
+  if (!pressStart) return
+  const dx = e.clientX - pressStart.px
+  const dy = e.clientY - pressStart.py
+  if (!pressStart.moved && Math.abs(dx) + Math.abs(dy) <= DRAG_THRESHOLD) return
+  pressStart.moved = true
+  dragging.value = true
+  pos.value = clamp(pressStart.ox + dx, pressStart.oy + dy)
+}
+
+function onPointerUp() {
+  if (!pressStart) return
+  suppressClick = pressStart.moved
+  if (pressStart.moved && pos.value) {
+    try {
+      localStorage.setItem(POS_KEY, JSON.stringify(pos.value))
+    } catch {
+      /* 存不上就只在本次会话生效 */
+    }
+  }
+  pressStart = null
+  dragging.value = false
+}
+
+function onClick() {
+  if (suppressClick) {
+    suppressClick = false
+    return
+  }
+  emit('toggle')
+}
+
+/** 窗口缩放后把球拉回可视范围 */
+function onWindowResize() {
+  if (pos.value) pos.value = clamp(pos.value.x, pos.value.y)
+}
+
+onMounted(() => {
+  loadPersistedPos()
+  window.addEventListener('resize', onWindowResize)
+})
+onBeforeUnmount(() => window.removeEventListener('resize', onWindowResize))
 </script>
 
 <template>
   <button
     type="button"
     class="ai-orb"
-    :class="{ answering: isAIAnswering }"
+    :class="{ answering: isAIAnswering, dragging }"
+    :style="dragStyle"
     :aria-label="t('copilot.orbTip')"
     :title="t('copilot.orbTip')"
     data-ai-orb
-    @click="$emit('toggle')"
+    @pointerdown="onPointerDown"
+    @pointermove="onPointerMove"
+    @pointerup="onPointerUp"
+    @pointercancel="onPointerUp"
+    @click="onClick"
   >
     <span class="orb-halo" />
     <Sparkles
@@ -46,7 +146,7 @@ defineEmits<{ toggle: [] }>()
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   color: #c4b5fd;
-  cursor: pointer;
+  cursor: grab;
   box-shadow:
     0 4px 18px rgba(0, 0, 0, 0.35),
     0 0 10px rgba(139, 92, 246, 0.25);
@@ -66,6 +166,14 @@ defineEmits<{ toggle: [] }>()
 
 .ai-orb:active {
   transform: scale(0.98);
+}
+
+/* 拖动中：禁 hover 位移/过渡，光标变抓取态，跟手不弹跳 */
+.ai-orb.dragging {
+  cursor: grabbing;
+  transition: none;
+  transform: none;
+  opacity: 0.92;
 }
 
 .ai-orb:focus-visible {

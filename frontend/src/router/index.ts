@@ -1,14 +1,39 @@
-import { createRouter, createWebHashHistory } from 'vue-router'
+import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
 
-const routes = [
+const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'welcome',
     component: () => import('@/views/WelcomeView.vue'),
   },
   {
+    path: '/today',
+    name: 'today',
+    component: () => import('@/views/TodayView.vue'),
+  },
+  {
     path: '/knowledge',
     name: 'knowledge',
+    redirect: to => ({ path: '/today', query: to.query, hash: to.hash }),
+  },
+  {
+    path: '/projects',
+    name: 'projects',
+    component: () => import('@/views/ProjectsView.vue'),
+  },
+  {
+    path: '/learning',
+    name: 'learning',
+    component: () => import('@/views/LearningView.vue'),
+  },
+  {
+    path: '/vault',
+    name: 'vault',
+    component: () => import('@/views/KnowledgeVaultView.vue'),
+  },
+  {
+    path: '/library',
+    name: 'library',
     component: () => import('@/views/KnowledgeView.vue'),
   },
   {
@@ -16,31 +41,20 @@ const routes = [
     name: 'editor',
     component: () => import('@/views/EditorView.vue'),
   },
-  // 旧路由重定向到「发现」容器（Codex 式架构收敛，2026-09）
-  { path: '/search', redirect: (to) => ({ path: '/discover', query: { tab: 'search', ...to.query } }) },
-  { path: '/qna', redirect: (to) => ({ path: '/discover', query: { tab: 'qna', ...to.query } }) },
-  { path: '/tags', redirect: (to) => ({ path: '/discover', query: { tab: 'views', view: 'tags' } }) },
-  { path: '/graph', redirect: (to) => ({ path: '/insights', query: { tab: 'graph', ...to.query } }) },
-  { path: '/bases', redirect: (to) => ({ path: '/insights', query: { tab: 'bases', ...to.query } }) },
-  // 旧路由重定向到「回顾」容器
-  { path: '/reports', redirect: (to) => ({ path: '/review', query: { tab: 'reports', ...to.query } }) },
-  { path: '/todos', redirect: (to) => ({ path: '/review', query: { tab: 'tasks', sub: 'todos' } }) },
-  { path: '/reminders', redirect: (to) => ({ path: '/review', query: { tab: 'tasks', sub: 'reminders' } }) },
-  { path: '/history', redirect: (to) => ({ path: '/review', query: { tab: 'versions', ...to.query } }) },
-  {
-    path: '/bases',
-    name: 'bases',
-    component: () => import('@/views/BasesView.vue'),
-  },
+  // Keep one record per legacy URL so named links and path links reach the same tool.
+  { path: '/search', name: 'search', redirect: (to) => ({ path: '/discover', query: { tab: 'search', ...to.query } }) },
+  { path: '/qna', name: 'qna', redirect: (to) => ({ path: '/discover', query: { tab: 'qna', ...to.query } }) },
+  { path: '/tags', name: 'tags', redirect: (to) => ({ path: '/discover', query: { ...to.query, tab: 'views', view: 'tags' } }) },
+  { path: '/graph', name: 'graph', redirect: (to) => ({ path: '/insights', query: { tab: 'graph', ...to.query } }) },
+  { path: '/bases', name: 'bases', redirect: (to) => ({ path: '/insights', query: { tab: 'bases', ...to.query } }) },
+  { path: '/reports', name: 'reports', redirect: (to) => ({ path: '/review', query: { tab: 'reports', ...to.query } }) },
+  { path: '/todos', name: 'todos', redirect: (to) => ({ path: '/review', query: { ...to.query, tab: 'tasks', sub: 'todos' } }) },
+  { path: '/reminders', name: 'reminders', redirect: (to) => ({ path: '/review', query: { ...to.query, tab: 'tasks', sub: 'reminders' } }) },
+  { path: '/history', name: 'history', redirect: (to) => ({ path: '/review', query: { tab: 'versions', ...to.query } }) },
   {
     path: '/canvas',
     name: 'canvas',
     component: () => import('@/views/CanvasView.vue'),
-  },
-  {
-    path: '/qna',
-    name: 'qna',
-    component: () => import('@/views/QnAView.vue'),
   },
   {
     path: '/import',
@@ -53,31 +67,16 @@ const routes = [
     component: () => import('@/views/PluginView.vue'),
   },
   {
-    path: '/todos',
-    name: 'todos',
-    component: () => import('@/views/TodosView.vue'),
-  },
-  {
-    path: '/reminders',
-    name: 'reminders',
-    component: () => import('@/views/RemindersView.vue'),
-  },
-  {
     path: '/archive',
     name: 'archive',
     component: () => import('@/views/ArchiveView.vue'),
-  },
-  {
-    path: '/history',
-    name: 'history',
-    component: () => import('@/views/HistoryView.vue'),
   },
   {
     path: '/trash',
     name: 'trash',
     component: () => import('@/views/TrashView.vue'),
   },
-  { path: '/compile', redirect: (to) => ({ path: '/insights', query: { tab: 'compile', ...to.query } }) },
+  { path: '/compile', name: 'compile', redirect: (to) => ({ path: '/insights', query: { tab: 'compile', ...to.query } }) },
   {
     // 「发现」容器：搜索 / 语义问答 / 视图（标签·图谱·Bases）
     path: '/discover',

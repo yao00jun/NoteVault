@@ -8,3 +8,4 @@
 export * from '@bindings/github.com/notevault/notevault/index.js'
 export * from '@bindings/github.com/notevault/notevault/models.js'
 export type { RerankProvider } from '@bindings/github.com/notevault/notevault/internal/service/models.js'
+export * from './workbench'

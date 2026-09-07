@@ -22,6 +22,7 @@ import { arrayBufferToBase64, generateMarkdownImage } from '@/utils/image'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { isLocalBaseURL } from '@/utils/localEndpoint'
+import { toSplitPairs } from '@/utils/textDiff'
 import { useToast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirm'
 import { promptDialog } from '@/composables/usePrompt'
@@ -208,6 +209,9 @@ const {
   onSaved: invalidateTagCache,
 })
 
+// 冲突对比改 Beyond Compare 式左右分栏：统一 diff 行 → 对齐行对
+const diffPairs = computed(() => (diffModal.value ? toSplitPairs(diffModal.value.rows) : []))
+
 // ---- 反向链接（提取与跳转已抽到 useEditorBacklinks）----
 const { backlinks, loadBacklinks, openBacklink } = useEditorBacklinks({
   workspacePath: computed(() => currentWorkspace.value?.path),
@@ -229,7 +233,7 @@ async function closeTab(index: number, event?: Event) {
   if (tab.isDirty) {
     const shouldSave = await confirmDialog({ message: t('editor.unsavedConfirm', { name: tab.name }) })
     if (shouldSave) {
-      await saveTab(index)
+      if (!(await saveTab(index))) return
     }
   }
 
@@ -1131,18 +1135,23 @@ watch(() => workspaceStore.fileTreeVersion, () => {
           </button>
         </div>
         <div class="diff-legend">
-          <span class="legend-removed">{{ t('editor.conflict.legendDisk') }}</span>
-          <span class="legend-added">{{ t('editor.conflict.legendDraft') }}</span>
+          <span class="legend-side disk">{{ t('editor.conflict.legendDisk') }}</span>
+          <span class="legend-side draft">{{ t('editor.conflict.legendDraft') }}</span>
         </div>
         <div class="diff-body">
           <div
-            v-for="(row, i) in diffModal.rows"
+            v-for="(pair, i) in diffPairs"
             :key="i"
             class="diff-row"
-            :class="row.type"
           >
-            <span class="diff-sign">{{ row.type === 'removed' ? '-' : row.type === 'added' ? '+' : ' ' }}</span>
-            <span class="diff-text">{{ row.text || ' ' }}</span>
+            <span
+              class="diff-cell"
+              :class="{ removed: pair.left?.type === 'removed' }"
+            >{{ pair.left?.text ?? '' }}</span>
+            <span
+              class="diff-cell"
+              :class="{ added: pair.right?.type === 'added' }"
+            >{{ pair.right?.text ?? '' }}</span>
           </div>
         </div>
       </div>
@@ -1352,8 +1361,8 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   z-index: 10000;
 }
 .conflict-diff-modal {
-  width: min(860px, 92vw);
-  max-height: 80vh;
+  width: min(1100px, 94vw);
+  max-height: 82vh;
   display: flex;
   flex-direction: column;
   background: var(--bg-window, #1e1f22);
@@ -1383,16 +1392,27 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   cursor: pointer;
   font-size: var(--text-sm);
 }
+/* 双栏表头：与 diff-row 的 1fr 1fr 栅格严格对齐 */
 .diff-legend {
-  display: flex;
-  gap: var(--space-4);
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   border-bottom: 1px solid var(--border);
 }
-.legend-removed::before { content: '- '; color: #ef4444; }
-.legend-added::before { content: '+ '; color: #22c55e; }
+.legend-side {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: center;
+}
+.legend-side.disk {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.08);
+  border-right: 1px solid var(--border);
+}
+.legend-side.draft {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.08);
+}
 .diff-body {
   flex: 1;
   overflow: auto;
@@ -1400,27 +1420,24 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   font-size: var(--text-xs);
 }
 .diff-row {
-  display: flex;
-  gap: var(--space-2);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.diff-cell {
   padding: 1px var(--space-3);
   white-space: pre-wrap;
   word-break: break-all;
+  color: var(--text-secondary);
 }
-.diff-row.removed {
-  background: rgba(239, 68, 68, 0.12);
+.diff-cell:first-child {
+  border-right: 1px solid var(--border);
+}
+.diff-cell.removed {
+  background: rgba(239, 68, 68, 0.14);
   color: #fca5a5;
 }
-.diff-row.added {
-  background: rgba(34, 197, 94, 0.12);
+.diff-cell.added {
+  background: rgba(34, 197, 94, 0.14);
   color: #86efac;
-}
-.diff-sign {
-  width: 14px;
-  flex-shrink: 0;
-  text-align: center;
-  opacity: 0.7;
-}
-.diff-text {
-  flex: 1;
 }
 </style>

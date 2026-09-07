@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onScopeDispose } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { marked } from 'marked'
@@ -60,6 +60,21 @@ export function useAIChat(options: UseAIChatOptions = {}) {
   const messages = ref<ChatMessage[]>([])
   const question = ref('')
   const isAsking = ref(false)
+  let workspaceGeneration = 0
+  let disposed = false
+
+  function resetWorkspaceConversation() {
+    workspaceGeneration++
+    messages.value = []
+    question.value = ''
+    isAsking.value = false
+  }
+
+  watch(() => workspaceStore.currentWorkspace?.path, resetWorkspaceConversation, { flush: 'sync' })
+  onScopeDispose(() => {
+    disposed = true
+    resetWorkspaceConversation()
+  })
 
   const canAsk = computed(() => question.value.trim().length > 0 && !isAsking.value)
 
@@ -69,7 +84,7 @@ export function useAIChat(options: UseAIChatOptions = {}) {
    */
   async function ask(questionOverride?: string, opts?: AskOptions) {
     const q = (questionOverride ?? question.value).trim()
-    if (!q || isAsking.value) return
+    if (!q || isAsking.value || disposed) return
 
     const ws = workspaceStore.currentWorkspace
     if (!ws) {
@@ -86,25 +101,30 @@ export function useAIChat(options: UseAIChatOptions = {}) {
       return
     }
 
-    // 上下文注入：消费方（Copilot 抽屉）可通过 buildContext 提供当前文档内容。
-    // 上下文只拼进发给后端的问题里，消息列表仍展示干净的问题原文。
-    let context: string | null = null
-    try {
-      context = (await options.buildContext?.(opts?.forceContext ?? false)) ?? null
-    } catch (e) {
-      // 上下文读取失败不阻断问答，退化为纯全库 RAG
-      console.warn('[useAIChat] 读取上下文失败，本次不带文档上下文:', e)
-    }
-    const payload = context
-      ? `${t('copilot.contextPreamble')}\n\n${context}\n\n---\n\n${q}`
-      : q
-
-    messages.value.push({ role: 'user', content: q })
-    // 快捷指令不清空输入框（用户可能正打着草稿）
-    if (questionOverride == null) question.value = ''
+    const generation = workspaceGeneration
+    const isCurrent = () => !disposed && generation === workspaceGeneration && ws.path === workspaceStore.currentWorkspace?.path
+    let counted = false
+    // Reserve this conversation while context loads; a workspace change can start
+    // a new conversation without letting the old request append to it.
     isAsking.value = true
-    activeAskCount.value += 1
     try {
+      let context: string | null = null
+      try {
+        context = (await options.buildContext?.(opts?.forceContext ?? false)) ?? null
+      } catch (e) {
+        if (!isCurrent()) return
+        console.warn('[useAIChat] 读取上下文失败，本次不带文档上下文:', e)
+      }
+      if (!isCurrent()) return
+      const payload = context
+        ? `${t('copilot.contextPreamble')}\n\n${context}\n\n---\n\n${q}`
+        : q
+
+      messages.value.push({ role: 'user', content: q })
+      // 快捷指令不清空输入框（用户可能正打着草稿）
+      if (questionOverride == null) question.value = ''
+      activeAskCount.value += 1
+      counted = true
       const resp = await QnAService.Answer(
         ai.apiKey,
         ai.baseURL,
@@ -122,20 +142,23 @@ export function useAIChat(options: UseAIChatOptions = {}) {
         ws.path,
         payload,
       )
+      if (!isCurrent()) return
       messages.value.push({
         role: 'assistant',
         content: (resp?.answer ?? '').trim() || t('qna.emptyTitle'),
         citations: resp?.citations ?? [],
       })
     } catch (e) {
+      if (!isCurrent()) return
       messages.value.push({
         role: 'assistant',
         content: t('qna.askFailed', { msg: (e as Error).message }),
         error: true,
       })
     } finally {
-      isAsking.value = false
-      activeAskCount.value -= 1
+      if (isCurrent()) isAsking.value = false
+      // Detached calls still count until their actual backend promise settles.
+      if (counted) activeAskCount.value -= 1
     }
   }
 

@@ -34,6 +34,7 @@ const insertMock = vi.mocked(insertAtCursor)
 
 const routes = [
   { path: '/', redirect: '/knowledge' },
+  { path: '/knowledge', component: { template: '<div>knowledge</div>' } },
   { path: '/editor', component: { template: '<div>editor</div>' } },
 ]
 
@@ -57,6 +58,7 @@ describe('AICopilotDrawer', () => {
   beforeEach(() => {
     localStorage.clear()
     vi.clearAllMocks()
+    readMock.mockReset().mockResolvedValue('# 设计方案\n\n- [ ] 评审架构\n')
     resetToasts()
     answerMock.mockResolvedValue({
       answer: '三大要点：\n1. 架构清晰\n2. 检索混合\n3. 本地优先',
@@ -165,5 +167,71 @@ describe('AICopilotDrawer', () => {
     wrapper.emitted('close')!.length = 0
     await wrapper.find('.copilot-header').trigger('mousedown')
     expect(wrapper.emitted('close') ?? []).toHaveLength(0)
+  })
+
+  it('使用工作台日报上下文并将选中的润色回答应用回日报', async () => {
+    const { wrapper, workspaceStore } = mountDrawer()
+    workspaceStore.setCurrentWorkspace({ id: 'ws-1', name: '笔记库', path: 'C:/notes', createdAt: '', lastOpenedAt: '' })
+    workspaceStore.setActiveFile('docs/设计方案.md')
+    await flushPromises()
+    const onApply = vi.fn()
+    await wrapper.setProps({ request: { id: 'report-1', source: 'daily-report', workspacePath: 'C:/notes', prompt: '润色这份日报', context: '今日完成：订单联调已验收', onApply } })
+    await flushPromises()
+    const payload = answerMock.mock.calls[0]?.[9] as string
+    expect(payload).toContain('订单联调已验收')
+    expect(payload).not.toContain('评审架构')
+    expect(wrapper.find('.context-name').text()).toContain('日报')
+    await wrapper.get('[data-testid="apply-report-answer"]').trigger('click')
+    expect(onApply).toHaveBeenCalledWith(expect.stringContaining('本地优先'))
+    expect(insertMock).not.toHaveBeenCalled()
+  })
+
+  it('清空已有对话后仍能把新的润色回答应用到当前日报', async () => {
+    const { wrapper, workspaceStore } = mountDrawer()
+    workspaceStore.setCurrentWorkspace({ id: 'ws-1', name: '笔记库', path: 'C:/notes', createdAt: '', lastOpenedAt: '' })
+    await wrapper.get('.copilot-input textarea').setValue('先聊一下项目')
+    await wrapper.get('.btn-ask').trigger('click')
+    await flushPromises()
+
+    const onApply = vi.fn()
+    await wrapper.setProps({ request: { id: 'report-clear', source: 'daily-report', workspacePath: 'C:/notes', prompt: '润色日报', context: '今日完成：订单联调', onApply } })
+    await flushPromises()
+    expect(wrapper.findAll('[data-testid="apply-report-answer"]')).toHaveLength(1)
+
+    const clearButton = wrapper.findAll('.header-actions button').find(button => button.attributes('title') === i18n.global.t('copilot.clear'))
+    await clearButton!.trigger('click')
+    expect(wrapper.findAll('.msg')).toHaveLength(0)
+    answerMock.mockResolvedValueOnce({ answer: '重新润色后的日报', citations: [] } as Awaited<ReturnType<typeof QnAService.Answer>>)
+    await wrapper.get('.copilot-input textarea').setValue('请重新润色')
+    await wrapper.get('.btn-ask').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-testid="apply-report-answer"]')).toHaveLength(1)
+    await wrapper.get('[data-testid="apply-report-answer"]').trigger('click')
+    expect(onApply).toHaveBeenCalledWith('重新润色后的日报')
+  })
+
+  it('工作区切换后迟到的同名文档读取不会覆盖新工作区上下文', async () => {
+    let finishOldRead!: (content: string) => void
+    readMock.mockImplementation((workspacePath) => (workspacePath === 'C:/old-notes'
+      ? new Promise<string>(resolve => { finishOldRead = resolve })
+      : Promise.resolve('新工作区的设计正文')) as ReturnType<typeof FileService.ReadFile>)
+    const { wrapper, workspaceStore } = mountDrawer()
+    workspaceStore.setCurrentWorkspace({ id: 'old', name: '旧工作区', path: 'C:/old-notes', createdAt: '', lastOpenedAt: '' })
+    workspaceStore.setActiveFile('设计.md')
+    await flushPromises()
+
+    workspaceStore.setCurrentWorkspace({ id: 'new', name: '新工作区', path: 'C:/new-notes', createdAt: '', lastOpenedAt: '' })
+    workspaceStore.setActiveFile('设计.md')
+    await flushPromises()
+    finishOldRead('旧工作区的私有正文')
+    await flushPromises()
+    await wrapper.findAll('.chip')[0]!.trigger('click')
+    await flushPromises()
+
+    expect(answerMock).toHaveBeenCalledTimes(1)
+    expect(answerMock.mock.calls[0]?.[8]).toBe('C:/new-notes')
+    expect(answerMock.mock.calls[0]?.[9]).toContain('新工作区的设计正文')
+    expect(answerMock.mock.calls[0]?.[9]).not.toContain('旧工作区的私有正文')
   })
 })

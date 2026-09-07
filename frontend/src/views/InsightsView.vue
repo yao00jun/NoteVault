@@ -7,7 +7,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { GitGraph, Sparkles, Table2 } from '@lucide/vue'
+import { GitGraph, Sparkles, Table2, ArrowLeft } from '@lucide/vue'
 import GraphView from '@/views/GraphView.vue'
 import CompileView from '@/views/CompileView.vue'
 import BasesView from '@/views/BasesView.vue'
@@ -37,6 +37,14 @@ function switchTab(id: TabId) {
 <template>
   <div class="insights-view">
     <header class="insights-header">
+      <button
+        class="back-btn"
+        data-testid="insights-back"
+        @click="router.push('/knowledge')"
+      >
+        <ArrowLeft :size="16" />
+        <span>{{ t('common.backToKnowledge') }}</span>
+      </button>
       <div class="insights-title">{{ t('insights.title') }}</div>
       <nav class="insights-tabs">
         <button
@@ -77,6 +85,23 @@ function switchTab(id: TabId) {
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4) 0;
   flex-shrink: 0;
+}
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.back-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 .insights-title {
   font-size: var(--text-base);

@@ -37,3 +37,39 @@ export function diffLines(oldText: string, newText: string): DiffRow[] {
   while (j < m) rows.push({ type: 'added', text: b[j++] })
   return rows
 }
+
+/**
+ * 把统一 diff 行转为左右分栏（Beyond Compare 式）的对齐行对：
+ *  - same → 左右同文；
+ *  - removed 与 added 按顺序就近配对（删改对照）；
+ *  - 配不上的单侧行，对侧补 null（渲染为空行占位，保持行号对齐）。
+ */
+export interface SplitPair {
+  left: DiffRow | null
+  right: DiffRow | null
+}
+
+export function toSplitPairs(rows: DiffRow[]): SplitPair[] {
+  const pairs: SplitPair[] = []
+  let k = 0
+  while (k < rows.length) {
+    const row = rows[k]!
+    if (row.type === 'same') {
+      pairs.push({ left: row, right: row })
+      k += 1
+      continue
+    }
+    // 收集连续的 removed / added 块，逐行配对
+    const removed: DiffRow[] = []
+    const added: DiffRow[] = []
+    while (k < rows.length && rows[k]!.type !== 'same') {
+      ;(rows[k]!.type === 'removed' ? removed : added).push(rows[k]!)
+      k += 1
+    }
+    const len = Math.max(removed.length, added.length)
+    for (let p = 0; p < len; p += 1) {
+      pairs.push({ left: removed[p] ?? null, right: added[p] ?? null })
+    }
+  }
+  return pairs
+}

@@ -81,8 +81,65 @@ func TestAtomicWrite_CleansUpTempOnRenameFailure(t *testing.T) {
 		t.Skip("platform allowed renaming a file over a non-empty directory; nothing to assert")
 	}
 
-	if _, statErr := os.Stat(target + ".tmp"); !os.IsNotExist(statErr) {
-		t.Errorf("temp file should be removed after a failed rename (stat err = %v)", statErr)
+	entries, readErr := os.ReadDir(dir)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	for _, entry := range entries {
+		if filepath.Ext(entry.Name()) == ".tmp" {
+			t.Errorf("temp file should be removed after a failed rename: %s", entry.Name())
+		}
+	}
+}
+
+func TestAtomicWrite_PreservesPreexistingPredictableTempFile(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "note.md")
+	otherTemp := target + ".tmp"
+	if err := os.WriteFile(otherTemp, []byte("another writer's staging file"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := AtomicWrite(target, []byte("our complete note"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	other, err := os.ReadFile(otherTemp)
+	if err != nil || string(other) != "another writer's staging file" {
+		t.Fatalf("an existing staging file must not be consumed or overwritten: %q, %v", other, err)
+	}
+	note, err := os.ReadFile(target)
+	if err != nil || string(note) != "our complete note" {
+		t.Fatalf("atomic write target: %q, %v", note, err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("our unique staging file must be cleaned up: %v, %v", entries, err)
+	}
+}
+
+func TestAtomicWrite_DoesNotFollowPredictableTempSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "note.md")
+	victim := filepath.Join(t.TempDir(), "unrelated.md")
+	if err := os.WriteFile(victim, []byte("untouched external note"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, target+".tmp"); err != nil {
+		t.Skipf("symlink creation is unavailable on this platform: %v", err)
+	}
+	if err := AtomicWrite(target, []byte("new note"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(victim)
+	if err != nil || string(content) != "untouched external note" {
+		t.Fatalf("a preexisting staging symlink must not redirect a write: %q, %v", content, err)
+	}
+	link, err := os.Lstat(target + ".tmp")
+	if err != nil || link.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the unrelated symlink must remain untouched: %v", err)
+	}
+	file, err := os.Lstat(target)
+	if err != nil || !file.Mode().IsRegular() {
+		t.Fatalf("the target must be a regular file: %v", err)
 	}
 }
 

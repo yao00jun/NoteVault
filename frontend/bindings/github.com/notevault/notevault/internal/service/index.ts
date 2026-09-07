@@ -88,6 +88,7 @@ export type {
     GraphNode,
     ImportOptions,
     ImportResult,
+    InterviewCard,
     LLMEndpointPreset,
     LLMProbeResult,
     LinkCandidate,
@@ -114,6 +115,13 @@ export type {
     TrashedFile,
     WeeklyReportAIConfig,
     WeeklyReportResult,
+    WorkbenchBook,
+    WorkbenchDocument,
+    WorkbenchProgress,
+    WorkbenchProject,
+    WorkbenchRadar,
+    WorkbenchSnapshot,
+    WorkbenchTask,
     Workspace,
     WritingActivity
 } from "./models.js";

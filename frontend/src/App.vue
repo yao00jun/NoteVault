@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import TitleBar from '@/components/layout/TitleBar.vue'
 import SideBar from '@/components/layout/SideBar.vue'
@@ -11,6 +11,9 @@ import OmniSearch from '@/components/layout/OmniSearch.vue'
 import PromptDialog from '@/components/layout/PromptDialog.vue'
 import FloatingAssistantOrb from '@/components/layout/FloatingAssistantOrb.vue'
 import AICopilotDrawer from '@/components/layout/AICopilotDrawer.vue'
+import DailyReportModal from '@/components/workbench/DailyReportModal.vue'
+import type { CopilotRequest } from '@/composables/useCopilotRequest'
+import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { usePluginRuntimeStore } from '@/stores/pluginRuntime'
@@ -21,6 +24,7 @@ import { isImeComposing } from '@/utils/ime'
 
 const workspaceStore = useWorkspaceStore()
 const pluginRuntimeStore = usePluginRuntimeStore()
+const workbenchStore = useWorkbenchStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -30,6 +34,29 @@ const showCommandPalette = ref(false)
 const showOmniSearch = ref(false)
 // 全局 AI 悬浮球 + Copilot 伴生抽屉（AI-COPILOT-FLOATING-ORB 蓝图）：Ctrl+J 唤起
 const showCopilot = ref(false)
+const showDailyReport = ref(false)
+const copilotRequest = ref<CopilotRequest | null>(null)
+const sidebar = ref<InstanceType<typeof SideBar> | null>(null)
+let stopFileEvents: (() => void) | undefined
+let appDisposed = false
+
+function openDailyReport() {
+  if (!workspaceStore.hasWorkspace) return
+  showCopilot.value = false
+  showDailyReport.value = true
+}
+function openCopilotRequest(event: Event) {
+  const request = (event as CustomEvent<CopilotRequest>).detail
+  if (!request || typeof request.prompt !== 'string' || typeof request.context !== 'string' || !workspaceStore.hasWorkspace) return
+  if (request.workspacePath && request.workspacePath !== workspaceStore.currentWorkspace?.path) return
+  copilotRequest.value = { ...request, workspacePath: workspaceStore.currentWorkspace?.path }
+  showCopilot.value = true
+}
+watch(() => workspaceStore.currentWorkspace?.path, () => {
+  showDailyReport.value = false
+  showCopilot.value = false
+  copilotRequest.value = null
+})
 
 // 欢迎页和设置页有自己的独立布局，需要隐藏主应用侧边栏
 const hideSidebarRoutes = ['/', '/settings']
@@ -99,6 +126,11 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeydown)
+  window.addEventListener('notevault:daily-report', openDailyReport)
+  window.addEventListener('notevault:copilot-request', openCopilotRequest)
+  void import('@wailsio/runtime').then(({ Events }) => {
+    if (!appDisposed) stopFileEvents = Events.On('workspace:file-changed', () => workbenchStore.scheduleRefresh())
+  }).catch(error => console.warn('Workbench file events unavailable:', error))
   void pluginRuntimeStore.initialize()
   void restoreCurrentWorkspace()
 })
@@ -116,6 +148,10 @@ async function restoreCurrentWorkspace() {
 }
 
 onBeforeUnmount(() => {
+  appDisposed = true
+  stopFileEvents?.()
+  window.removeEventListener('notevault:daily-report', openDailyReport)
+  window.removeEventListener('notevault:copilot-request', openCopilotRequest)
   window.removeEventListener('keydown', handleGlobalKeydown)
   window.removeEventListener('app:open-command-palette', openCommandPaletteFromEvent)
 })
@@ -139,6 +175,7 @@ function openFileFromOmni(path: string) {
 }
 
 function handleNewFileFromPalette() {
+  if (sidebar.value) { void sidebar.value.createNewDoc(); return }
   const event = new CustomEvent('notevault:new-file')
   window.dispatchEvent(event)
 }
@@ -148,7 +185,10 @@ function handleNewFileFromPalette() {
   <div class="app-container">
     <TitleBar />
     <div class="app-body">
-      <SideBar v-if="showSidebar" />
+      <SideBar
+        v-if="showSidebar"
+        ref="sidebar"
+      />
       <main class="app-main">
         <RouterView v-slot="{ Component }">
           <transition
@@ -186,7 +226,12 @@ function handleNewFileFromPalette() {
     />
     <AICopilotDrawer
       :visible="showCopilot"
+      :request="copilotRequest"
       @close="showCopilot = false"
+    />
+    <DailyReportModal
+      :visible="showDailyReport"
+      @close="showDailyReport = false"
     />
     <div class="plugin-notification-stack">
       <div

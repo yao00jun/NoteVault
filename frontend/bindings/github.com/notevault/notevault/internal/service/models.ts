@@ -463,6 +463,22 @@ export interface ImportResult {
     "errors": string[] | null;
 }
 
+export interface InterviewCard {
+    "id": string;
+    "filePath": string;
+    "lineIndex": number;
+    "comment": string;
+    "question": string;
+    "answer": string;
+    "level": string;
+    "interval": number;
+    "due": string;
+    "reps": number;
+    "failures": number;
+    "lastReviewed": string;
+    "weak": boolean;
+}
+
 /**
  * LLMEndpointPreset 描述一个可一键填入的端点预设。
  */
@@ -1017,6 +1033,17 @@ export interface TodoItem {
      * high, medium, low
      */
     "priority": string;
+    "sourceLine": string;
+    "title": string;
+    "type": string;
+    "project": string;
+    "projectPath": string;
+    "due": string;
+    "date": string;
+    "completedAt": string;
+    "status": string;
+    "blocker": string;
+    "progress": WorkbenchProgress[] | null;
 }
 
 /**
@@ -1070,6 +1097,69 @@ export interface WeeklyReportResult {
      */
     "message": string;
 }
+
+export interface WorkbenchBook {
+    "name": string;
+    "path": string;
+    "folder": string;
+    "status": string;
+    "progress": number;
+    "projects": string[] | null;
+    "chapters": WorkbenchDocument[] | null;
+    "noteCount": number;
+    "reviewCount": number;
+}
+
+export interface WorkbenchDocument {
+    "path": string;
+    "title": string;
+    "modifiedAt": string;
+}
+
+export interface WorkbenchProgress {
+    "id": string;
+    "taskId": string;
+    "filePath": string;
+    "taskTitle": string;
+    "project": string;
+    "note": string;
+    "at": string;
+}
+
+export interface WorkbenchProject {
+    "name": string;
+    "path": string;
+    "folder": string;
+    "status": string;
+    "nextStep": string;
+    "techStack": string[] | null;
+    "taskIds": string[] | null;
+    "notes": WorkbenchDocument[] | null;
+    "modifiedAt": string;
+}
+
+export interface WorkbenchRadar {
+    "path": string;
+    "content": string;
+}
+
+export interface WorkbenchSnapshot {
+    "date": string;
+    "tasks": (WorkbenchTask | null)[] | null;
+    "projects": WorkbenchProject[] | null;
+    "books": WorkbenchBook[] | null;
+    "cards": InterviewCard[] | null;
+    "progress": WorkbenchProgress[] | null;
+    "radar": WorkbenchRadar;
+    "documents": WorkbenchDocument[] | null;
+    "indexedAt": string;
+    "warnings": string[] | null;
+}
+
+/**
+ * WorkbenchTask enriches the existing todo contract without replacing legacy APIs.
+ */
+export type WorkbenchTask = TodoItem;
 
 /**
  * Workspace 表示一个知识库工作区

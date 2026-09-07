@@ -80,6 +80,12 @@ type TodoOperator interface {
 	GetAllTodos(workspacePath string) ([]*TodoItem, error)
 	ToggleTodo(workspacePath string, filePath string, lineIndex int) error
 	GetTodoStats(workspacePath string) (map[string]int, error)
+	GetWorkbench(workspacePath string, date string) (*WorkbenchSnapshot, error)
+	UpdateWorkbenchTask(workspacePath string, filePath string, lineIndex int, expectedLine string, action string, value string, date string) error
+	ReviewInterviewCard(workspacePath string, filePath string, lineIndex int, expectedComment string, level string, date string) error
+	ReadDailyReport(workspacePath string, date string) (string, error)
+	SaveDailyReport(workspacePath string, date string, content string, expectedContent string) (string, error)
+	AddWorkbenchTask(workspacePath string, projectFolder string, title string, kind string, due string, date string) error
 }
 
 // ---------------------------------------------------------------------------
