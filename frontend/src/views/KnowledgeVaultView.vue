@@ -32,16 +32,20 @@ import { SPACE_DEFS, type SpaceKey } from '@/composables/useWorkbenchSpaces'
 import { useToast } from '@/composables/useToast'
 import { collectionDateLabel, normalizedCollectionPath } from '@/utils/workbenchCollections'
 import '@/styles/workbench-collections.css'
+import { useViewRoute } from '@/composables/useViewRoute'
+import VaultActions from '@/components/knowledge/VaultActions.vue'
 
 const workbench = useWorkbenchStore()
 const workspace = useWorkspaceStore()
 const router = useRouter()
+const route = useViewRoute('/vault')
 const toast = useToast()
 const search = ref('')
 const spaceFilter = ref('all')
 const pinnedOnly = ref(false)
 const sortOrder = ref('recent')
 const visibleLimit = ref(40)
+const folderFilter = ref('')
 const spaceCopy: Record<SpaceKey, { label: string; description: string }> = {
   learning: { label: '学习', description: '把理解连成体系' },
   projects: { label: '项目', description: '让经验回到实践' },
@@ -67,13 +71,13 @@ const insights = [
   },
   {
     id: 'compile',
-    title: '知识编译',
+    title: 'AI 整理',
     description: '把收集箱的碎片，整理为可复用的知识。',
     icon: Sparkles,
   },
   {
     id: 'bases',
-    title: 'Bases 数据视图',
+    title: '属性视图',
     description: '按属性筛选、分组，从不同角度看资料。',
     icon: Table2,
   },
@@ -94,7 +98,6 @@ const tools = [
     icon: History,
     route: '/review?tab=versions',
   },
-  { label: '文档管理', description: '新建、模板与导出', icon: Library, route: '/library' },
   { label: '导入资料', description: '汇入已有的知识', icon: Import, route: '/import' },
   { label: '白板', description: '展开思路与关系', icon: LayoutDashboard, route: '/canvas' },
   { label: '插件', description: '扩展你的工作方式', icon: Puzzle, route: '/plugins' },
@@ -109,6 +112,7 @@ const filteredDocuments = computed(() => {
   return workbench.documents
     .filter(
       (doc) =>
+        (!folderFilter.value || normalizedCollectionPath(doc.path).startsWith(folderFilter.value + '/')) &&
         (spaceFilter.value === 'all' ||
           normalizedCollectionPath(doc.path).startsWith(spaceFilter.value + '/')) &&
         (!pinnedOnly.value || workspace.isPinned(doc.path)) &&
@@ -129,6 +133,7 @@ function openDocument(path: string) {
   workspace.openFile(path)
   void router.push({ path: '/editor', query: { file: path } })
 }
+function newDocument() { window.dispatchEvent(new CustomEvent('notevault:new-file', { detail: { folder: folderFilter.value || (spaceFilter.value === 'all' ? 'Inbox' : spaceFilter.value) } })) }
 function togglePin(path: string, title: string) {
   if (!workspace.togglePin(path, title)) toast.warning('固定区最多容纳 8 项，请先取消一个固定项。')
 }
@@ -136,24 +141,37 @@ function resetFilters() {
   search.value = ''
   spaceFilter.value = 'all'
   pinnedOnly.value = false
+  folderFilter.value = ''
 }
-watch([search, spaceFilter, pinnedOnly, sortOrder], () => {
+watch(() => route.fullPath, () => {
+  search.value = typeof route.query.q === 'string' ? route.query.q : ''
+  spaceFilter.value = typeof route.query.space === 'string' ? route.query.space : 'all'
+  folderFilter.value = typeof route.query.folder === 'string' ? route.query.folder : ''
+  pinnedOnly.value = route.query.pinned === '1'
+  sortOrder.value = route.query.sort === 'title' ? 'title' : 'recent'
+}, { immediate: true })
+watch([search, spaceFilter, pinnedOnly, sortOrder, folderFilter], () => {
   visibleLimit.value = 40
+  if (router.currentRoute.value.path !== '/vault') return
+  void router.replace({ path: '/vault', query: {
+    ...route.query, q: search.value || undefined, space: spaceFilter.value === 'all' ? undefined : spaceFilter.value,
+    folder: folderFilter.value || undefined, pinned: pinnedOnly.value ? '1' : undefined, sort: sortOrder.value === 'title' ? 'title' : undefined,
+  } })
 })
 watch(() => workspace.currentWorkspace?.path, resetFilters)
 </script>
 
 <template>
-  <div class="collection-page vault-page">
+  <div class="collection-page vault-page document-browser">
     <div class="collection-shell">
       <header class="collection-hero">
         <div>
           <div class="collection-eyebrow">
             <Library :size="15" /> KNOWLEDGE / 知识库
           </div>
-          <h1>值得留下的，都在这里。</h1>
+          <h1>知识库</h1>
           <p class="collection-subtitle">
-            从五个空间出发，检索、串联并沉淀你的知识资产。
+            管理文档、整理资料，让积累随时可用。
           </p>
         </div>
         <div class="collection-actions">
@@ -169,13 +187,10 @@ watch(() => workspace.currentWorkspace?.path, resetFilters)
               :class="{ 'collection-spin': workbench.loading }"
             />
           </button>
-          <button
-            class="collection-button"
-            type="button"
-            @click="router.push('/library')"
-          >
-            <FileText :size="14" /> 管理文档
-          </button>
+          <VaultActions
+            v-if="workspace.hasWorkspace"
+            :folder="folderFilter || (spaceFilter !== 'all' ? spaceFilter : 'Inbox')"
+          />
         </div>
       </header>
       <div
@@ -208,58 +223,32 @@ watch(() => workspace.currentWorkspace?.path, resetFilters)
         </button>
       </div>
       <template v-else>
-        <section aria-labelledby="vault-spaces-heading">
-          <div class="collection-section-title">
-            <h2 id="vault-spaces-heading">
-              知识空间
-            </h2>
-            <span>{{ workbench.documents.length }} 篇文档</span>
-          </div>
-          <div class="vault-space-grid">
-            <button
-              v-for="space in spaces"
-              :key="space.key"
-              class="vault-space"
-              :data-space="space.dir"
-              data-testid="vault-space"
-              type="button"
-              @click="router.push({ path: '/editor', query: { folder: space.dir } })"
-            >
-              <span class="vault-space-top"><span class="vault-space-icon"><component
-                :is="space.icon"
-                :size="20"
-              /></span><ArrowUpRight :size="14" /></span>
-              <strong>{{ space.label }}</strong><small>{{ space.description }}</small><span class="vault-space-count">{{ space.count }} <small>篇文档</small></span>
-            </button>
-          </div>
-        </section>
-
-        <section
-          class="vault-insights"
-          aria-labelledby="vault-insights-heading"
+        <nav
+          class="vault-space-filters"
+          aria-label="按知识空间筛选"
         >
-          <div class="collection-section-title">
-            <h2 id="vault-insights-heading">
-              洞察与提炼
-            </h2>
-            <span>让积累产生新的联系</span>
-          </div>
-          <div class="vault-insight-grid">
-            <button
-              v-for="insight in insights"
-              :key="insight.id"
-              class="vault-insight"
-              :data-testid="'vault-insight-' + insight.id"
-              type="button"
-              @click="router.push({ path: '/insights', query: { tab: insight.id } })"
-            >
-              <component
-                :is="insight.icon"
-                :size="22"
-              /><span><strong>{{ insight.title }}</strong><small>{{ insight.description }}</small></span><ChevronRight :size="15" />
-            </button>
-          </div>
-        </section>
+          <button
+            class="collection-button"
+            :aria-pressed="spaceFilter === 'all'"
+            @click="spaceFilter = 'all'; folderFilter = ''"
+          >
+            全部 <small>{{ workbench.documents.length }}</small>
+          </button>
+          <button
+            v-for="space in spaces"
+            :key="space.key"
+            class="collection-button"
+            :data-space="space.dir"
+            data-testid="vault-space"
+            :aria-pressed="spaceFilter === space.dir"
+            @click="spaceFilter = space.dir; folderFilter = ''"
+          >
+            <component
+              :is="space.icon"
+              :size="15"
+            />{{ space.label }}<small>{{ space.count }}</small>
+          </button>
+        </nav>
 
         <section
           class="vault-documents"
@@ -267,7 +256,7 @@ watch(() => workspace.currentWorkspace?.path, resetFilters)
         >
           <div class="collection-section-title">
             <h2 id="vault-documents-heading">
-              {{ pinnedOnly ? '固定文档' : '文档索引' }}
+              {{ pinnedOnly ? '固定文档' : folderFilter || '全部文档' }}
               <span class="collection-tab-count">{{ filteredDocuments.length }}</span>
             </h2>
             <button
@@ -388,9 +377,9 @@ watch(() => workspace.currentWorkspace?.path, resetFilters)
                 v-else
                 class="collection-button"
                 type="button"
-                @click="router.push('/library')"
+                @click="newDocument"
               >
-                管理文档 <ArrowUpRight :size="13" />
+                新建第一篇文档 <ArrowUpRight :size="13" />
               </button>
             </div>
             <button
@@ -401,6 +390,33 @@ watch(() => workspace.currentWorkspace?.path, resetFilters)
             >
               再显示 {{ Math.min(40, filteredDocuments.length - displayedDocuments.length) }} 篇
               <ArrowDown :size="14" />
+            </button>
+          </div>
+        </section>
+
+        <section
+          class="vault-insights"
+          aria-labelledby="vault-insights-heading"
+        >
+          <div class="collection-section-title">
+            <h2 id="vault-insights-heading">
+              洞察与提炼
+            </h2>
+            <span>让积累产生新的联系</span>
+          </div>
+          <div class="vault-insight-grid">
+            <button
+              v-for="insight in insights"
+              :key="insight.id"
+              class="vault-insight"
+              :data-testid="'vault-insight-' + insight.id"
+              type="button"
+              @click="router.push({ path: '/insights', query: { tab: insight.id } })"
+            >
+              <component
+                :is="insight.icon"
+                :size="22"
+              /><span><strong>{{ insight.title }}</strong><small>{{ insight.description }}</small></span><ChevronRight :size="15" />
             </button>
           </div>
         </section>
@@ -433,6 +449,10 @@ watch(() => workspace.currentWorkspace?.path, resetFilters)
 </template>
 
 <style scoped>
+.vault-space-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+.vault-space-filters button[aria-pressed="true"] { background: var(--selection-bg, var(--accent-alpha)); border-color: var(--selection-border, var(--border-accent)); color: var(--selection-text, var(--accent)); }
+.vault-space-filters small { opacity: .8; font-variant-numeric: tabular-nums; }
+
 .vault-space-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

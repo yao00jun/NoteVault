@@ -12,8 +12,7 @@ import {
   History,
   Settings as SettingsIcon,
   FileText,
-  ArrowLeft,
-} from '@lucide/vue'
+  } from '@lucide/vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
@@ -162,14 +161,6 @@ watch(() => workspaceStore.currentWorkspace?.id, loadInbox)
   <div class="compile-view">
     <div class="compile-header">
       <div class="compile-header-left">
-        <button
-          class="back-btn"
-          data-testid="compile-back"
-          @click="router.push('/knowledge')"
-        >
-          <ArrowLeft :size="16" />
-          <span>{{ t('common.backToKnowledge') }}</span>
-        </button>
         <h2 class="compile-title">
           <Sparkles :size="20" /> {{ t('compile.title') }}
         </h2>
@@ -240,7 +231,10 @@ watch(() => workspaceStore.currentWorkspace?.id, loadInbox)
           class="note-item"
           :class="{ done: status[path] === 'done', error: status[path] === 'error' }"
         >
-          <FileText :size="16" class="note-icon" />
+          <FileText
+            :size="16"
+            class="note-icon"
+          />
           <div class="note-info">
             <div class="note-path">
               {{ path }}
@@ -336,7 +330,10 @@ watch(() => workspaceStore.currentWorkspace?.id, loadInbox)
         >
           <div class="recent-route">
             <span class="src">{{ r.Source }}</span>
-            <ArrowRight :size="13" class="arrow" />
+            <ArrowRight
+              :size="13"
+              class="arrow"
+            />
             <span class="dest">{{ r.Dest }}</span>
           </div>
           <div

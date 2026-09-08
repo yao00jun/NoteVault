@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import { useViewRoute } from '@/composables/useViewRoute'
 import { computed, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import {
-  ArrowLeft,
   ArrowUpRight,
   BookOpen,
   Bot,
@@ -30,10 +30,12 @@ import { useToast } from '@/composables/useToast'
 import { requestCopilot } from '@/composables/useCopilotRequest'
 import { collectionDateLabel, parseTechnologyRadar } from '@/utils/workbenchCollections'
 import '@/styles/workbench-collections.css'
+import { requestSourceImport } from '@/composables/useSourceImport'
+import CollectionOnboarding from '@/components/workbench/CollectionOnboarding.vue'
 
 const workbench = useWorkbenchStore()
 const workspace = useWorkspaceStore()
-const route = useRoute()
+const route = useViewRoute('/learning')
 const router = useRouter()
 const toast = useToast()
 const bookSearch = ref('')
@@ -96,6 +98,7 @@ const weakGroups = computed(() => {
 })
 
 function bookState(book: WorkbenchBook) {
+  if (['planned', 'unread', 'not-started', '待学习', '待读', '未开始'].includes(book.status.toLocaleLowerCase())) return '待读'
   return ['completed', 'done', '已沉淀', '已完成'].includes(book.status.toLocaleLowerCase())
     ? '已沉淀'
     : book.status || '在学'
@@ -168,14 +171,6 @@ watch(
 <template>
   <div class="collection-page learning-page">
     <div class="collection-shell">
-      <button
-        v-if="selectedBook"
-        class="collection-back"
-        type="button"
-        @click="switchTab('books')"
-      >
-        <ArrowLeft :size="14" /> 全部技术分册
-      </button>
       <header class="collection-hero">
         <div>
           <div class="collection-eyebrow">
@@ -191,6 +186,22 @@ watch(
           </p>
         </div>
         <div class="collection-actions">
+          <template v-if="workspace.hasWorkspace">
+            <button
+              class="collection-button primary"
+              data-testid="create-collection"
+              @click="requestSourceImport({ kind: 'book', sourceType: 'empty' })"
+            >
+              新建技术分册
+            </button>
+            <button
+              class="collection-button"
+              data-testid="import-collection"
+              @click="requestSourceImport({ kind: 'book', sourceType: 'folder', targetFolder: selectedBook?.folder, name: selectedBook?.name })"
+            >
+              {{ selectedBook ? '添加资料' : '从资料创建' }}
+            </button>
+          </template>
           <template v-if="selectedBook">
             <button
               class="collection-icon-button"
@@ -270,6 +281,10 @@ watch(
         </button>
       </div>
       <template v-else>
+        <CollectionOnboarding
+          v-if="!selectedBook && activeTab === 'books'"
+          kind="book"
+        />
         <section
           v-if="selectedBook"
           class="learning-book-detail"
@@ -458,6 +473,7 @@ watch(
               ></label>
               <label class="collection-filter">研读状态<select v-model="bookStatus">
                 <option value="all">全部分册</option>
+                <option value="待读">待读</option>
                 <option value="在学">在学</option>
                 <option value="已沉淀">已沉淀</option>
               </select></label>
@@ -564,6 +580,13 @@ watch(
                     : '在学习空间建立技术分册，章节笔记、关联项目和研读进度会整理在这里。'
                 }}
               </p>
+              <button
+                v-if="!workbench.books.length"
+                class="collection-button primary"
+                @click="requestSourceImport({ kind: 'book', sourceType: 'folder' })"
+              >
+                从资料建立第一本书
+              </button>
             </div>
           </template>
           <section

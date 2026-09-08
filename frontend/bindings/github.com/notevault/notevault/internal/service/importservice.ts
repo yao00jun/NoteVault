@@ -9,6 +9,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+export function GetSourceImportResult(workspacePath: string, taskID: string): $CancellablePromise<$models.SourceImportResult | null> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.ImportService.GetSourceImportResult", workspacePath, taskID);
+}
+
 /**
  * ImportMarkdownFolder 将文件夹中的 Markdown 文件导入到工作区
  * srcDir: 源文件夹绝对路径
@@ -43,4 +47,20 @@ export function ImportMarkdownFolderAsync(srcDir: string, workspacePath: string,
  */
 export function ImportZip(zipPath: string, workspacePath: string, opts: $models.ImportOptions): $CancellablePromise<$models.ImportResult | null> {
     return $Call.ByName("github.com/notevault/notevault/internal/service.ImportService.ImportZip", zipPath, workspacePath, opts);
+}
+
+/**
+ * PreviewSourceImport validates and extracts bounded source data without
+ * creating directories, metadata, manifests, or any other workspace files.
+ */
+export function PreviewSourceImport(workspacePath: string, request: $models.SourceImportRequest): $CancellablePromise<$models.SourceImportPreview | null> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.ImportService.PreviewSourceImport", workspacePath, request);
+}
+
+/**
+ * StartSourceImport uses the existing cancellable TaskService. Every completed
+ * file is entered into Markdown provenance before its progress is published.
+ */
+export function StartSourceImport(workspacePath: string, request: $models.SourceImportRequest): $CancellablePromise<string> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.ImportService.StartSourceImport", workspacePath, request);
 }

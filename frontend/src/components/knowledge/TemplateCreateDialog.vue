@@ -130,6 +130,7 @@ import { useI18n } from 'vue-i18n'
 import { isImeComposing } from '@/utils/ime'
 import { FileText, Loader2 } from '@lucide/vue'
 import { useWorkspaceStore } from '@/stores/workspace'
+const props = defineProps<{ defaultFolder?: string }>()
 
 const emit = defineEmits<{
   close: []
@@ -170,7 +171,7 @@ const currentVariables = computed(() => {
 /** 选中模板时：重置变量值，目标路径默认为「模板名.md」。 */
 function syncSelection(): void {
   variableValues.value = {}
-  targetPath.value = selectedName.value ? `${selectedName.value}.md` : ''
+  targetPath.value = selectedName.value ? `${props.defaultFolder ? props.defaultFolder + '/' : ''}${selectedName.value}.md` : ''
 }
 
 onMounted(async () => {

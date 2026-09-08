@@ -159,6 +159,24 @@ describe('useAIChat', () => {
     expect(chat.messages.value[0]?.content).toBe('总结一下')
   })
 
+  it('后续问题携带前一轮问答且不重复当前问题，清空后不再携带旧会话', async () => {
+    const chat = mountHost(() => '当前项目正文')
+    useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
+    useWorkspaceStore().setCurrentWorkspace({ id: 'ws', name: '笔记库', path: 'C:/notes', createdAt: '', lastOpenedAt: '' })
+    await chat.ask('项目采用什么架构？')
+    await chat.ask('解释它的第二个优点')
+    const followup = String(answerMock.mock.calls[1]?.[9])
+    expect(followup).toContain('项目采用什么架构？')
+    expect(followup).toContain('这是 AI 的回答')
+    expect(followup).toContain('当前项目正文')
+    expect(followup.match(/解释它的第二个优点/g)).toHaveLength(1)
+
+    chat.clearConversation()
+    await chat.ask('新的话题')
+    expect(answerMock.mock.calls[2]?.[9]).not.toContain('项目采用什么架构')
+    expect(answerMock.mock.calls[2]?.[9]).not.toContain('这是 AI 的回答')
+  })
+
   it('Answer 抛错时推送错误消息且不炸 UI', async () => {
     answerMock.mockRejectedValue(new Error('boom'))
     const chat = mountHost()

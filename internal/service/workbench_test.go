@@ -111,6 +111,8 @@ func TestWorkbenchSnapshotProjectsBooksAndInterviewCards(t *testing.T) {
 	workbenchWrite(t, root, "Projects/物流/project.md", "---\nname: 物流中台\nstatus: paused\nnext_step: 验证 MQ\ntech_stack:\n  - Go\n  - Redis\n---\n")
 	workbenchWrite(t, root, "Daily/2026-09-07.md", "- [x] Yesterday shipped\n- [ ] 归属商城 #project/商城重构\n")
 	workbenchWrite(t, root, "Learning/Java/book.md", "---\n书名: Java 核心进阶\n状态: 在学\n研读进度: 65%\n关联项目: [商城重构, 物流中台]\n---\n")
+	workbenchWrite(t, root, "Learning/Java/sources.md", "# 导入来源\n")
+	workbenchWrite(t, root, "Learning/Java/ai-plan.md", "# AI 生成学习建议\n")
 	workbenchWrite(t, root, "Learning/Java/01-并发.md", "# 并发基础\n\n### [Q042] 为什么死锁？\n<!-- srs: {\"level\":\"不会\",\"interval\":1,\"due\":\"2026-09-08\",\"reps\":2,\"failures\":2} -->\n\n#### 核心要点\n互斥与循环等待。\n```md\n### 假问题\n<!-- srs: {} -->\n```\n\n### [Q043] 如何预防？\n<!-- srs: {\"level\":\"掌握\",\"interval\":7,\"due\":\"2026-09-15\",\"reps\":3} -->\n固定锁顺序。\n\n### 损坏题卡\n<!-- srs: {broken} -->\n")
 	workbenchWrite(t, root, "Learning/Go/book.md", "---\ntitle: Go 并发实战\nstatus: settled\nprogress: 100\nprojects: [物流中台]\n---\n")
 	workbenchWrite(t, root, "Learning/技术雷达.md", "# 技术雷达\n## 尝试中\n- SQLite 只作索引\n")

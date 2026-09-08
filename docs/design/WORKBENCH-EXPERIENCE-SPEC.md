@@ -1,0 +1,31 @@
+# Workbench experience specification
+
+Approved scope: unified navigation and context, usable document management, source-driven project/book initialization, three coherent themes, end-to-end verification and release. This extends WORKBENCH-V2-FULL-SPEC.md; its Markdown, pure-Go and capability-preservation constraints still apply.
+
+## Navigation and information architecture
+
+The application shell owns Back, Forward, Home and breadcrumbs. Back restores the actual previous location; a breadcrumb deliberately opens its parent. Editor locations include a file identity. History and page UI state are isolated per workspace. Filter, sort and tab changes replace the current history entry. Direct deep links have section-aware fallbacks. Home opens Today when a workspace exists. Browser, keyboard and title-bar navigation use the same router history. Dirty drafts remain protected when navigating; failures and conflicts must remain visible.
+
+Four primary destinations remain Today, Projects, Learning and Vault. Vault contains an actual searchable document browser and five-space filters. Legacy library URLs resolve to the browser. Templates, quick capture, tags, exports, graph, property views, AI organization, archive, trash, version history, sync and existing editor capabilities remain reachable. New documents inherit the selected entity or directory. All collection empty states offer creation and source import. Sidebar section, breadcrumbs, status and Copilot context derive from the current location.
+
+## Source-driven creation
+
+A shared modal accepts an empty collection, local folder, existing workspace folder (adopt), file uploads and a public HTTP(S) source. It creates Projects/<name>/project.md, Learning/<name>/book.md, or Resources/<name>/index.md and preserves extracted content as Markdown. Supported text: Markdown, plain text, HTML, DOCX, EPUB and text-based PDF; images/scanned PDFs remain attachments and explicitly report the need for OCR. Repository folders can identify technology from manifests without running source code. Public repository URLs may download bounded archives; documentation URLs import the selected page, not an unbounded site crawl.
+
+The pipeline uses existing TaskService progress/cancellation, optional preview, retry and explicit completion counts. Empty/adopt create usable metadata without AI. Existing notes are never overwritten by registration. Existing metadata remains authoritative. A Markdown source ledger records origin, content hashes, extraction mode and generated additions. Repeat imports skip identical content; update replaces only unchanged imported copies, preserving local edits as conflicts. Cancellation retains completed files and reports partial completion. All path, symlink, archive and network inputs are confined and bounded. Source text is untrusted data; it cannot trigger tools or executable instructions. API keys never enter Markdown or logs.
+
+Networking respects explicit fixed HTTP(S) environment proxies and the current user's enabled fixed Windows proxy without changing system settings. Private/reserved destinations remain prohibited, including redirects. Only when every OS DNS answer is a proxy fake IP in 198.18/15 may the configured proxy resolve the public name using bounded HTTPS DNS at Cloudflare's verified public resolver. The tunnel then connects to the validated public IP while HTTPS still verifies the original hostname. No PAC/WPAD execution or SOCKS proxy support is included. Normal public DNS continues to use the OS resolver.
+
+PDF extraction accepts bounded, validated ordinary cross-reference tables. Scanned, encrypted or unsupported complex/incremental PDF structures stay as original attachments with an explicit extraction warning. ZIP64 and oversized archives are rejected. These limits preserve the source; they do not imply that unread content was extracted.
+
+Optional AI enrichment runs after import, using bounded chapter inputs. Its output is separate, visibly AI-generated Markdown: an outline/summary, proposed project next steps/technology or review questions. AI failure leaves the base import usable. Existing progress, tasks, ratings and due dates are not invented or overwritten. Copilot has a source-creation action and recognizes explicit create-from-source requests; ordinary Q&A remains read-only. Conversation turns and current entity context are supplied to follow-up answers, scoped to the workspace.
+
+Automatic intake requires a positively recognized complete command with one source and a collection kind. Informational questions, conditions or unrecognized suffixes remain in chat; missing-kind commands open a draft form. Navigating away invalidates queued page-specific AI requests. A failed editor save or external conflict blocks leaving until resolved, and every workspace-changing entry point flushes the old editor before switching.
+
+## Presentation
+
+macOS uses translucent chrome, system fonts, segmented controls and soft selection; WinUI uses Fluent pane hierarchy, left selection indicators, Segoe typography and visible keyboard focus; Islands keeps its separated dark surfaces, amber accent and metadata typography. These styles cover both legacy and new collection/import/browser controls. Three themes keep identical features and readable contrast. Theme previews show their structural differences. Compact layouts preserve a useful writing area; editor panels are resizable/collapsible with remembered dimensions. Graph navigation restores its viewport and selected document. Status reflects actual saving/conflict/cursor state and does not pretend non-editor pages are saved Markdown.
+
+## Acceptance
+
+Exercise Vault → filtered document → Back, graph → document → Back, Learning → book → chapter → Back, project → note → settings → Back twice, recent/pinned/search, direct editor links, % and Unicode filenames, workspace switches and dirty-save failures. Verify import/create/adopt, duplicates, safe updates, cancellation/partial failure, AI failure, restart reconstruction and file/path boundaries. Inspect three themes at desktop and compact sizes. Run go test ./internal/..., pnpm typecheck, pnpm test and pnpm lint. Perform independent review, package Windows exe/installer, verify installer contents, commit and push only after validation.

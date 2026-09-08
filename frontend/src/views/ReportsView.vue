@@ -121,7 +121,7 @@ function level(edited: number): number {
 function openFile(path: string) {
   workspaceStore.openFile(path)
   workspaceStore.incrementFileTreeVersion()
-  router.push('/editor')
+  router.push({ path: '/editor', query: { file: path } })
 }
 
 // 生成本期定期回顾：近 7 天笔记逐篇 AI 摘要 + 旧笔记重温清单
@@ -321,63 +321,63 @@ async function generateWeeklyReport() {
       </section>
 
       <!-- 定期回顾 -->
-    <section class="rp-section">
-      <h2 class="rp-section-title">
-        {{ t('reports.review.title') }}
-      </h2>
-      <p class="rp-review-desc">
-        {{ t('reports.review.desc') }}
-      </p>
-      <div class="rp-review-actions">
-        <button
-          class="rp-generate-btn"
-          :disabled="reviewing"
-          @click="generateReview"
+      <section class="rp-section">
+        <h2 class="rp-section-title">
+          {{ t('reports.review.title') }}
+        </h2>
+        <p class="rp-review-desc">
+          {{ t('reports.review.desc') }}
+        </p>
+        <div class="rp-review-actions">
+          <button
+            class="rp-generate-btn"
+            :disabled="reviewing"
+            @click="generateReview"
+          >
+            <Loader2
+              v-if="reviewing"
+              :size="14"
+              class="spin"
+            />
+            <FileText
+              v-else
+              :size="14"
+            />
+            <span>{{ reviewing ? t('reports.review.working') : t('reports.review.generate') }}</span>
+          </button>
+          <button
+            class="rp-schedule-btn"
+            :disabled="scheduling"
+            @click="scheduleReview"
+          >
+            <Loader2
+              v-if="scheduling"
+              :size="14"
+              class="spin"
+            />
+            <CalendarRange
+              v-else
+              :size="14"
+            />
+            <span>{{ scheduling ? t('reports.review.scheduling') : t('reports.review.schedule') }}</span>
+          </button>
+        </div>
+        <div
+          v-if="reviewMsg"
+          class="rp-generate-msg"
+          :class="{ ok: reviewOk }"
         >
-          <Loader2
-            v-if="reviewing"
-            :size="14"
-            class="spin"
-          />
-          <FileText
-            v-else
-            :size="14"
-          />
-          <span>{{ reviewing ? t('reports.review.working') : t('reports.review.generate') }}</span>
-        </button>
-        <button
-          class="rp-schedule-btn"
-          :disabled="scheduling"
-          @click="scheduleReview"
+          {{ reviewMsg }}
+        </div>
+        <div
+          v-if="scheduleMsg"
+          class="rp-generate-msg ok"
         >
-          <Loader2
-            v-if="scheduling"
-            :size="14"
-            class="spin"
-          />
-          <CalendarRange
-            v-else
-            :size="14"
-          />
-          <span>{{ scheduling ? t('reports.review.scheduling') : t('reports.review.schedule') }}</span>
-        </button>
-      </div>
-      <div
-        v-if="reviewMsg"
-        class="rp-generate-msg"
-        :class="{ ok: reviewOk }"
-      >
-        {{ reviewMsg }}
-      </div>
-      <div
-        v-if="scheduleMsg"
-        class="rp-generate-msg ok"
-      >
-        {{ scheduleMsg }}
-      </div>
-    </section>
+          {{ scheduleMsg }}
+        </div>
+      </section>
 
-    <!-- 写作热力图 -->
+      <!-- 写作热力图 -->
       <section class="rp-section">
         <h2 class="rp-section-title">
           {{ t('reports.heatmap') }}

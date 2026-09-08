@@ -280,7 +280,7 @@ describe('SideBar', () => {
     vi.mocked(WorkbenchService.GetWorkbench).mockImplementationOnce(() => new Promise(resolve => { resolveSnapshot = resolve }))
     workspaceStore.setCurrentWorkspace({ ...workspace })
     await nextTick()
-    expect(wrapper.get('[data-testid="sidebar-index-status"]').text()).toContain('同步中')
+    expect(wrapper.get('[data-testid="sidebar-index-status"]').text()).toContain('更新索引')
     resolveSnapshot({
       date: '2026-09-08', tasks: [], projects: [], books: [], cards: [], progress: [],
       radar: { path: '', content: '' }, documents: [], indexedAt: '2026-09-08T08:00:00Z', warnings: [],

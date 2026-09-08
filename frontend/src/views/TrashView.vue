@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { Trash2, RotateCcw, FileText, AlertTriangle, ArrowLeft } from '@lucide/vue'
+import { Trash2, RotateCcw, FileText, AlertTriangle, } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
@@ -95,14 +95,6 @@ watch(() => currentWorkspace.value?.id, loadFiles)
   <div class="trash-view">
     <div class="trash-header">
       <div class="header-left">
-        <button
-          class="back-btn"
-          data-testid="trash-back"
-          @click="router.push('/knowledge')"
-        >
-          <ArrowLeft :size="16" />
-          <span>{{ t('common.backToKnowledge') }}</span>
-        </button>
         <h2 class="trash-title">
           <Trash2 :size="20" /> {{ t('trash.title') }}
         </h2>

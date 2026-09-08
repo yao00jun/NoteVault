@@ -117,7 +117,7 @@ const allCommands = computed<Command[]>(() => [
     label: t('palette.commands.knowledge.label'),
     description: t('palette.commands.knowledge.desc'),
     icon: Home,
-    action: () => { router.push('/knowledge'); close() },
+    action: () => { router.push('/vault'); close() },
   },
   {
     id: 'graph',

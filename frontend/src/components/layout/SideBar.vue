@@ -30,6 +30,9 @@ import { FileService, WorkspaceService } from '@/api'
 import { useToast } from '@/composables/useToast'
 import { promptDialog } from '@/composables/usePrompt'
 import { useDailyNote } from '@/composables/useDailyNote'
+import { usePageContext } from '@/composables/usePageContext'
+import { flushOpenEditor } from '@/composables/useEditorSession'
+import { requestSourceImport } from '@/composables/useSourceImport'
 
 const toast = useToast()
 const { openTodayNote } = useDailyNote()
@@ -40,7 +43,9 @@ const workspaceStore = useWorkspaceStore()
 const workbenchStore = useWorkbenchStore()
 const router = useRouter()
 const route = useRoute()
+const { context } = usePageContext()
 const collapsed = computed(() => settingsStore.settings.sidebarCollapsed)
+const newMenuOpen = ref(false)
 
 // 工作区下拉菜单状态
 const workspaceMenuOpen = ref(false)
@@ -62,6 +67,7 @@ function toggleWorkspaceMenu() {
 }
 
 async function switchWorkspace(wsId: string) {
+  if (!await flushOpenEditor()) { toast.warning('请先处理未保存的草稿或外部冲突，再切换工作区。'); return }
   try {
     // 先设置当前工作区
     await WorkspaceService.SetCurrentWorkspace(wsId)
@@ -80,6 +86,7 @@ async function switchWorkspace(wsId: string) {
 }
 
 async function createWorkspace() {
+  if (!await flushOpenEditor()) { toast.warning('请先处理未保存的草稿或外部冲突，再创建工作区。'); return }
   const runtime = await import('@wailsio/runtime')
   try {
     const result = await runtime.Dialogs.OpenFile({
@@ -120,8 +127,10 @@ function openSettings() {
 
 // 点击外部关闭工作区菜单
 function handleClickOutside(e: MouseEvent) {
+  if (!(e.target as HTMLElement).closest('.new-action-menu')) newMenuOpen.value = false
   if (!workspaceMenuRef.value?.contains(e.target as Node)) {
     workspaceMenuOpen.value = false
+    newMenuOpen.value = false
   }
   if (!pinMenuRef.value?.contains(e.target as Node)) pinMenu.value = null
 }
@@ -143,19 +152,21 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleEscape)
 })
 
-async function createNewDoc() {
+async function createNewDoc(folder?: string) {
+  newMenuOpen.value = false
   if (!workspaceStore.currentWorkspace?.path) {
     toast.warning(t('sidebar.selectOrCreateFirst'))
     router.push('/today')
     return
   }
   const workspacePath = workspaceStore.currentWorkspace.path
-  const name = await promptDialog({ message: t('sidebar.promptFileName'), defaultValue: t('sidebar.untitledDoc') })
+  const destination = folder || context.value.folder || (route.path === '/vault' && typeof route.query.space === 'string' ? route.query.space : '') || (context.value.section === 'projects' ? 'Projects' : context.value.section === 'learning' ? 'Learning' : 'Inbox')
+  const name = await promptDialog({ message: `${t('sidebar.promptFileName')} · 保存到 ${destination}/`, defaultValue: t('sidebar.untitledDoc') })
   if (!name || workspaceStore.currentWorkspace?.path !== workspacePath) return
   try {
     const node = await FileService.CreateFile(
       workspacePath,
-      name,
+      `${destination}/${name}`,
       `# ${name.replace('.md', '')}\n\n`,
     )
     if (node?.path && workspaceStore.currentWorkspace?.path === workspacePath) {
@@ -174,6 +185,16 @@ async function createNewDoc() {
 }
 
 defineExpose({ createNewDoc })
+
+function createCollection(kind: 'project' | 'book') {
+  newMenuOpen.value = false
+  requestSourceImport({ kind, sourceType: 'empty' })
+}
+
+function importSources() {
+  newMenuOpen.value = false
+  requestSourceImport({ sourceType: 'folder', kind: context.value.section === 'projects' ? 'project' : context.value.section === 'learning' ? 'book' : 'topic' })
+}
 
 interface NavItem {
   id: string
@@ -215,7 +236,7 @@ const navItems = computed<NavItem[]>(() => [
     icon: BookOpen,
     route: '/learning',
     activeOn: ['/learning'],
-    badge: workspaceStore.hasWorkspace && workbenchStore.lastUpdated ? workbenchStore.reviewQueue.length : undefined,
+    badge: workspaceStore.hasWorkspace && workbenchStore.lastUpdated && workbenchStore.reviewQueue.length ? `待复习 ${workbenchStore.reviewQueue.length}` : undefined,
   },
   {
     id: 'vault',
@@ -229,7 +250,7 @@ const navItems = computed<NavItem[]>(() => [
 ])
 
 function isActive(item: NavItem) {
-  return item.activeOn.includes(route.path)
+  return context.value.section === item.id
 }
 
 function openReport() {
@@ -337,7 +358,7 @@ watch(() => workspaceStore.currentWorkspace?.path, () => {
 
 const indexStatus = computed(() => {
   if (!workspaceStore.hasWorkspace) return { state: 'idle', label: '选择工作区', detail: '打开工作区后开始索引' }
-  if (workbenchStore.loading || workbenchStore.busy) return { state: 'syncing', label: '同步中', detail: '正在读取或保存工作区内容' }
+  if (workbenchStore.loading || workbenchStore.busy) return { state: 'syncing', label: '更新索引', detail: '正在读取或保存本地工作区内容' }
   if (workbenchStore.error) return { state: 'error', label: '索引失败', detail: workbenchStore.error }
   if (workbenchStore.lastUpdated) return { state: 'ready', label: '索引就绪', detail: `上次索引：${workbenchStore.lastUpdated}` }
   return { state: 'idle', label: '等待索引', detail: '尚未读取工作区内容' }
@@ -446,16 +467,49 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-wi
         快捷动作
       </div>
       <div class="action-grid">
-        <button
-          class="action-btn new-btn"
-          data-testid="action-new"
-          :title="t('sidebar.newDoc')"
-          :aria-label="t('sidebar.newDoc')"
-          @click="createNewDoc"
-        >
-          <Plus :size="15" />
-          <span v-if="!collapsed">{{ t('sidebar.newDoc') }}</span>
-        </button>
+        <div class="new-action-menu">
+          <button
+            class="action-btn new-btn"
+            data-testid="action-new"
+            title="新建"
+            aria-label="新建"
+            :aria-expanded="newMenuOpen"
+            aria-haspopup="menu"
+            @click.stop="newMenuOpen = !newMenuOpen"
+          >
+            <Plus :size="15" /><span v-if="!collapsed">新建</span>
+          </button>
+          <div
+            v-if="newMenuOpen"
+            class="new-action-options"
+            role="menu"
+          >
+            <button
+              role="menuitem"
+              @click="createNewDoc()"
+            >
+              <FileText :size="15" />文档
+            </button>
+            <button
+              role="menuitem"
+              @click="createCollection('project')"
+            >
+              <Rocket :size="15" />项目
+            </button>
+            <button
+              role="menuitem"
+              @click="createCollection('book')"
+            >
+              <BookOpen :size="15" />技术分册
+            </button>
+            <button
+              role="menuitem"
+              @click="importSources"
+            >
+              <FolderOpen :size="15" />从资料创建
+            </button>
+          </div>
+        </div>
         <button
           class="action-btn"
           data-testid="action-daily"
@@ -713,6 +767,11 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-wi
 </template>
 
 <style scoped>
+.new-action-menu { position: relative; min-width: 0; }
+.new-action-menu > button { width: 100%; }
+.new-action-options { position: absolute; top: calc(100% + 5px); left: 0; min-width: 170px; z-index: 60; padding: 5px; border: 1px solid var(--border); border-radius: var(--panel-radius, 8px); background: var(--surface-panel, var(--bg-card)); box-shadow: var(--shadow-lg); }
+.new-action-options button { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; color: var(--text-primary); text-align: left; padding: 10px; border-radius: var(--control-radius, 5px); font-size: 12px; }
+.new-action-options button:hover { background: var(--bg-hover); }
 .sidebar {
   display: flex;
   flex-direction: column;

@@ -1,19 +1,20 @@
 <script setup lang="ts">
+import { useViewRoute } from '@/composables/useViewRoute'
 /**
  * InsightsView - 「洞察提炼」容器（Codex 式架构）
  * 知识资产的宏观透视与加工工厂：全库图谱 / 知识编译流水线 / Bases 数据透视。
  * 现有视图原样作为子组件复用，tab 状态走路由 query 支持深链。
  */
 import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { GitGraph, Sparkles, Table2, ArrowLeft } from '@lucide/vue'
+import { GitGraph, Sparkles, Table2, } from '@lucide/vue'
 import GraphView from '@/views/GraphView.vue'
 import CompileView from '@/views/CompileView.vue'
 import BasesView from '@/views/BasesView.vue'
 
 const { t } = useI18n()
-const route = useRoute()
+const route = useViewRoute('/insights')
 const router = useRouter()
 
 const TABS = [
@@ -37,15 +38,9 @@ function switchTab(id: TabId) {
 <template>
   <div class="insights-view">
     <header class="insights-header">
-      <button
-        class="back-btn"
-        data-testid="insights-back"
-        @click="router.push('/knowledge')"
-      >
-        <ArrowLeft :size="16" />
-        <span>{{ t('common.backToKnowledge') }}</span>
-      </button>
-      <div class="insights-title">{{ t('insights.title') }}</div>
+      <div class="insights-title">
+        {{ t('insights.title') }}
+      </div>
       <nav class="insights-tabs">
         <button
           v-for="x in TABS"

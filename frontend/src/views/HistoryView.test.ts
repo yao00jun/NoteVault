@@ -318,7 +318,7 @@ describe('HistoryView', () => {
     expect(wrapper.find('[data-testid="history-stats"]').text()).toContain('1.0 KB')
   })
 
-  it('在编辑器打开时拼出工作区绝对路径并跳转', async () => {
+  it('在编辑器打开时使用工作区相对路径，并将文件身份写入路由', async () => {
     const { wrapper, workspaceStore, router } = mountHistory()
     await flushPromises()
 
@@ -326,10 +326,11 @@ describe('HistoryView', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.path).toBe('/editor')
-    expect(workspaceStore.activeFile).toBe('/tmp/vault/notes/a.md')
+    expect(workspaceStore.activeFile).toBe('notes/a.md')
+    expect(router.currentRoute.value.query.file).toBe('notes/a.md')
   })
 
-  it('Windows 风格工作区路径用反斜杠拼接，不混用分隔符', async () => {
+  it('Windows 工作区同样使用相对文件路径，避免后端重复拼接工作区', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
     const router = createRouter({
@@ -349,7 +350,8 @@ describe('HistoryView', () => {
     await wrapper.find('[data-testid="open-editor-btn"]').trigger('click')
     await flushPromises()
 
-    expect(workspaceStore.activeFile).toBe('E:\\vault\\notes\\a.md')
+    expect(workspaceStore.activeFile).toBe('notes/a.md')
+    expect(router.currentRoute.value.query.file).toBe('notes/a.md')
   })
 
   it('切换工作区时重新加载历史，不残留上一个库的数据', async () => {

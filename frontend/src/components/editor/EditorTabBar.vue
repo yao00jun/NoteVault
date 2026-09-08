@@ -17,8 +17,8 @@ import {
   Wand2,
   FileDown,
   FileCode,
-  ArrowLeft,
   PanelRight,
+  PanelLeft,
 } from '@lucide/vue'
 
 const { t } = useI18n()
@@ -39,11 +39,12 @@ const props = defineProps<{
   viewMode: 'split' | 'editor' | 'preview'
   isExporting: boolean
   isCompiling: boolean
+  treeOpen?: boolean
 }>()
 
 const emit = defineEmits<{
-  (e: 'back'): void
   (e: 'toggle-drawer'): void
+  (e: 'toggle-tree'): void
   (e: 'switch-tab', index: number): void
   (e: 'close-tab', index: number, event: Event): void
   (e: 'new-file'): void
@@ -74,11 +75,12 @@ const compileTooltip = computed(() => {
   <div class="tab-bar">
     <button
       class="tab-back"
-      data-testid="editor-back"
-      :title="t('common.backToKnowledge')"
-      @click="emit('back')"
+      data-testid="editor-tree-toggle"
+      :title="treeOpen ? '收起文件目录' : '展开文件目录'"
+      :aria-pressed="treeOpen"
+      @click="emit('toggle-tree')"
     >
-      <ArrowLeft :size="15" />
+      <PanelLeft :size="15" />
     </button>
     <button
       class="tab-back"
@@ -128,7 +130,7 @@ const compileTooltip = computed(() => {
         data-testid="save-status"
       >{{ t('editor.saving') }}</span>
       <span
-        v-else-if="activeTab?.lastSavedAt"
+        v-else-if="activeTab?.lastSavedAt && !activeTab.isDirty"
         class="save-status"
         data-testid="save-status"
       >{{ t('editor.savedAt', { time: activeTab.lastSavedAt }) }}</span>
@@ -167,8 +169,8 @@ const compileTooltip = computed(() => {
       <button
         class="tool-btn"
         :title="t('editor.save')"
-        @click="emit('save')"
         data-testid="save-button"
+        @click="emit('save')"
       >
         <Save :size="14" />
       </button>
@@ -207,6 +209,7 @@ const compileTooltip = computed(() => {
 }
 
 .tabs-container {
+  min-width: 80px;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -324,5 +327,10 @@ const compileTooltip = computed(() => {
 .tool-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+@media (max-width: 1150px) {
+  .save-status { display: none; }
+  .tab-tools { gap: 2px; margin-left: 2px; }
 }
 </style>

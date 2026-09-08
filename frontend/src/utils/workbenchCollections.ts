@@ -85,6 +85,7 @@ export function projectStatusLabel(status: string): string {
   const value = status.trim().toLowerCase()
   if (['done', 'completed', 'complete', '已完成', '完成'].includes(value)) return '已完成'
   if (['paused', 'pause', 'on-hold', 'on hold', '暂停', '已暂停'].includes(value)) return '暂停'
+  if (['planned', 'planning', 'not-started', '待启动', '未开始'].includes(value)) return '待启动'
   if (!value || ['active', 'ongoing', 'in-progress', 'in progress', '进行中'].includes(value))
     return '进行中'
   return status

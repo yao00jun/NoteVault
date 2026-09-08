@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
-import { reactive } from 'vue'
+import { reactive, defineComponent, h, onUnmounted } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import type { Component } from 'vue'
@@ -16,6 +16,9 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import ProjectsView from './ProjectsView.vue'
 import LearningView from './LearningView.vue'
 import KnowledgeVaultView from './KnowledgeVaultView.vue'
+import GlobalNavigation from '@/components/layout/GlobalNavigation.vue'
+import { useNavigationStore } from '@/stores/navigation'
+import { useRouter } from 'vue-router'
 
 const harness = vi.hoisted(() => ({ state: {} as Record<string, unknown>, copilot: vi.fn() }))
 vi.mock('@/stores/workbench', () => ({ useWorkbenchStore: () => harness.state }))
@@ -257,6 +260,32 @@ describe('LearningView', () => {
 })
 
 describe('KnowledgeVaultView', () => {
+  it('uses the shell Back control to restore the filtered document list and Forward to reopen its file', async () => {
+    const Host = defineComponent({ setup() {
+      const router = useRouter()
+      onUnmounted(useNavigationStore().connect(router, useWorkspaceStore()))
+      return () => h('div', [h(GlobalNavigation), h(KnowledgeVaultView)])
+    } })
+    const { wrapper, router } = await renderView(Host, '/vault')
+    await wrapper.get('[data-testid="vault-search"]').setValue('商城')
+    await wrapper.get('select[aria-label="文档空间"]').setValue('Projects')
+    await flushPromises()
+    const filteredLocation = router.currentRoute.value.fullPath
+    await wrapper.findAll('[data-testid="vault-document"]')[0]!.get('.collection-document-open').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/editor')
+    const openedFile = router.currentRoute.value.query.file
+    expect(openedFile).toContain('Projects/商城/')
+    await wrapper.get('[data-testid="global-back"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe(filteredLocation)
+    expect((wrapper.get('[data-testid="vault-search"]').element as HTMLInputElement).value).toBe('商城')
+    expect(wrapper.findAll('[data-testid="vault-document"]')).toHaveLength(2)
+    await wrapper.get('[data-testid="global-forward"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query.file).toBe(openedFile)
+  })
+
   it('searches document titles and paths and shares pin state with the workspace', async () => {
     const { wrapper, workspace } = await renderView(KnowledgeVaultView, '/vault')
     expect(wrapper.find('[data-testid="vault-search"]').exists()).toBe(true)
@@ -269,13 +298,13 @@ describe('KnowledgeVaultView', () => {
     expect(rows[0]!.get('[data-testid="document-pin"]').attributes('aria-pressed')).toBe('true')
   })
 
-  it('opens all five spaces as editor folders and exposes existing insight tools', async () => {
+  it('filters all five spaces in the document browser and exposes existing insight tools', async () => {
     const { wrapper, router } = await renderView(KnowledgeVaultView, '/vault')
     expect(wrapper.findAll('[data-testid="vault-space"]')).toHaveLength(5)
     await wrapper.get('[data-space="Daily"]').trigger('click')
     await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/editor')
-    expect(router.currentRoute.value.query.folder).toBe('Daily')
+    expect(router.currentRoute.value.path).toBe('/vault')
+    expect(router.currentRoute.value.query.space).toBe('Daily')
     await wrapper.get('[data-testid="vault-insight-bases"]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/insights')

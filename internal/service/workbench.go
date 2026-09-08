@@ -163,7 +163,7 @@ func (s *TodoService) GetWorkbench(workspacePath, date string) (*WorkbenchSnapsh
 	for i := range snapshot.Books {
 		book := &snapshot.Books[i]
 		for _, document := range snapshot.Documents {
-			if strings.HasPrefix(document.Path, book.Folder+"/") && document.Path != book.Path {
+			if strings.HasPrefix(document.Path, book.Folder+"/") && document.Path != book.Path && document.Path != book.Folder+"/sources.md" && document.Path != book.Folder+"/ai-plan.md" {
 				book.Chapters = append(book.Chapters, document)
 			}
 		}

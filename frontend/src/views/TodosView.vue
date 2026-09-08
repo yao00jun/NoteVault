@@ -130,7 +130,7 @@ async function toggleTodo(todo: TodoItem) {
 function openTodoFile(todo: TodoItem) {
   workspaceStore.openFile(todo.filePath)
   workspaceStore.incrementFileTreeVersion()
-  router.push('/editor')
+  router.push({ path: '/editor', query: { file: todo.filePath } })
 }
 
 function getPriorityColor(priority: string): string {

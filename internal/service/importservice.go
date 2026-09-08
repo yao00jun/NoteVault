@@ -53,6 +53,9 @@ type ImportService struct {
 	// tasks 异步任务框架（E-5）。nil 时异步导入不可用，
 	// 但同步导入照常工作——不能让任务框架变成导入功能的硬依赖。
 	tasks *TaskService
+	// Source imports retain only bounded, workspace-owned progress in memory.
+	// Their durable provenance lives alongside the notes in sources.md.
+	sourceImports sourceImportState
 }
 
 // NewImportService 创建导入服务（不接异步任务框架）

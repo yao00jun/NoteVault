@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { Archive, RotateCcw, FileText, FolderOpen, ArrowLeft } from '@lucide/vue'
+import { Archive, RotateCcw, FileText, FolderOpen, } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useI18n } from 'vue-i18n'
@@ -69,14 +69,6 @@ watch(() => currentWorkspace.value?.id, loadFiles)
   <div class="archive-view">
     <div class="archive-header">
       <div class="archive-header-left">
-        <button
-          class="back-btn"
-          data-testid="archive-back"
-          @click="router.push('/knowledge')"
-        >
-          <ArrowLeft :size="16" />
-          <span>{{ t('common.backToKnowledge') }}</span>
-        </button>
         <h2 class="archive-title">
           <Archive :size="20" /> {{ t('archive.title') }}
         </h2>

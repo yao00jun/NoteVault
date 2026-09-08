@@ -420,7 +420,7 @@ function isColumnOn(name: string): boolean {
 function openRow(path: string) {
   workspaceStore.openFile(path)
   workspaceStore.setActiveFile(path)
-  router.push('/editor')
+  router.push({ path: '/editor', query: { file: path } })
 }
 
 const groupedResult = computed(() => result.value?.groups?.filter(Boolean) ?? [])
@@ -942,8 +942,8 @@ watch(() => currentWorkspace.value?.id, init)
                   >
                     {{ propLabel(col) }}
                     <component
-                      v-if="col === sortProperty"
                       :is="sortDesc ? ArrowDown : ArrowUp"
+                      v-if="col === sortProperty"
                       :size="12"
                     />
                   </th>

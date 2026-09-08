@@ -21,12 +21,18 @@ import { useReminderNotifications } from '@/composables/useReminderNotifications
 import { WorkspaceService } from '@/api'
 import { applyInlineFormat, getActiveEditor } from '@/plugins/editorBridge'
 import { isImeComposing } from '@/utils/ime'
+import { useNavigationStore } from '@/stores/navigation'
+import { openDocument } from '@/utils/navigation'
+import SourceImportModal from '@/components/import/SourceImportModal.vue'
+import type { SourceImportOpenRequest } from '@/composables/useSourceImport'
 
 const workspaceStore = useWorkspaceStore()
 const pluginRuntimeStore = usePluginRuntimeStore()
 const workbenchStore = useWorkbenchStore()
 const route = useRoute()
 const router = useRouter()
+const navigation = useNavigationStore()
+const stopNavigation = navigation.connect(router, workspaceStore)
 
 // 命令面板状态
 const showCommandPalette = ref(false)
@@ -35,10 +41,19 @@ const showOmniSearch = ref(false)
 // 全局 AI 悬浮球 + Copilot 伴生抽屉（AI-COPILOT-FLOATING-ORB 蓝图）：Ctrl+J 唤起
 const showCopilot = ref(false)
 const showDailyReport = ref(false)
+const showSourceImport = ref(false)
+const sourceImportRequest = ref<SourceImportOpenRequest | null>(null)
 const copilotRequest = ref<CopilotRequest | null>(null)
 const sidebar = ref<InstanceType<typeof SideBar> | null>(null)
 let stopFileEvents: (() => void) | undefined
 let appDisposed = false
+
+function openSourceImport(event: Event) {
+  if (!workspaceStore.hasWorkspace) return
+  sourceImportRequest.value = (event as CustomEvent<SourceImportOpenRequest>).detail || null
+  showCopilot.value = false
+  showSourceImport.value = true
+}
 
 function openDailyReport() {
   if (!workspaceStore.hasWorkspace) return
@@ -56,10 +71,12 @@ watch(() => workspaceStore.currentWorkspace?.path, () => {
   showDailyReport.value = false
   showCopilot.value = false
   copilotRequest.value = null
+  showSourceImport.value = false
+  sourceImportRequest.value = null
 })
 
 // 欢迎页和设置页有自己的独立布局，需要隐藏主应用侧边栏
-const hideSidebarRoutes = ['/', '/settings']
+const hideSidebarRoutes = ['/']
 const showSidebar = computed(() => workspaceStore.hasWorkspace && !hideSidebarRoutes.includes(route.path))
 
 // 启用提醒通知（系统级通知）
@@ -69,6 +86,13 @@ useReminderNotifications(() => workspaceStore.currentWorkspace?.path)
 function handleGlobalKeydown(e: KeyboardEvent) {
   // IME 守卫：合成态按键一律放行原生输入行为（蓝图专项 2）
   if (isImeComposing(e)) return
+  if ((e.altKey && !e.ctrlKey && !e.metaKey && ['ArrowLeft', 'ArrowRight'].includes(e.key)) ||
+      (e.metaKey && !e.altKey && ['[', ']'].includes(e.key))) {
+    e.preventDefault()
+    if (e.key === 'ArrowLeft' || e.key === '[') navigation.back(router)
+    else navigation.forward(router)
+    return
+  }
   // Ctrl+P：打开命令面板（搜索 + 命令的入口）
   if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p') {
     e.preventDefault()
@@ -94,7 +118,7 @@ function handleGlobalKeydown(e: KeyboardEvent) {
     return
   }
   // Ctrl+N：新建文档（仅在编辑器页）
-  if (e.ctrlKey && e.key.toLowerCase() === 'n' && route.path === '/editor') {
+  if (e.ctrlKey && e.key.toLowerCase() === 'n' && workspaceStore.hasWorkspace) {
     e.preventDefault()
     // 触发 SideBar 的新建文档
     const event = new CustomEvent('notevault:new-file')
@@ -128,6 +152,8 @@ onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeydown)
   window.addEventListener('notevault:daily-report', openDailyReport)
   window.addEventListener('notevault:copilot-request', openCopilotRequest)
+  window.addEventListener('notevault:source-import', openSourceImport)
+  window.addEventListener('notevault:new-file', handleNewFileFromPalette)
   void import('@wailsio/runtime').then(({ Events }) => {
     if (!appDisposed) stopFileEvents = Events.On('workspace:file-changed', () => workbenchStore.scheduleRefresh())
   }).catch(error => console.warn('Workbench file events unavailable:', error))
@@ -148,10 +174,13 @@ async function restoreCurrentWorkspace() {
 }
 
 onBeforeUnmount(() => {
+  stopNavigation()
   appDisposed = true
   stopFileEvents?.()
   window.removeEventListener('notevault:daily-report', openDailyReport)
   window.removeEventListener('notevault:copilot-request', openCopilotRequest)
+  window.removeEventListener('notevault:source-import', openSourceImport)
+  window.removeEventListener('notevault:new-file', handleNewFileFromPalette)
   window.removeEventListener('keydown', handleGlobalKeydown)
   window.removeEventListener('app:open-command-palette', openCommandPaletteFromEvent)
 })
@@ -169,15 +198,12 @@ function closeCommandPalette() {
 
 // OmniSearch 命中：打开文件进编辑器（与工作台文档列表同款动线）
 function openFileFromOmni(path: string) {
-  workspaceStore.openFile(path)
-  workspaceStore.incrementFileTreeVersion()
-  router.push('/editor')
+  void openDocument(router, workspaceStore, path)
 }
 
-function handleNewFileFromPalette() {
-  if (sidebar.value) { void sidebar.value.createNewDoc(); return }
-  const event = new CustomEvent('notevault:new-file')
-  window.dispatchEvent(event)
+function handleNewFileFromPalette(event?: Event) {
+  const folder = event instanceof CustomEvent ? event.detail?.folder : undefined
+  if (sidebar.value) void sidebar.value.createNewDoc(typeof folder === 'string' ? folder : undefined)
 }
 </script>
 
@@ -195,9 +221,12 @@ function handleNewFileFromPalette() {
             name="fade"
             mode="out-in"
           >
-            <!-- 仅保活编辑器：标签页与未保存内容在路由切换时不丢。
-                 其余视图保持原样销毁重建，避免图谱/报表等大对象常驻内存。 -->
-            <keep-alive include="EditorView">
+            <!-- Workspace-keyed caches retain list/graph position without leaking another workspace. -->
+            <keep-alive
+              :key="workspaceStore.currentWorkspace?.path || 'welcome'"
+              include="EditorView,KnowledgeVaultView,ProjectsView,LearningView,InsightsView,DiscoverView,ReviewView"
+              :max="8"
+            >
               <component :is="Component" />
             </keep-alive>
           </transition>
@@ -232,6 +261,11 @@ function handleNewFileFromPalette() {
     <DailyReportModal
       :visible="showDailyReport"
       @close="showDailyReport = false"
+    />
+    <SourceImportModal
+      :open="showSourceImport"
+      :request="sourceImportRequest"
+      @close="showSourceImport = false"
     />
     <div class="plugin-notification-stack">
       <div
@@ -275,6 +309,10 @@ function handleNewFileFromPalette() {
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-content);
+}
+
+.app-main :deep(.fade-leave-active) {
+  pointer-events: none;
 }
 
 .plugin-notification-stack {

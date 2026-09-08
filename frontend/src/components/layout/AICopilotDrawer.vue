@@ -10,6 +10,15 @@ import { useAIChat } from '@/composables/useAIChat'
 import { insertAtCursor } from '@/plugins/editorBridge'
 import { useToast } from '@/composables/useToast'
 import type { CopilotRequest } from '@/composables/useCopilotRequest'
+import { usePageContext } from '@/composables/usePageContext'
+import { useWorkbenchStore } from '@/stores/workbench'
+import { useRoute } from 'vue-router'
+import { getActiveEditor } from '@/plugins/editorBridge'
+import { projectSummaryContext, tasksForProject } from '@/utils/workbenchCollections'
+import { requestSourceImport } from '@/composables/useSourceImport'
+import { parseSourceIntent } from '@/utils/sourceIntent'
+import { isImeComposing } from '@/utils/ime'
+import { editorSession } from '@/composables/useEditorSession'
 
 // AI-COPILOT-FLOATING-ORB 蓝图 Step 3：右侧伴生 AI 抽屉。
 // 非阻塞覆盖：无遮罩层，主工作区（左侧编辑器）照常可交互，
@@ -21,6 +30,9 @@ const { t } = useI18n()
 const workspaceStore = useWorkspaceStore()
 const settingsStore = useSettingsStore()
 const toast = useToast()
+const route = useRoute()
+const workbench = useWorkbenchStore()
+const { context: page } = usePageContext()
 const activeRequest = ref<CopilotRequest | null>(null)
 const requestAnswerStart = ref(0)
 let consumedRequest = ''
@@ -40,17 +52,40 @@ function invalidateDocContent() {
   docContentLoaded.value = false
 }
 
-watch(() => [workspaceStore.currentWorkspace?.path, workspaceStore.activeFile], invalidateDocContent, { flush: 'sync' })
+watch(() => [workspaceStore.currentWorkspace?.path, route.fullPath], () => {
+  invalidateDocContent()
+  activeRequest.value = null
+  // Pending domain actions belong to the page that created them. Finishing an
+  // older answer after navigation must not resurrect that page's context.
+  consumedRequest = props.request?.id ?? ''
+  requestAnswerStart.value = 0
+}, { flush: 'sync' })
 
 async function loadDocContent() {
   const workspacePath = workspaceStore.currentWorkspace?.path
-  const path = workspaceStore.activeFile
+  const path = page.value.file
+  const location = route.fullPath
   invalidateDocContent()
   const generation = documentGeneration
-  const isCurrent = () => !disposed && generation === documentGeneration && workspacePath === workspaceStore.currentWorkspace?.path && path === workspaceStore.activeFile
-  if (!workspacePath || !path) return
+  const isCurrent = () => !disposed && generation === documentGeneration && workspacePath === workspaceStore.currentWorkspace?.path && location === route.fullPath
+  if (!workspacePath) return
   try {
-    const content = await FileService.ReadFile(workspacePath, path)
+    let content = ''
+    if (path) {
+      const editor = route.path === '/editor' && editorSession.workspacePath === workspacePath && editorSession.path === path ? getActiveEditor() : null
+      content = editor ? editor.state.doc.toString() : await FileService.ReadFile(workspacePath, path)
+      content = `当前文档：${path}\n\n${content}`
+    } else if (page.value.section === 'projects') {
+      const project = workbench.projects.find(item => item.folder === page.value.entityFolder)
+      content = project ? projectSummaryContext(project, tasksForProject(project, workbench.tasks), project.notes, workbench.today)
+        : `项目组合：\n${workbench.projects.map(item => `${item.name} · ${item.status} · 下一步 ${item.nextStep || '未记录'}`).join('\n')}`
+    } else if (page.value.section === 'learning') {
+      const book = workbench.books.find(item => item.folder === page.value.entityFolder)
+      content = book ? `技术分册：${book.name}\n状态：${book.status}，用户记录的进度：${book.progress}%\n章节：\n${book.chapters.map(chapter => `${chapter.title} (${chapter.path})`).join('\n')}`
+        : `当前学习页面：${page.value.title}\n书架：${workbench.books.map(item => item.name).join('、')}\n待复习：${workbench.reviewQueue.length} 题`
+    } else if (page.value.section === 'today') {
+      content = `今日工作台 ${workbench.today}\n${workbench.todayTasks.map(task => `[${task.completed ? '完成' : '待办'}] [${task.type}] ${task.title}${task.blocker ? `（阻塞：${task.blocker}）` : ''}`).join('\n')}`
+    } else content = `当前位置：${page.value.title}\n当前工作区文档 ${workbench.documents.length} 篇，当前目录 ${page.value.folder || '全部空间'}。根据用户明确的问题检索知识库。`
     if (!isCurrent()) return
     docContent.value = content.length > CONTEXT_LIMIT ? `${content.slice(0, CONTEXT_LIMIT)}\n…` : content
     docContentLoaded.value = true
@@ -63,12 +98,10 @@ async function loadDocContent() {
 
 const activeFileName = computed(() => {
   if (activeRequest.value) return ({ 'daily-report': '今日日报', project: '项目进展', learning: '面试与学习' } as Record<string, string>)[activeRequest.value.source || ''] || '工作台上下文'
-  if (!workspaceStore.activeFile) return ''
-  const parts = workspaceStore.activeFile.split('/')
-  return parts[parts.length - 1] ?? ''
+  return page.value.title
 })
 
-const hasActiveDoc = computed(() => !!workspaceStore.activeFile || !!activeRequest.value)
+const hasActiveDoc = computed(() => workspaceStore.hasWorkspace || !!activeRequest.value)
 
 const attachContext = ref(true)
 
@@ -77,19 +110,35 @@ const {
   question,
   isAsking,
   canAsk,
-  ask,
+  ask: askAI,
   clearConversation,
-  onKeydown,
   openCitation,
   renderMarkdown,
 } = useAIChat({
-  buildContext: (force) => {
+  buildContext: async (force) => {
     if (activeRequest.value && (attachContext.value || force)) return activeRequest.value.context
     // 勾选「关联当前文档上下文」或快捷指令强制注入时，带上文档内容
-    if ((!attachContext.value && !force) || !docContentLoaded.value) return null
+    if (!attachContext.value && !force) return null
+    await loadDocContent()
+    if (!docContentLoaded.value) return null
     return docContent.value
   },
 })
+
+const pendingSourceIntent = computed(() => parseSourceIntent(question.value))
+const canSubmit = computed(() => !isAsking.value && (canAsk.value || (workspaceStore.hasWorkspace && !!pendingSourceIntent.value)))
+async function ask(questionOverride?: string, options?: { forceContext?: boolean }) {
+  const intent = questionOverride === undefined ? pendingSourceIntent.value : null
+  if (intent) { requestSourceImport(intent); question.value = ''; return }
+  return askAI(questionOverride, options)
+}
+function onKeydown(event: KeyboardEvent) {
+  if (isImeComposing(event)) return
+  if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void ask() }
+}
+function createFromSources() {
+  requestSourceImport({ sourceType: 'folder', kind: page.value.section === 'projects' ? 'project' : page.value.section === 'learning' ? 'book' : 'topic' })
+}
 
 // Queue domain requests while a previous answer is finishing instead of losing clicks.
 watch(() => [props.request?.id, props.visible, isAsking.value, workspaceStore.currentWorkspace?.path], () => {
@@ -157,6 +206,7 @@ const providerBadge = computed(() => {
 })
 
 function insertToNote(content: string) {
+  if (route.path !== '/editor' || !page.value.file || editorSession.path !== page.value.file || editorSession.workspacePath !== workspaceStore.currentWorkspace?.path) { toast.warning(t('copilot.noEditor')); return }
   const ok = insertAtCursor(content)
   if (ok) {
     toast.success(t('copilot.inserted'))
@@ -210,7 +260,7 @@ watch(
   { immediate: true },
 )
 
-watch(() => [props.visible, workspaceStore.currentWorkspace?.path, workspaceStore.activeFile], ([visible]) => {
+watch(() => [props.visible, workspaceStore.currentWorkspace?.path, route.fullPath], ([visible]) => {
   if (visible) void loadDocContent()
   else invalidateDocContent()
 }, { immediate: true })
@@ -274,8 +324,8 @@ onBeforeUnmount(() => {
       <span
         v-if="hasActiveDoc"
         class="context-name"
-        :title="activeRequest ? activeFileName : workspaceStore.activeFile ?? ''"
-      >{{ t('copilot.contextDoc') }}: {{ activeFileName }}</span>
+        :title="activeFileName"
+      >当前上下文: {{ activeFileName }}</span>
       <span
         v-else
         class="context-name"
@@ -421,6 +471,17 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 输入区 -->
+    <div class="copilot-source-action">
+      <button
+        type="button"
+        data-testid="copilot-source-import"
+        :disabled="!workspaceStore.hasWorkspace"
+        @click="createFromSources"
+      >
+        <Inbox :size="14" />从资料创建
+      </button>
+      <span>目录、链接或文件 → 项目 / 技术分册</span>
+    </div>
     <div class="copilot-input">
       <textarea
         ref="inputRef"
@@ -432,7 +493,7 @@ onBeforeUnmount(() => {
       <button
         type="button"
         class="btn-ask"
-        :disabled="!canAsk"
+        :disabled="!canSubmit"
         @click="ask()"
       >
         <Send :size="14" />
@@ -443,6 +504,9 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.copilot-source-action { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--border); }
+.copilot-source-action button { display: flex; align-items: center; gap: 6px; background: var(--bg-hover); border: 1px solid var(--border); border-radius: var(--control-radius, 6px); color: var(--text-primary); font-size: 12px; padding: 6px 9px; }
+.copilot-source-action span { color: var(--text-secondary); font-size: 11px; }
 .copilot-drawer {
   position: fixed;
   top: 0;

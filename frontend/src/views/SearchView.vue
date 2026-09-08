@@ -208,7 +208,7 @@ function openResult(result: SearchResult) {
   // 跳转到编辑器并打开文件
   workspaceStore.openFile(result.path)
   workspaceStore.incrementFileTreeVersion()
-  router.push('/editor')
+  router.push({ path: '/editor', query: { file: result.path } })
 }
 
 /** 计算标题所在文件夹路径（用于上下文提示） */
@@ -446,45 +446,45 @@ onBeforeUnmount(() => {
           ref="resultsListRef"
           class="results-list"
         >
-        <VirtualList
-          :items="sortedResults"
-          :row-height="72"
-          class="results-virtual"
-        >
-        <template #default="{ item: result }">
-        <div
-          :key="result.path"
-          class="result-item"
-          data-testid="search-result"
-          :data-path="result.path"
-          @click="openResult(result)"
-        >
-            <div class="result-icon">
-              <FileText :size="18" />
-            </div>
-            <div class="result-content">
-              <div class="result-title">
-                <span v-html="highlightText(result.title || '', searchQuery)" />
-                <span
-                  v-if="getFolder(result.path)"
-                  class="result-folder"
-                >📁 {{ getFolder(result.path) }}</span>
-              </div>
+          <VirtualList
+            :items="sortedResults"
+            :row-height="72"
+            class="results-virtual"
+          >
+            <template #default="{ item: result }">
               <div
-                class="result-snippet"
-                v-html="cleanSnippet(result.snippet, searchQuery)"
-              />
-            </div>
-            <div class="result-meta">
-              <span class="match-count">{{ t('search.matchCountInFile', { count: result.matchCount }) }}</span>
-              <ArrowRight
-                :size="16"
-                class="result-arrow"
-              />
-            </div>
-          </div>
-        </template>
-        </VirtualList>
+                :key="result.path"
+                class="result-item"
+                data-testid="search-result"
+                :data-path="result.path"
+                @click="openResult(result)"
+              >
+                <div class="result-icon">
+                  <FileText :size="18" />
+                </div>
+                <div class="result-content">
+                  <div class="result-title">
+                    <span v-html="highlightText(result.title || '', searchQuery)" />
+                    <span
+                      v-if="getFolder(result.path)"
+                      class="result-folder"
+                    >📁 {{ getFolder(result.path) }}</span>
+                  </div>
+                  <div
+                    class="result-snippet"
+                    v-html="cleanSnippet(result.snippet, searchQuery)"
+                  />
+                </div>
+                <div class="result-meta">
+                  <span class="match-count">{{ t('search.matchCountInFile', { count: result.matchCount }) }}</span>
+                  <ArrowRight
+                    :size="16"
+                    class="result-arrow"
+                  />
+                </div>
+              </div>
+            </template>
+          </VirtualList>
         </div>
       </div>
 

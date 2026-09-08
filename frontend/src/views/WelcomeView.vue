@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import {
-  FolderPlus,
   FolderOpen,
   FileText,
   Clock,
@@ -12,11 +11,12 @@ import {
   X,
 } from '@lucide/vue'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
+import { toWorkspace } from '@/utils/workspace'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { WorkspaceService, FileService } from '@/api'
 import { useToast } from '@/composables/useToast'
+import { flushOpenEditor } from '@/composables/useEditorSession'
 
 const toast = useToast()
 
@@ -42,6 +42,12 @@ const recentWorkspaces = ref<Workspace[]>([])
 const isLoadingRecent = ref(false)
 const recentError = ref('')
 const recentSectionRef = ref<HTMLElement | null>(null)
+
+async function ensureSavedDrafts() {
+  if (await flushOpenEditor()) return true
+  toast.warning('请先处理未保存的草稿或外部冲突，再切换工作区。')
+  return false
+}
 
 const dialogTitle = computed(() => {
   return dialogMode.value === 'new-doc'
@@ -125,6 +131,7 @@ async function createNewDoc() {
 
   isProcessing.value = true
   try {
+    if (!await ensureSavedDrafts()) { isProcessing.value = false; return }
     // 创建或打开工作区（后端按路径去重）
     const ws = await WorkspaceService.CreateWorkspace(workspaceName.value, workspacePath.value)
     if (ws) {
@@ -153,7 +160,7 @@ async function createNewDoc() {
     router.push({
       path: '/editor',
       query: {
-        file: encodeURIComponent(filePath),
+        file: filePath,
       },
     })
   } catch (e) {
@@ -180,6 +187,7 @@ async function openFolder() {
   }
   isProcessing.value = true
   try {
+    if (!await ensureSavedDrafts()) return
     // 检查工作区是否已存在
     const existing = recentWorkspaces.value.find(w => w.path === workspacePath.value)
     if (existing) {
@@ -193,7 +201,7 @@ async function openFolder() {
     }
     showDialog.value = false
     await loadRecentWorkspaces()
-    router.push('/knowledge')
+    router.push('/today')
   } catch (e) {
     console.error('Failed to open folder:', e)
     toast.error(t('welcome.errors.openFolderFailed', { msg: (e as Error).message }))
@@ -211,11 +219,11 @@ async function openRecentWorkspace(ws: Workspace) {
   if (openingPath.value) return
   openingPath.value = ws.path
   recentError.value = ''
-  console.log('[recent] opening workspace', ws.id, ws.path)
   try {
+    if (!await ensureSavedDrafts()) return
     await WorkspaceService.SetCurrentWorkspace(ws.id)
     workspaceStore.setCurrentWorkspace(toWorkspace(ws))
-    await router.push('/knowledge')
+    await router.push('/today')
   } catch (e) {
     // 错误必须可见：Wails v3 的 alert 会路由到独立 dialog，用户经常看不见。
     // 这里用页面内联红字提示，配合 console.error 便于排查。
@@ -231,6 +239,7 @@ async function openRecentWorkspace(ws: Workspace) {
 async function openDemo() {
   isProcessing.value = true
   try {
+    if (!await ensureSavedDrafts()) return
     const demoPath = 'C:/Users/Public/Documents/NoteVault-Demo'
     const existing = recentWorkspaces.value.find(w => w.path === demoPath)
     if (existing) {
@@ -246,7 +255,7 @@ async function openDemo() {
       }
     }
     await loadRecentWorkspaces()
-    router.push('/knowledge')
+    router.push('/today')
   } catch (e) {
     console.error('Failed to open demo:', e)
     toast.error(t('welcome.errors.openDemoFailed', { msg: (e as Error).message }))

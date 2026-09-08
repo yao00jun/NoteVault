@@ -225,7 +225,7 @@ type QnAProvider interface {
 // 数据导入
 // ---------------------------------------------------------------------------
 
-// Importer 定义笔记数据导入接口（Markdown 文件夹 / zip）
+// Importer 定义笔记数据导入接口（旧 Markdown / ZIP 接口及工作台资料导入）。
 // 注：实现暂无独立的 Obsidian vault 方法——Obsidian 本质是 Markdown 文件夹，
 // 直接用 ImportMarkdownFolder 导入其仓库目录即可。新增导入格式时须同步此注释。
 type Importer interface {
@@ -236,6 +236,9 @@ type Importer interface {
 	// 大库导入会阻塞 UI 几十秒且无法中断，同步接口撑不住这个场景。
 	// 结果不在这里返回：查 TaskService.GetTask 或订阅 task:finished 事件。
 	ImportMarkdownFolderAsync(srcDir, workspacePath string, opts ImportOptions) (string, error)
+	PreviewSourceImport(workspacePath string, request SourceImportRequest) (*SourceImportPreview, error)
+	StartSourceImport(workspacePath string, request SourceImportRequest) (string, error)
+	GetSourceImportResult(workspacePath, taskID string) (*SourceImportResult, error)
 }
 
 // ---------------------------------------------------------------------------

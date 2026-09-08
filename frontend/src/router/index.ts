@@ -34,7 +34,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/library',
     name: 'library',
-    component: () => import('@/views/KnowledgeView.vue'),
+    redirect: to => ({ path: '/vault', query: { ...to.query, view: 'documents' }, hash: to.hash }),
   },
   {
     path: '/editor',

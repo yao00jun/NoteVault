@@ -27,7 +27,7 @@ export function useDailyNote() {
   async function openTodayNote(): Promise<boolean> {
     const ws = workspaceStore.currentWorkspace
     if (!ws?.path) {
-      router.push('/knowledge')
+      router.push('/')
       return false
     }
     const fileName = todayNotePath()

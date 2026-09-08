@@ -7,6 +7,7 @@ import type { QnACitation, RerankProvider } from '@/api'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
+import { conversationContext } from '@/utils/conversation'
 import { isLocalBaseURL } from '@/utils/localEndpoint'
 
 /**
@@ -116,9 +117,10 @@ export function useAIChat(options: UseAIChatOptions = {}) {
         console.warn('[useAIChat] 读取上下文失败，本次不带文档上下文:', e)
       }
       if (!isCurrent()) return
-      const payload = context
+      const currentPrompt = context
         ? `${t('copilot.contextPreamble')}\n\n${context}\n\n---\n\n${q}`
         : q
+      const payload = conversationContext(messages.value) + currentPrompt
 
       messages.value.push({ role: 'user', content: q })
       // 快捷指令不清空输入框（用户可能正打着草稿）
@@ -176,7 +178,7 @@ export function useAIChat(options: UseAIChatOptions = {}) {
 
   function openCitation(path: string) {
     workspaceStore.openFile(path)
-    void router.push('/editor')
+    void router.push({ path: '/editor', query: { file: path } })
   }
 
   /** AI 回答渲染为 Markdown 前必须清洗：模型输出也可能带注入 HTML */

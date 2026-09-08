@@ -101,6 +101,32 @@ func TestCredentialService_GetCredential(t *testing.T) {
 	}
 }
 
+func TestCredentialService_RetrievalKeys(t *testing.T) {
+	for _, key := range []string{"embedding.apiKey", "rerank.apiKey"} {
+		t.Run(key, func(t *testing.T) {
+			svc := NewCredentialService(newFakeCredentialStore())
+			if value, err := svc.GetCredential(key); err != nil || value != "" {
+				t.Fatalf("empty configured key should load without error: %v", err)
+			}
+			if err := svc.SaveCredential(key, "fixture-key"); err != nil {
+				t.Fatalf("save configured retrieval key: %v", err)
+			}
+			if value, err := svc.GetCredential(key); err != nil || value != "fixture-key" {
+				t.Fatalf("configured key did not round-trip: %v", err)
+			}
+			if err := svc.DeleteCredential(key); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	svc := NewCredentialService(newFakeCredentialStore())
+	for _, key := range []string{"embedding.otherKey", "rerank.otherKey", "embedding.apiKey.extra"} {
+		if err := svc.SaveCredential(key, "fixture-key"); err == nil {
+			t.Fatalf("unexpectedly permitted arbitrary retrieval credential: %s", key)
+		}
+	}
+}
+
 func TestCredentialService_DeleteCredential(t *testing.T) {
 	store := newFakeCredentialStore()
 	svc := NewCredentialService(store)

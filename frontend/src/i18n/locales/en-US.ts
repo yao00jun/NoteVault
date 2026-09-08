@@ -738,6 +738,7 @@ export default {
     loadFailed: 'Failed to load graph: {msg}',
   },
   editor: {
+    drawer: { toggle: 'Context drawer', outline: 'Outline', backlinks: 'Backlinks', outlineEmpty: 'No headings', backlinksEmpty: 'No backlinks yet' },
     conflict: {
       banner: '⚠️ "{name}" was modified externally (e.g. Git sync) with unsaved local draft. Choose an action:',
       reload: 'Discard & reload',
@@ -879,7 +880,6 @@ export default {
     weekday: { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' },
     month: '/',
     day: '',
-    drawer: { toggle: 'Context drawer', outline: 'Outline', backlinks: 'Backlinks', outlineEmpty: 'No headings', backlinksEmpty: 'No backlinks yet' },
     capturePlaceholder: 'Quick capture — Enter to create a note…',
     captured: 'Created "{name}"',
     captureFailed: 'Create failed: {msg}',

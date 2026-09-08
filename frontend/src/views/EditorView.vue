@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, nextTick } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import EditorTabBar from '@/components/editor/EditorTabBar.vue'
 import EditorBacklinks from '@/components/editor/EditorBacklinks.vue'
 import EditorContextDrawer from '@/components/editor/EditorContextDrawer.vue'
@@ -28,6 +28,9 @@ import { confirmDialog } from '@/composables/useConfirm'
 import { promptDialog } from '@/composables/usePrompt'
 import { useEditorDraft, type EditorTab } from '@/composables/useEditorDraft'
 import { useEditorBacklinks } from '@/composables/useEditorBacklinks'
+import { editorSession, registerEditorFlush } from '@/composables/useEditorSession'
+import { normalizeNotePath } from '@/utils/navigation'
+import { useEditorLayout } from '@/composables/useEditorLayout'
 
 const workspaceStore = useWorkspaceStore()
 const route = useRoute()
@@ -43,7 +46,8 @@ type Tab = EditorTab
 const fileTree = ref<FileNode[]>([])
 const tabs = ref<Tab[]>([])
 const activeTabIndex = ref(-1)
-const viewMode = ref<'split' | 'editor' | 'preview'>('split')
+const { mainRef, panesRef, treeWidth, showTree, overlayTree, splitPercent, effectiveViewMode, toggleTree, toggleViewMode, beginResize, adjust } = useEditorLayout()
+let openFileVersion = 0
 
 // 计算属性
 const activeTab = computed(() => {
@@ -92,7 +96,8 @@ const wordCount = computed(() => {
 })
 
 const charCount = computed(() => fileContent.value.length)
-const currentWorkspace = computed(() => workspaceStore.currentWorkspace)
+const sessionWorkspacePath = workspaceStore.currentWorkspace?.path
+const currentWorkspace = computed(() => workspaceStore.currentWorkspace?.path === sessionWorkspacePath ? workspaceStore.currentWorkspace : null)
 
 // 标签服务带 30s TTL 缓存；文件变化后必须主动失效，避免标签页读到旧空结果。
 async function invalidateTagCache() {
@@ -130,68 +135,58 @@ async function openFile(node: FileNode) {
     return
   }
 
-  // 如果已经在标签页中，直接切换
-  const existingIndex = findTabIndex(node.path)
-  if (existingIndex >= 0) {
-    activeTabIndex.value = existingIndex
-    workspaceStore.openFile(node.path)
-    return
-  }
-
-  // 读取文件内容并添加新标签页
-  try {
-    const content = await FileService.ReadFile(currentWorkspace.value!.path, node.path)
-    tabs.value.push({
-      path: node.path,
-      name: node.name,
-      content,
-      isDirty: false,
-      lastSavedAt: new Date().toLocaleTimeString(),
-    })
-    activeTabIndex.value = tabs.value.length - 1
-    workspaceStore.openFile(node.path)
-  } catch (e) {
-    console.error('Failed to open file:', e)
-  }
+  await openFileByPath(node.path)
 }
 
-async function openFileByPath(filePath: string) {
-  if (!currentWorkspace.value?.path) return
+async function openFileByPath(filePath: string, fromRoute = false) {
+  const workspacePath = currentWorkspace.value?.path
+  if (!workspacePath || route.path !== '/editor') return
+  filePath = normalizeNotePath(filePath)
+  const version = ++openFileVersion
+  if (activeTab.value?.isDirty && activeTab.value.path !== filePath) void saveTab(activeTabIndex.value)
   try {
-    const content = await FileService.ReadFile(currentWorkspace.value.path, filePath)
     const existingIndex = findTabIndex(filePath)
     if (existingIndex >= 0) {
       activeTabIndex.value = existingIndex
-      workspaceStore.openFile(filePath)
-      return
+    } else {
+      const content = await FileService.ReadFile(workspacePath, filePath)
+      if (version !== openFileVersion || currentWorkspace.value?.path !== workspacePath || route.path !== '/editor') return
+      tabs.value.push({
+        path: filePath,
+        name: filePath.split('/').pop() || filePath,
+        content,
+        isDirty: false,
+        lastSavedAt: new Date().toLocaleTimeString(),
+      })
+      activeTabIndex.value = tabs.value.length - 1
     }
-    tabs.value.push({
-      path: filePath,
-      name: filePath.split(/[\\/]/).pop() || filePath,
-      content,
-      isDirty: false,
-      lastSavedAt: new Date().toLocaleTimeString(),
-    })
-    activeTabIndex.value = tabs.value.length - 1
     workspaceStore.openFile(filePath)
+    if (route.query.file !== filePath) {
+      const location = { path: '/editor', query: { ...route.query, file: filePath, folder: undefined } }
+      if (fromRoute) await router.replace(location)
+      else await router.push(location)
+    }
   } catch (e) {
     console.error('Failed to open file:', e)
+    toast.error(`无法打开 ${filePath}：${e instanceof Error ? e.message : String(e)}`)
   }
 }
 
 // 切换标签页
 function switchToTab(index: number) {
   if (index < 0 || index >= tabs.value.length) return
-  activeTabIndex.value = index
+  void openFileByPath(tabs.value[index]!.path)
 }
 
 // ---- 草稿生命周期与冲突保护（自动保存/脏标记/fsnotify 冲突监听已抽到 useEditorDraft）----
 const {
   isSaving,
+  saveErrors,
   saveTab,
   saveCurrentTab,
   scheduleAutoSave,
   flushDirtyTab,
+  flushAllTabs,
   conflictedPaths,
   diffModal,
   activeConflictPath,
@@ -207,6 +202,26 @@ const {
   autoSaveInterval: () => settingsStore.settings.autoSaveInterval,
   findTabIndex,
   onSaved: invalidateTagCache,
+})
+
+const unregisterFlush = registerEditorFlush(flushAllTabs)
+watch(() => [activeTab.value?.path, activeTab.value?.isDirty, isSaving.value, saveErrors.value, activeConflictPath.value, wordCount.value, tabs.value.filter(tab => tab.isDirty).length], () => {
+  if (workspaceStore.currentWorkspace?.path !== sessionWorkspacePath) return
+  const tab = activeTab.value
+  editorSession.workspacePath = currentWorkspace.value?.path || ''
+  editorSession.path = tab?.path || ''
+  editorSession.error = tab ? saveErrors.value[tab.path] || '' : ''
+  editorSession.state = activeConflictPath.value ? 'conflict' : isSaving.value ? 'saving' : editorSession.error ? 'error' : tab?.isDirty ? 'dirty' : tab ? 'saved' : 'idle'
+  editorSession.words = wordCount.value
+  editorSession.dirtyCount = tabs.value.filter(item => item.isDirty).length
+  editorSession.draftPath = tabs.value.find(item => item.isDirty)?.path || ''
+}, { deep: true, immediate: true })
+onBeforeRouteLeave(async () => {
+  openFileVersion++
+  if (!await flushAllTabs()) {
+    toast.warning('草稿尚未保存，请先处理保存错误或外部冲突再离开编辑器。')
+    return false
+  }
 })
 
 // 冲突对比改 Beyond Compare 式左右分栏：统一 diff 行 → 对齐行对
@@ -229,22 +244,24 @@ async function closeTab(index: number, event?: Event) {
   const tab = tabs.value[index]
   if (!tab) return
 
-  // 如果有未保存的更改，提示保存
-  if (tab.isDirty) {
-    const shouldSave = await confirmDialog({ message: t('editor.unsavedConfirm', { name: tab.name }) })
-    if (shouldSave) {
-      if (!(await saveTab(index))) return
-    }
+  if (tab.isDirty && !await saveTab(index)) {
+    toast.warning('保存未完成，草稿已保留；请处理保存错误或外部冲突。')
+    return
   }
 
   // 从标签页列表中移除
   tabs.value.splice(index, 1)
+  workspaceStore.closeFile(tab.path)
 
   // 调整当前激活的标签页索引
   if (tabs.value.length === 0) {
     activeTabIndex.value = -1
   } else if (index <= activeTabIndex.value) {
     activeTabIndex.value = Math.max(0, activeTabIndex.value - 1)
+  }
+  if (route.query.file === tab.path) {
+    workspaceStore.setActiveFile(activeTab.value?.path || null)
+    await router.replace({ path: '/editor', query: { ...route.query, file: activeTab.value?.path } })
   }
 }
 
@@ -338,11 +355,6 @@ async function handleTrashFile(node: FileNode) {
 }
 
 // 切换视图模式
-function toggleViewMode() {
-  if (viewMode.value === 'split') viewMode.value = 'editor'
-  else if (viewMode.value === 'editor') viewMode.value = 'preview'
-  else viewMode.value = 'split'
-}
 
 /**
  * 处理图片粘贴
@@ -585,8 +597,7 @@ function jumpToLine(line: number) {
 }
 
 function openDrawerPath(path: string) {
-  workspaceStore.openFile(path)
-  workspaceStore.incrementFileTreeVersion()
+  void openFileByPath(path)
 }
 
 // 监听当前标签页变化，加载反向链接（watch 在 useEditorBacklinks 内注册）
@@ -605,12 +616,7 @@ watch(activeTab, () => {
   }
 })
 watch(() => workspaceStore.activeFile, async (requestedPath) => {
-  if (!requestedPath) return
-  const existingIndex = findTabIndex(requestedPath)
-  if (existingIndex >= 0) {
-    activeTabIndex.value = existingIndex
-    return
-  }
+  if (!requestedPath || route.path !== '/editor' || requestedPath === activeTab.value?.path) return
   await openFileByPath(requestedPath)
 })
 watch(() => workspaceStore.fileTreeVersion, () => {
@@ -621,6 +627,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
 // 由 FileTree 展开祖先链并短暂高亮。keep-alive 下本组件不重挂载，
 // query 变化只能靠 watcher 接住。
 const focusFolder = ref<string | null>(null)
+const newDocumentFolder = computed(() => focusFolder.value || (activeTab.value?.path.includes('/') ? activeTab.value.path.slice(0, activeTab.value.path.lastIndexOf('/')) : 'Inbox'))
 watch(
   () => route.query.folder,
   (val) => {
@@ -870,6 +877,7 @@ function escapeHtml(s: string): string {
 // 组件仍保活，用户可能切回来继续编辑，定时器要照常工作。
 onDeactivated(flushDirtyTab)
 onBeforeUnmount(() => {
+  unregisterFlush()
   disposeDraft()
 })
 
@@ -879,9 +887,9 @@ onBeforeUnmount(() => {
 async function openRequestedFile() {
   const requestedPath = route.query.file
   if (typeof requestedPath === 'string' && requestedPath.trim()) {
-    await openFileByPath(decodeURIComponent(requestedPath))
-  } else if (workspaceStore.activeFile) {
-    await openFileByPath(workspaceStore.activeFile)
+    await openFileByPath(requestedPath, true)
+  } else if (workspaceStore.activeFile && !route.query.folder) {
+    await openFileByPath(workspaceStore.activeFile, true)
   }
 }
 
@@ -892,8 +900,8 @@ onActivated(() => {
 })
 
 watch(() => route.query.file, (val) => {
-  if (typeof val === 'string' && val.trim()) {
-    void openFileByPath(decodeURIComponent(val))
+  if (route.path === '/editor' && typeof val === 'string' && val.trim()) {
+    void openFileByPath(val, true)
   }
 })
 
@@ -915,7 +923,8 @@ onMounted(async () => {
 })
 
 // 工作区变化时重新加载文件树并清空标签页
-watch(() => currentWorkspace.value?.id, () => {
+watch(() => currentWorkspace.value?.path, () => {
+  openFileVersion++
   tabs.value = []
   activeTabIndex.value = -1
   loadFileTree()
@@ -953,19 +962,20 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       :active-tab-index="activeTabIndex"
       :is-saving="isSaving"
       :active-tab="activeTab"
-      :view-mode="viewMode"
+      :view-mode="effectiveViewMode"
+      :tree-open="showTree"
       :is-exporting="isExporting"
       :is-compiling="isCompiling"
       @switch-tab="switchToTab"
       @close-tab="closeTab"
-      @new-file="handleNewFile('')"
+      @new-file="handleNewFile(newDocumentFolder)"
       @summarize="handleSummarize"
       @compile="handleCompile"
       @export-md="exportMarkdown"
       @export-html="exportSingleHTML"
       @save="saveCurrentTab"
       @toggle-view="toggleViewMode"
-      @back="router.push('/knowledge')"
+      @toggle-tree="toggleTree"
       @toggle-drawer="drawerOpen = !drawerOpen"
     />
 
@@ -1004,18 +1014,27 @@ watch(() => workspaceStore.fileTreeVersion, () => {
     </div>
 
     <!-- 编辑器主区域 -->
-    <div class="editor-main">
-    <!-- 右侧辅助抽屉（大纲 / 反向链接） -->
-    <EditorContextDrawer
-      v-model:tab="drawerTab"
-      :open="drawerOpen"
-      :outline="outline"
-      :backlinks="backlinks"
-      @jump-line="jumpToLine"
-      @open-path="openDrawerPath"
-    />
+    <div
+      ref="mainRef"
+      class="editor-main"
+      :class="{ 'overlay-tree': overlayTree }"
+    >
+      <!-- 右侧辅助抽屉（大纲 / 反向链接） -->
+      <EditorContextDrawer
+        v-model:tab="drawerTab"
+        :open="drawerOpen"
+        :outline="outline"
+        :backlinks="backlinks"
+        @jump-line="jumpToLine"
+        @open-path="openDrawerPath"
+        @close="drawerOpen = false"
+      />
       <!-- 左侧文件树 -->
-      <div class="file-tree-pane">
+      <div
+        v-show="showTree"
+        class="file-tree-pane"
+        :style="{ width: `${treeWidth}px` }"
+      >
         <FileTree
           :nodes="fileTree"
           :active-file-path="activeTab?.path"
@@ -1027,6 +1046,20 @@ watch(() => workspaceStore.fileTreeVersion, () => {
           @trash="handleTrashFile"
         />
       </div>
+      <div
+        v-if="showTree && !overlayTree"
+        class="pane-resizer"
+        role="separator"
+        aria-label="调整文件目录宽度"
+        aria-orientation="vertical"
+        :aria-valuenow="treeWidth"
+        aria-valuemin="180"
+        aria-valuemax="360"
+        tabindex="0"
+        @pointerdown="beginResize($event, 'tree')"
+        @keydown.left.prevent="adjust('tree', -1)"
+        @keydown.right.prevent="adjust('tree', 1)"
+      />
 
       <!-- 编辑/预览区域 -->
       <div class="editor-content">
@@ -1057,11 +1090,15 @@ watch(() => workspaceStore.fileTreeVersion, () => {
             :visible="!!activeTab"
             @update:tags="updateTags"
           />
-          <div class="editor-panes">
+          <div
+            ref="panesRef"
+            class="editor-panes"
+          >
             <!-- 编辑器 -->
             <div
-              v-if="viewMode !== 'preview'"
+              v-show="effectiveViewMode !== 'preview'"
               class="pane editor-pane"
+              :style="effectiveViewMode === 'split' ? { flex: `0 0 calc(${splitPercent}% - 3px)` } : {}"
             >
               <div class="pane-header">
                 <span>{{ t('editor.editPane') }}</span>
@@ -1070,16 +1107,31 @@ watch(() => workspaceStore.fileTreeVersion, () => {
               <div class="pane-body">
                 <MarkdownEditor
                   v-model="fileContent"
+                  :document-id="`${currentWorkspace?.path}/${activeTab.path}`"
                   data-testid="editor-input"
                   @save="saveCurrentTab"
                   @paste-image="handlePasteImage"
                 />
               </div>
             </div>
+            <div
+              v-if="effectiveViewMode === 'split'"
+              class="pane-resizer"
+              role="separator"
+              aria-label="调整编辑与预览比例"
+              aria-orientation="vertical"
+              :aria-valuenow="splitPercent"
+              aria-valuemin="30"
+              aria-valuemax="70"
+              tabindex="0"
+              @pointerdown="beginResize($event, 'split')"
+              @keydown.left.prevent="adjust('split', -1)"
+              @keydown.right.prevent="adjust('split', 1)"
+            />
 
             <!-- 预览 -->
             <div
-              v-if="viewMode !== 'editor'"
+              v-show="effectiveViewMode !== 'editor'"
               class="pane preview-pane"
             >
               <div class="pane-header">
@@ -1169,6 +1221,8 @@ watch(() => workspaceStore.fileTreeVersion, () => {
 
 /* 编辑器主区域 */
 .editor-main {
+  position: relative;
+  min-height: 0;
   flex: 1;
   display: flex;
   overflow: hidden;
@@ -1183,8 +1237,27 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   overflow: hidden;
 }
 
+.overlay-tree .file-tree-pane {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 20;
+  box-shadow: var(--shadow-lg);
+}
+.pane-resizer {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  touch-action: none;
+  background: var(--bg-secondary);
+  border-inline: 1px solid var(--border);
+}
+.pane-resizer:hover, .pane-resizer:focus-visible {
+  background: var(--accent);
+  outline: none;
+}
+
 /* 编辑内容区域 */
 .editor-content {
+  min-width: 0;
   flex: 1;
   display: flex;
   overflow: hidden;
@@ -1231,6 +1304,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
 }
 
 .pane {
+  min-width: 0;
   flex: 1;
   display: flex;
   flex-direction: column;

@@ -40,8 +40,15 @@ export function useEditorDraft(options: {
 }) {
   const { t } = useI18n()
   const toast = useToast()
+  // A cached editor owns one workspace for its whole lifetime. A delayed
+  // disposal or timer must never reinterpret its relative paths in another.
+  const sessionWorkspacePath = options.workspacePath.value
+  const workspacePath = () => options.workspacePath.value === sessionWorkspacePath ? sessionWorkspacePath : undefined
 
   const isSaving = ref(false)
+  let activeSaves = 0
+  const pendingSaves = new WeakMap<EditorTab, Promise<boolean>>()
+  const saveErrors = ref<Record<string, string>>({})
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   const reloadVersions = new WeakMap<EditorTab, number>()
 
@@ -51,25 +58,43 @@ export function useEditorDraft(options: {
   }
 
   // 保存指定标签页
-  async function saveTab(index: number) {
+  async function saveTab(index: number): Promise<boolean> {
     const tab = options.tabs.value[index]
-    const wsPath = options.workspacePath.value
+    const wsPath = workspacePath()
     if (!tab || !wsPath || conflictedPaths.value.has(tab.path)) return false
 
+    const pending = pendingSaves.get(tab)
+    if (pending) {
+      await pending
+      if (wsPath !== options.workspacePath.value || !options.tabs.value.includes(tab) || conflictedPaths.value.has(tab.path)) return false
+      return !tab.isDirty || saveTab(options.tabs.value.indexOf(tab))
+    }
+    const saving = writeTab(tab, wsPath)
+    pendingSaves.set(tab, saving)
+    try { return await saving }
+    finally { if (pendingSaves.get(tab) === saving) pendingSaves.delete(tab) }
+  }
+
+  async function writeTab(tab: EditorTab, wsPath: string) {
     const content = tab.content
+    activeSaves++
     isSaving.value = true
     try {
       await FileService.SaveFile(wsPath, tab.path, content)
-      await options.onSaved?.()
       if (wsPath !== options.workspacePath.value || !options.tabs.value.includes(tab)) return false
       tab.isDirty = tab.content !== content
       tab.lastSavedAt = new Date().toLocaleTimeString()
+      delete saveErrors.value[tab.path]
+      try { await options.onSaved?.() }
+      catch (error) { console.warn('Saved file, but its derived cache could not refresh:', error) }
       return !tab.isDirty
     } catch (e) {
+      if (wsPath === options.workspacePath.value && options.tabs.value.includes(tab)) saveErrors.value[tab.path] = e instanceof Error ? e.message : String(e)
       console.error('Failed to save file:', e)
       return false
     } finally {
-      isSaving.value = false
+      activeSaves--
+      isSaving.value = activeSaves > 0
     }
   }
 
@@ -100,6 +125,7 @@ export function useEditorDraft(options: {
   }
 
   function onExternalFileChange(payload: { type?: string; path?: string } | null) {
+    if (!workspacePath()) return
     if (!payload?.path || !['modify', 'create'].includes(payload.type ?? '')) return
     const rel = payload.path
     const idx = options.findTabIndex(rel)
@@ -113,7 +139,7 @@ export function useEditorDraft(options: {
 
   async function reloadTabFromDisk(idx: number, discardDraft = false) {
     const tab = options.tabs.value[idx]
-    const wsPath = options.workspacePath.value
+    const wsPath = workspacePath()
     if (!tab || !wsPath) return
     const content = tab.content
     const version = (reloadVersions.get(tab) ?? 0) + 1
@@ -158,15 +184,19 @@ export function useEditorDraft(options: {
   async function saveDraftAsCopy(path: string) {
     const idx = options.findTabIndex(path)
     const tab = options.tabs.value[idx]
-    const wsPath = options.workspacePath.value
+    const wsPath = workspacePath()
     if (!tab || !wsPath) return
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     const ext = path.toLowerCase().endsWith('.markdown') ? '.markdown' : '.md'
     const base = path.slice(0, path.length - ext.length)
     const copyRel = `${base}.冲突副本-${ts}${ext}`
+    const copiedContent = tab.content
     try {
-      await FileService.SaveFile(wsPath, copyRel, tab.content)
-      clearConflict(path)
+      await FileService.SaveFile(wsPath, copyRel, copiedContent)
+      if (wsPath !== options.workspacePath.value || !options.tabs.value.includes(tab)) return
+      // Only the copy owns our draft. Keep the external original authoritative;
+      // newer typing stays conflicted until the user resolves it separately.
+      if (tab.content === copiedContent) await reloadTabFromDisk(options.tabs.value.indexOf(tab), true)
       toast.success(t('editor.conflict.copySaved', { path: copyRel }))
     } catch (e) {
       toast.error((e as Error).message)
@@ -175,7 +205,7 @@ export function useEditorDraft(options: {
 
   // 查看对比：磁盘内容 vs 本地草稿
   async function openConflictDiff(path: string) {
-    const wsPath = options.workspacePath.value
+    const wsPath = workspacePath()
     if (!wsPath) return
     try {
       const disk = await FileService.ReadFile(wsPath, path)
@@ -215,6 +245,15 @@ export function useEditorDraft(options: {
     }
   }
 
+  async function flushAllTabs(): Promise<boolean> {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
+    let saved = true
+    for (let index = 0; index < options.tabs.value.length; index++) {
+      if (options.tabs.value[index]?.isDirty && !await saveTab(index)) saved = false
+    }
+    return saved
+  }
+
   // 真卸载兜底：停订阅 + 清定时器 + 冲出最后草稿
   function dispose() {
     stopConflictWatcher()
@@ -227,10 +266,12 @@ export function useEditorDraft(options: {
 
   return {
     isSaving,
+    saveErrors,
     saveTab,
     saveCurrentTab,
     scheduleAutoSave,
     flushDirtyTab,
+    flushAllTabs,
     conflictedPaths,
     diffModal,
     activeConflictPath,

@@ -14,6 +14,8 @@ vi.mock('@/api', () => ({
     SaveCredential: vi.fn().mockResolvedValue(undefined),
   },
   ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
+  WorkbenchService: { GetWorkbench: vi.fn(async () => ({ tasks: [], projects: [], books: [], documents: [], cards: [], warnings: [] })) },
+  ReminderService: { GetAllReminders: vi.fn(async () => []) },
 }))
 
 vi.mock('@/plugins/editorBridge', () => ({
@@ -22,7 +24,9 @@ vi.mock('@/plugins/editorBridge', () => ({
 }))
 
 import AICopilotDrawer from './AICopilotDrawer.vue'
-import { insertAtCursor } from '@/plugins/editorBridge'
+import { insertAtCursor, getActiveEditor } from '@/plugins/editorBridge'
+import { EditorState } from '@codemirror/state'
+import { editorSession } from '@/composables/useEditorSession'
 import { QnAService, FileService } from '@/api'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
@@ -49,7 +53,7 @@ function mountDrawer(visible = true) {
     props: { visible },
     global: { plugins: [pinia, router, i18n] },
   })
-  return { wrapper, workspaceStore: useWorkspaceStore() }
+  return { wrapper, router, workspaceStore: useWorkspaceStore() }
 }
 
 enableAutoUnmount(afterEach)
@@ -58,6 +62,8 @@ describe('AICopilotDrawer', () => {
   beforeEach(() => {
     localStorage.clear()
     vi.clearAllMocks()
+    vi.mocked(getActiveEditor).mockReturnValue(null)
+    Object.assign(editorSession, { workspacePath: '', path: '' })
     readMock.mockReset().mockResolvedValue('# 设计方案\n\n- [ ] 评审架构\n')
     resetToasts()
     answerMock.mockResolvedValue({
@@ -67,7 +73,7 @@ describe('AICopilotDrawer', () => {
   })
 
   it('打开时展示上下文感知条（当前文档名）与 4 个快捷胶囊', async () => {
-    const { wrapper, workspaceStore } = mountDrawer()
+    const { wrapper, router, workspaceStore } = mountDrawer()
     workspaceStore.setCurrentWorkspace({
       id: 'ws-1',
       name: '笔记库',
@@ -76,6 +82,7 @@ describe('AICopilotDrawer', () => {
       lastOpenedAt: '',
     })
     workspaceStore.setActiveFile('docs/设计方案.md')
+    await router.push({ path: '/editor', query: { file: 'docs/设计方案.md' } })
     await flushPromises()
 
     expect(wrapper.find('[data-ai-drawer]').classes()).toContain('open')
@@ -88,8 +95,25 @@ describe('AICopilotDrawer', () => {
     expect(wrapper.find('[data-ai-drawer]').classes()).not.toContain('open')
   })
 
-  it('点击「总结当前文档」胶囊：强制注入文档内容并发起问答', async () => {
+  it('明确的资料初始化指令无需 AI 密钥即可进入来源任务', async () => {
     const { wrapper, workspaceStore } = mountDrawer()
+    workspaceStore.setCurrentWorkspace({ id: 'ws', name: '笔记库', path: 'C:/notes', createdAt: '', lastOpenedAt: '' })
+    useSettingsStore().settings.ai.baseURL = 'https://api.openai.com/v1'
+    useSettingsStore().settings.ai.apiKey = ''
+    const listener = vi.fn()
+    window.addEventListener('notevault:source-import', listener)
+    try {
+      await wrapper.get('.copilot-input textarea').setValue('从 "E:\\资料\\商城" 初始化项目')
+      expect(wrapper.get('.btn-ask').attributes('disabled')).toBeUndefined()
+      await wrapper.get('.btn-ask').trigger('click')
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect((listener.mock.calls[0]?.[0] as CustomEvent).detail).toMatchObject({ kind: 'project', source: 'E:\\资料\\商城', autoStart: true })
+      expect(answerMock).not.toHaveBeenCalled()
+    } finally { window.removeEventListener('notevault:source-import', listener) }
+  })
+
+  it('点击「总结当前文档」胶囊：强制注入文档内容并发起问答', async () => {
+    const { wrapper, router, workspaceStore } = mountDrawer()
     workspaceStore.setCurrentWorkspace({
       id: 'ws-1',
       name: '笔记库',
@@ -98,6 +122,7 @@ describe('AICopilotDrawer', () => {
       lastOpenedAt: '',
     })
     workspaceStore.setActiveFile('docs/设计方案.md')
+    await router.push({ path: '/editor', query: { file: 'docs/设计方案.md' } })
     await flushPromises()
 
     const summaryChip = wrapper
@@ -120,7 +145,7 @@ describe('AICopilotDrawer', () => {
   })
 
   it('回答后展示引用卡片与「插入当前笔记」按钮，插入走 editorBridge', async () => {
-    const { wrapper, workspaceStore } = mountDrawer()
+    const { wrapper, router, workspaceStore } = mountDrawer()
     workspaceStore.setCurrentWorkspace({
       id: 'ws-1',
       name: '笔记库',
@@ -129,6 +154,8 @@ describe('AICopilotDrawer', () => {
       lastOpenedAt: '',
     })
     workspaceStore.setActiveFile('docs/设计方案.md')
+    Object.assign(editorSession, { workspacePath: 'C:/notes', path: 'docs/设计方案.md' })
+    await router.push({ path: '/editor', query: { file: 'docs/设计方案.md' } })
     await flushPromises()
 
     await wrapper.find('.copilot-input textarea').setValue('总结一下')
@@ -152,6 +179,21 @@ describe('AICopilotDrawer', () => {
     // icon-btn 顺序：清空（仅在有消息时渲染）→ 关闭；空会话时关闭是最后一个
     await wrapper.findAll('.icon-btn').at(-1)!.trigger('click')
     expect(wrapper.emitted('close')).toBeTruthy()
+  })
+
+  it('新文件仍在加载时不关联或插入上一份编辑草稿', async () => {
+    const { wrapper, router, workspaceStore } = mountDrawer()
+    workspaceStore.setCurrentWorkspace({ id: 'ws', name: '笔记库', path: 'C:/notes', createdAt: '', lastOpenedAt: '' })
+    Object.assign(editorSession, { workspacePath: 'C:/notes', path: '旧文档.md' })
+    vi.mocked(getActiveEditor).mockReturnValue({ state: EditorState.create({ doc: '旧文件尚未保存的草稿' }) } as ReturnType<typeof getActiveEditor>)
+    await router.push({ path: '/editor', query: { file: '新文档.md' } })
+    await wrapper.get('.copilot-input textarea').setValue('总结一下')
+    await wrapper.get('.btn-ask').trigger('click')
+    await flushPromises()
+    expect(readMock).toHaveBeenCalledWith('C:/notes', '新文档.md')
+    expect(answerMock.mock.calls[0]?.[9]).not.toContain('旧文件尚未保存的草稿')
+    await wrapper.get('.insert-btn').trigger('click')
+    expect(insertMock).not.toHaveBeenCalled()
   })
 
   it('点击抽屉外部（mousedown）触发 close，点抽屉内部不触发', async () => {
@@ -216,9 +258,10 @@ describe('AICopilotDrawer', () => {
     readMock.mockImplementation((workspacePath) => (workspacePath === 'C:/old-notes'
       ? new Promise<string>(resolve => { finishOldRead = resolve })
       : Promise.resolve('新工作区的设计正文')) as ReturnType<typeof FileService.ReadFile>)
-    const { wrapper, workspaceStore } = mountDrawer()
+    const { wrapper, router, workspaceStore } = mountDrawer()
     workspaceStore.setCurrentWorkspace({ id: 'old', name: '旧工作区', path: 'C:/old-notes', createdAt: '', lastOpenedAt: '' })
     workspaceStore.setActiveFile('设计.md')
+    await router.push({ path: '/editor', query: { file: '设计.md' } })
     await flushPromises()
 
     workspaceStore.setCurrentWorkspace({ id: 'new', name: '新工作区', path: 'C:/new-notes', createdAt: '', lastOpenedAt: '' })
@@ -233,5 +276,50 @@ describe('AICopilotDrawer', () => {
     expect(answerMock.mock.calls[0]?.[8]).toBe('C:/new-notes')
     expect(answerMock.mock.calls[0]?.[9]).toContain('新工作区的设计正文')
     expect(answerMock.mock.calls[0]?.[9]).not.toContain('旧工作区的私有正文')
+  })
+
+  it('回到工作台后使用当前页面上下文，不读取或插入残留的活动文件', async () => {
+    const { wrapper, router, workspaceStore } = mountDrawer()
+    workspaceStore.setCurrentWorkspace({ id: 'ws', name: '笔记库', path: 'C:/notes', createdAt: '', lastOpenedAt: '' })
+    workspaceStore.setActiveFile('Projects/旧文档.md')
+    await router.push('/knowledge')
+    await flushPromises()
+    await wrapper.get('.copilot-input textarea').setValue('今天有哪些待办？')
+    await wrapper.get('.btn-ask').trigger('click')
+    await flushPromises()
+
+    expect(readMock).not.toHaveBeenCalled()
+    expect(wrapper.get('.context-name').text()).toContain('今日')
+    expect(answerMock.mock.calls[0]?.[9]).toContain('今日工作台')
+    expect(answerMock.mock.calls[0]?.[9]).not.toContain('旧文档')
+    await wrapper.get('.insert-btn').trigger('click')
+    expect(insertMock).not.toHaveBeenCalled()
+  })
+
+  it('离开请求来源页面后不执行仍在排队的旧上下文指令', async () => {
+    const { wrapper, router, workspaceStore } = mountDrawer()
+    workspaceStore.setCurrentWorkspace({ id: 'ws', name: '笔记库', path: 'C:/notes', createdAt: '', lastOpenedAt: '' })
+    await router.push({ path: '/editor', query: { file: 'docs/设计方案.md' } })
+    await flushPromises()
+    let finish!: (value: Awaited<ReturnType<typeof QnAService.Answer>>) => void
+    answerMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }) as ReturnType<typeof QnAService.Answer>)
+    await wrapper.get('.copilot-input textarea').setValue('先分析当前内容')
+    await wrapper.get('.btn-ask').trigger('click')
+    await flushPromises()
+    await wrapper.setProps({ request: { id: 'queued-old-page', source: 'project', workspacePath: 'C:/notes', prompt: '总结旧项目', context: '只属于旧页面的排队资料' } })
+    expect(answerMock).toHaveBeenCalledTimes(1)
+    await router.push('/knowledge')
+    await wrapper.setProps({ visible: false })
+    finish({ answer: '第一条回复', citations: [] } as Awaited<ReturnType<typeof QnAService.Answer>>)
+    await flushPromises()
+    await wrapper.setProps({ visible: true })
+    await flushPromises()
+    expect(answerMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('.context-name').text()).toContain('今日')
+
+    await wrapper.setProps({ request: { id: 'new-page-request', source: 'learning', workspacePath: 'C:/notes', prompt: '分析新资料', context: '新的上下文' } })
+    await flushPromises()
+    expect(answerMock).toHaveBeenCalledTimes(2)
+    expect(answerMock.mock.calls[1]?.[9]).toContain('新的上下文')
   })
 })

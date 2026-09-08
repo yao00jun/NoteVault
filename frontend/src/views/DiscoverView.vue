@@ -1,13 +1,14 @@
 <script setup lang="ts">
+import { useViewRoute } from '@/composables/useViewRoute'
 /**
  * DiscoverView - 「发现」容器（Codex 式架构：同族功能 tab 化聚合）
  * 搜索 / 语义问答(QnA) / 视图（标签·图谱·Bases）——都是「从库里找答案」的同一族能力。
  * 现有视图原样作为子组件复用，零逻辑改动；tab 状态走路由 query 支持深链。
  */
 import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Search, MessageCircle, LayoutGrid, ArrowLeft } from '@lucide/vue'
+import { Search, MessageCircle, LayoutGrid, } from '@lucide/vue'
 import SearchView from '@/views/SearchView.vue'
 import QnAView from '@/views/QnAView.vue'
 import TagsView from '@/views/TagsView.vue'
@@ -15,7 +16,7 @@ import GraphView from '@/views/GraphView.vue'
 import BasesView from '@/views/BasesView.vue'
 
 const { t } = useI18n()
-const route = useRoute()
+const route = useViewRoute('/discover')
 const router = useRouter()
 
 const TABS = [
@@ -51,14 +52,6 @@ function switchTab(id: TabId) {
 <template>
   <div class="discover-view">
     <header class="discover-header">
-      <button
-        class="back-btn"
-        data-testid="discover-back"
-        @click="router.push('/knowledge')"
-      >
-        <ArrowLeft :size="16" />
-        <span>{{ t('common.backToKnowledge') }}</span>
-      </button>
       <div class="discover-title">
         {{ t('discover.title') }}
       </div>

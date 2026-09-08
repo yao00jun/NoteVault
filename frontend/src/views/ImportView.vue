@@ -1,14 +1,6 @@
 <template>
   <div class="import-view">
     <header class="iv-header">
-      <button
-        class="back-btn"
-        data-testid="import-back"
-        @click="router.push('/knowledge')"
-      >
-        <ArrowLeft :size="16" />
-        <span>{{ t('common.backToKnowledge') }}</span>
-      </button>
       <h1>
         <Upload :size="22" />
         <span>{{ t('import.title') }}</span>
@@ -42,6 +34,38 @@
       >
         {{ t('import.goChoose') }}
       </button>
+    </section>
+
+    <section class="iv-card">
+      <div class="iv-card-title">
+        <FileUp :size="16" /> 从资料建立项目与书籍
+      </div>
+      <p class="iv-sub">
+        提供本地目录、网址或文件，自动整理为可编辑的 Markdown；也可以只建立空白项目或书籍。
+      </p>
+      <div class="iv-source-grid">
+        <button
+          class="iv-btn iv-btn-primary"
+          :disabled="!currentWorkspace"
+          @click="requestSourceImport({ kind: 'project', sourceType: 'folder' })"
+        >
+          初始化项目
+        </button>
+        <button
+          class="iv-btn iv-btn-primary"
+          :disabled="!currentWorkspace"
+          @click="requestSourceImport({ kind: 'book', sourceType: 'folder' })"
+        >
+          初始化书籍
+        </button>
+        <button
+          class="iv-btn"
+          :disabled="!currentWorkspace"
+          @click="requestSourceImport({ kind: 'topic', sourceType: 'files' })"
+        >
+          导入主题资料
+        </button>
+      </div>
     </section>
 
     <!-- 源选择 -->
@@ -219,6 +243,7 @@
     <!-- Git 版本管理（P2-4） -->
     <section
       v-if="currentWorkspace"
+      id="workspace-versioning"
       class="iv-card"
     >
       <div class="iv-card-title">
@@ -332,8 +357,8 @@
 
 <script setup lang="ts">
 import { AppService, GitService, ImportService, ImportResult, GitStatus } from '@/api'
-import { ref, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   Upload,
@@ -345,11 +370,17 @@ import {
   CheckCircle2,
   AlertCircle,
   GitBranch,
-  ArrowLeft,
-} from '@lucide/vue'
+  } from '@lucide/vue'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { requestSourceImport } from '@/composables/useSourceImport'
 
 const router = useRouter()
+const route = useRoute()
+function revealSection() {
+  if (route.hash === '#workspace-versioning') void nextTick(() => document.getElementById('workspace-versioning')?.scrollIntoView())
+}
+onMounted(revealSection)
+watch(() => route.hash, revealSection)
 const workspaceStore = useWorkspaceStore()
 const { t } = useI18n()
 

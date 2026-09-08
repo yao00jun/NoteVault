@@ -199,7 +199,7 @@ async function toggleTodo(todo: TodoItem) {
 function openFile(path: string) {
   workspaceStore.openFile(path)
   workspaceStore.incrementFileTreeVersion()
-  router.push('/editor')
+  router.push({ path: '/editor', query: { file: path } })
 }
 </script>
 
@@ -302,7 +302,6 @@ function openFile(path: string) {
         </li>
       </ul>
     </div>
-
   </section>
 </template>
 

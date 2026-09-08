@@ -173,6 +173,8 @@ export interface ClipperStatus {
     "aiEnabled": boolean;
 }
 
+export type CollectionKind = string;
+
 /**
  * CompileAllResult 是 CompileAll 的聚合结果，专为 Wails 绑定设计：
  * 返回单一结构体 + error（而非 Go 惯用的 (results, []error) 双返回值）。
@@ -893,6 +895,58 @@ export interface SnapshotStats {
     "files": number;
     "objects": number;
     "diskBytes": number;
+}
+
+/**
+ * SourceImportAIConfig is transient request data. Never serialize the request
+ * into provenance, task messages, errors, or the generated collection metadata.
+ */
+export interface SourceImportAIConfig {
+    "apiKey": string;
+    "baseURL": string;
+    "model": string;
+}
+
+export interface SourceImportFile {
+    "name": string;
+    "contentBase64": string;
+}
+
+export interface SourceImportPreview {
+    "name": string;
+    "kind": CollectionKind;
+    "targetFolder": string;
+    "metadataPath": string;
+    "fileCount": number;
+    "files": string[] | null;
+    "warnings": string[] | null;
+    "existing": boolean;
+}
+
+export interface SourceImportRequest {
+    "sourceType": string;
+    "source": string;
+    "files": SourceImportFile[] | null;
+    "kind": CollectionKind;
+    "name": string;
+    "targetFolder": string;
+    "conflictStrategy": string;
+    "enrich": boolean;
+    "instruction": string;
+    "ai": SourceImportAIConfig;
+}
+
+export interface SourceImportResult {
+    "taskId": string;
+    "targetFolder": string;
+    "metadataPath": string;
+    "imported": number;
+    "skipped": number;
+    "updated": number;
+    "conflicts": string[] | null;
+    "warnings": string[] | null;
+    "files": string[] | null;
+    "cancelled": boolean;
 }
 
 /**

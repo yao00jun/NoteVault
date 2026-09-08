@@ -36,11 +36,12 @@ describe('Workbench routes', () => {
     expect(router.currentRoute.value.hash).toBe('#focus')
   })
 
-  it('retains the original document library as a distinct destination', async () => {
+  it('opens the document browser through the legacy library URL', async () => {
     const router = createTestRouter()
     await router.push('/library')
-    expect(router.currentRoute.value.name).toBe('library')
-    expect(router.currentRoute.value.path).toBe('/library')
+    expect(router.currentRoute.value.name).toBe('vault')
+    expect(router.currentRoute.value.path).toBe('/vault')
+    expect(router.currentRoute.value.query.view).toBe('documents')
   })
 
   it.each([

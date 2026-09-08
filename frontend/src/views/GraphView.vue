@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch, nextTick } from 'vue'
 import { GitGraph, RefreshCw, Circle, ZoomIn, ZoomOut, Maximize, AlertTriangle } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -48,6 +48,9 @@ const width = ref(800)
 const height = ref(600)
 const view = ref({ x: 0, y: 0, k: 1 })
 const hoveredId = ref<string | null>(null)
+const selectedId = ref<string | null>(null)
+const focusedId = computed(() => hoveredId.value || selectedId.value)
+let movedDuringDrag = false
 const dragId = ref<string | null>(null)
 const panning = ref(false)
 const dragStart = ref({ x: 0, y: 0, vx: 0, vy: 0 })
@@ -83,11 +86,11 @@ const renderedEdges = computed<RenderedEdge[]>(() => {
 })
 
 const connectedIds = computed(() => {
-  if (!hoveredId.value) return null
-  const set = new Set<string>([hoveredId.value])
+  if (!focusedId.value) return null
+  const set = new Set<string>([focusedId.value])
   for (const e of edges.value) {
-    if (e.source === hoveredId.value) set.add(e.target)
-    if (e.target === hoveredId.value) set.add(e.source)
+    if (e.source === focusedId.value) set.add(e.target)
+    if (e.target === focusedId.value) set.add(e.source)
   }
   return set
 })
@@ -97,8 +100,8 @@ function isNodeActive(id: string): boolean {
   return connectedIds.value.has(id)
 }
 function isEdgeActive(e: { source: string; target: string }): boolean {
-  if (!hoveredId.value) return true
-  return e.source === hoveredId.value || e.target === hoveredId.value
+  if (!focusedId.value) return true
+  return e.source === focusedId.value || e.target === focusedId.value
 }
 
 async function loadGraph() {
@@ -272,20 +275,26 @@ function onWheel(e: WheelEvent) {
 }
 
 function onNodeMouseDown(e: MouseEvent, id: string) {
+  if (e.button !== 0) return
   e.stopPropagation()
+  movedDuringDrag = false
   dragId.value = id
   dragStart.value = { x: e.clientX, y: e.clientY, vx: view.value.x, vy: view.value.y }
 }
 function onBackgroundMouseDown(e: MouseEvent) {
+  if (e.button !== 0) return
   panning.value = true
   dragStart.value = { x: e.clientX, y: e.clientY, vx: view.value.x, vy: view.value.y }
 }
 function onMouseMove(e: MouseEvent) {
   if (dragId.value) {
+    if (Math.hypot(e.clientX - dragStart.value.x, e.clientY - dragStart.value.y) > 4) movedDuringDrag = true
+    if (!movedDuringDrag) return
     // O(1) map 查找替代 .find()
     const node = nodeMap.value.get(dragId.value)
     if (node) {
-      const w = screenToWorld(e.clientX, e.clientY)
+      const rect = containerRef.value?.getBoundingClientRect()
+      const w = screenToWorld(e.clientX - (rect?.left ?? 0), e.clientY - (rect?.top ?? 0))
       node.x = w.x
       node.y = w.y
       node.vx = 0
@@ -304,11 +313,12 @@ function onMouseUp() {
   panning.value = false
 }
 
-function openNode(node: GNode) {
+function openNode(node: GNode, fromKeyboard = false) {
+  if (movedDuringDrag && !fromKeyboard) { movedDuringDrag = false; return }
   if (!node.resolved) return
+  selectedId.value = node.id
   workspaceStore.openFile(node.id)
-  workspaceStore.incrementFileTreeVersion()
-  router.push('/editor')
+  router.push({ path: '/editor', query: { file: node.id } })
 }
 
 function zoomBy(factor: number) {
@@ -326,7 +336,7 @@ function resetView() {
 }
 
 function measure() {
-  if (!containerRef.value) return
+  if (!containerRef.value?.clientWidth || !containerRef.value.clientHeight) return
   width.value = containerRef.value.clientWidth
   height.value = containerRef.value.clientHeight
 }
@@ -343,6 +353,12 @@ onUnmounted(() => {
   resizeObserver?.disconnect()
   window.removeEventListener('mousemove', onMouseMove)
   window.removeEventListener('mouseup', onMouseUp)
+})
+onDeactivated(() => { resizeObserver?.disconnect(); onMouseUp(); hoveredId.value = null })
+onActivated(async () => {
+  await nextTick()
+  measure()
+  if (containerRef.value) resizeObserver?.observe(containerRef.value)
 })
 
 watch(
@@ -367,7 +383,7 @@ if (typeof window !== 'undefined') {
         <span class="stat"><Circle
           :size="12"
           class="dot-resolved"
-        /> {{ t('graph.linked', { count: nodeCount - unresolvedCount }) }}</span>
+        /> {{ t('graph.linked', { count: nodeCount - unresolvedCount - orphanCount }) }}</span>
         <span class="stat"><Circle
           :size="12"
           class="dot-orphan"
@@ -485,24 +501,30 @@ if (typeof window !== 'undefined') {
             :key="node.id"
             :transform="`translate(${node.x},${node.y})`"
             class="graph-node"
+            role="button"
+            tabindex="0"
+            :aria-label="'打开 ' + node.title"
             :class="{ dim: !isNodeActive(node.id), unresolved: !node.resolved }"
             style="cursor: pointer"
             @mousedown="onNodeMouseDown($event, node.id)"
             @mouseenter="hoveredId = node.id"
             @mouseleave="hoveredId = null"
             @click="openNode(node)"
+            @keydown.enter.prevent="openNode(node, true)"
           >
             <circle
               :r="nodeRadius(node)"
               :fill="nodeColor(node)"
-              :stroke="hoveredId === node.id ? 'var(--text-primary)' : 'transparent'"
+              :stroke="focusedId === node.id ? 'var(--text-primary)' : 'transparent'"
               stroke-width="2"
             />
             <text
+              v-if="focusedId === node.id || connectedIds?.has(node.id) || (view.k >= 0.8 && nodes.length <= 70)"
               :x="nodeRadius(node) + 4"
               :y="4"
               class="graph-label"
-            >{{ node.title }}</text>
+            >{{ node.title.length > 24 ? node.title.slice(0, 24) + '…' : node.title }}</text>
+            <title>{{ node.title }}</title>
           </g>
         </g>
       </svg>

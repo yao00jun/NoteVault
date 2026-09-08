@@ -88,7 +88,7 @@ function goBack() {
 function openFile(file: TagFileInfo) {
   workspaceStore.openFile(file.path)
   workspaceStore.incrementFileTreeVersion()
-  router.push('/editor')
+  router.push({ path: '/editor', query: { file: file.path } })
 }
 
 // 计算标签云的字体大小（基于使用次数）

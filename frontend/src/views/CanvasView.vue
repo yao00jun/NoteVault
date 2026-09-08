@@ -3,7 +3,7 @@ import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import type { CSSProperties } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft } from '@lucide/vue'
+import { } from '@lucide/vue'
 import { FileService } from '@/api'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useToast } from '@/composables/useToast'
@@ -348,7 +348,7 @@ function openNote(node: CanvasNode) {
     return
   }
   workspaceStore.openFile(node.file)
-  router.push('/editor')
+  router.push({ path: '/editor', query: { file: node.file } })
 }
 function openLink(node: CanvasNode) {
   if (node.type !== 'link' || !node.url) return
@@ -625,14 +625,6 @@ function typeLabel(type: CanvasNode['type']): string {
     <!-- ===== 列表模式 ===== -->
     <template v-if="!currentPath">
       <header class="page-header">
-        <button
-          class="back-btn"
-          data-testid="canvas-list-back"
-          @click="router.push('/knowledge')"
-        >
-          <ArrowLeft :size="16" />
-          <span>{{ t('common.backToKnowledge') }}</span>
-        </button>
         <h1>{{ t('canvas.listTitle') }}</h1>
         <button
           class="primary-btn"

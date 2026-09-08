@@ -10,9 +10,9 @@ import { isImeComposing } from '@/utils/ime'
 //   - editorBridge.ts        插件装饰/keymap 注入桥（不变）
 // 本组件保留：EditorView 生命周期、快捷键、粘贴图片、格式刷状态、浮层定位。
 // ============================================================================
-import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { EditorState, EditorSelection, Compartment } from '@codemirror/state'
+import { EditorState, EditorSelection, Compartment, Transaction } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
@@ -34,9 +34,11 @@ import {
 } from '@/plugins/editorBridge'
 import type { CustomCommand } from '@/types'
 import type { RegisteredPluginToolbarButton } from '@/plugins/types'
+import { updateEditorCursor } from '@/composables/useEditorSession'
 
 const props = defineProps<{
   modelValue: string
+  documentId?: string
   readonly?: boolean
 }>()
 
@@ -56,6 +58,11 @@ const toolbarRef = ref<InstanceType<typeof EditorToolbar> | null>(null)
 const colorInputRef = ref<HTMLInputElement | null>(null)
 const bgInputRef = ref<HTMLInputElement | null>(null)
 let editorView: EditorView | null = null
+let activeDocumentId = props.documentId || ''
+let syncingFromModel = false
+let isActive = true
+const documentStates = new Map<string, { state: EditorState; scrollTop: number }>()
+const presentationCompartment = new Compartment()
 
 // store 必须先于下方 watch 声明：watch 的源 getter 在注册时同步执行一次，
 // 若引用尚未初始化的 const 会抛 TDZ ReferenceError（打包产物里表现为
@@ -297,10 +304,27 @@ const toolbarVisible = computed(() =>
   !props.readonly && (settingsStore.settings.toolbar.mode === 'floating' ? showFloating.value : true),
 )
 
-function createEditor() {
+function presentationExtensions() {
+  return [editorTheme.value, EditorState.readOnly.of(!!props.readonly), EditorView.editable.of(!props.readonly), EditorView.theme({
+    '&': { height: '100%', fontSize: settingsStore.settings.fontSize + 'px' },
+    '.cm-scroller': { fontFamily: 'var(--font-mono, "JetBrains Mono", "Fira Code", Consolas, monospace)', lineHeight: String(settingsStore.settings.editor.lineHeight) },
+    '.cm-gutters': { backgroundColor: 'var(--bg-sidebar)', borderRight: '1px solid var(--border)', color: 'var(--text-muted)' },
+    '.cm-activeLine': { backgroundColor: 'var(--bg-hover)' },
+    '.cm-activeLineGutter': { backgroundColor: 'var(--bg-hover)' },
+  })]
+}
+
+function rememberDocument() {
+  if (!editorView) return
+  documentStates.delete(activeDocumentId)
+  documentStates.set(activeDocumentId, { state: editorView.state, scrollTop: editorView.scrollDOM.scrollTop })
+  if (documentStates.size > 40) documentStates.delete(documentStates.keys().next().value!)
+}
+
+function createEditor(saved?: { state: EditorState; scrollTop: number }) {
   if (!editorRef.value) return
 
-  const state = EditorState.create({
+  const state = saved?.state ?? EditorState.create({
     doc: props.modelValue || '',
     extensions: [
       lineNumbers(),
@@ -321,9 +345,14 @@ function createEditor() {
       formatKeymap,
       // 插件声明的编辑器扩展，初始为空，创建后再 reconfigure 填充
       pluginExtensionCompartment.of([]),
-      editorTheme.value,
+      presentationCompartment.of(presentationExtensions()),
       EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
+        if (update.selectionSet || update.docChanged) {
+          const head = update.state.selection.main.head
+          const line = update.state.doc.lineAt(head)
+          updateEditorCursor(line.number, head - line.from + 1)
+        }
+        if (update.docChanged && !syncingFromModel) {
           emit('update:modelValue', update.state.doc.toString())
         }
         if (!props.readonly && (update.selectionSet || update.docChanged)) {
@@ -342,27 +371,6 @@ function createEditor() {
           }
         }
       }),
-      EditorView.theme({
-        '&': {
-          height: '100%',
-          fontSize: settingsStore.settings.fontSize + 'px',
-        },
-        '.cm-scroller': {
-          fontFamily: 'var(--font-mono, "JetBrains Mono", "Fira Code", Consolas, monospace)',
-          lineHeight: String(settingsStore.settings.editor.lineHeight),
-        },
-        '.cm-gutters': {
-          backgroundColor: 'var(--bg-sidebar)',
-          borderRight: '1px solid var(--border)',
-          color: 'var(--text-muted)',
-        },
-        '.cm-activeLine': {
-          backgroundColor: 'var(--bg-hover)',
-        },
-        '.cm-activeLineGutter': {
-          backgroundColor: 'var(--bg-hover)',
-        },
-      }),
     ],
   })
 
@@ -370,7 +378,15 @@ function createEditor() {
     state,
     parent: editorRef.value,
   })
-  setActiveEditor(editorView)
+  if (isActive) setActiveEditor(editorView)
+  editorView.dispatch({ effects: presentationCompartment.reconfigure(presentationExtensions()) })
+  const head = state.selection.main.head
+  const line = state.doc.lineAt(head)
+  updateEditorCursor(line.number, head - line.from + 1)
+  if (saved) {
+    const view = editorView
+    view.requestMeasure({ read: () => saved.scrollTop, write: scrollTop => { if (editorView === view) view.scrollDOM.scrollTop = scrollTop } })
+  }
   // 编辑器建好后再灌入当前已注册的插件扩展
   reconfigurePluginExtensions()
 }
@@ -393,10 +409,11 @@ function handlePaste(event: ClipboardEvent) {
       event.preventDefault()
       const file = item.getAsFile()
       if (file) {
+        const targetDocument = activeDocumentId
         emit('paste-image', {
           file,
           insertText: (text: string) => {
-            if (editorView) {
+            if (editorView && activeDocumentId === targetDocument) {
               const cursor = editorView.state.selection.main.head
               editorView.dispatch({
                 changes: { from: cursor, insert: text },
@@ -411,31 +428,28 @@ function handlePaste(event: ClipboardEvent) {
   }
 }
 
-watch(() => props.modelValue, (newVal) => {
+watch(() => [props.documentId || '', props.modelValue] as const, ([documentId, newVal]) => {
+  if (documentId !== activeDocumentId) {
+    rememberDocument()
+    destroyEditor()
+    activeDocumentId = documentId
+    const saved = documentStates.get(documentId)
+    createEditor(saved?.state.doc.toString() === newVal ? saved : undefined)
+    return
+  }
   if (editorView && editorView.state.doc.toString() !== newVal) {
-    editorView.dispatch({
-      changes: {
-        from: 0,
-        to: editorView.state.doc.length,
-        insert: newVal || '',
-      },
-    })
+    syncingFromModel = true
+    try {
+      editorView.dispatch({
+        changes: { from: 0, to: editorView.state.doc.length, insert: newVal || '' },
+        annotations: Transaction.addToHistory.of(false),
+      })
+    } finally { syncingFromModel = false }
   }
 })
 
-watch(() => settingsStore.settings.theme, () => {
-  destroyEditor()
-  createEditor()
-})
-
-watch(() => settingsStore.settings.fontSize, () => {
-  destroyEditor()
-  createEditor()
-})
-
-watch(() => settingsStore.settings.editor.lineHeight, () => {
-  destroyEditor()
-  createEditor()
+watch(() => [settingsStore.settings.theme, settingsStore.settings.fontSize, settingsStore.settings.editor.lineHeight, props.readonly], () => {
+  editorView?.dispatch({ effects: presentationCompartment.reconfigure(presentationExtensions()) })
 })
 
 onMounted(() => {
@@ -453,6 +467,9 @@ onMounted(() => {
     toggleBrush: () => toggleBrush(),
   })
 })
+
+onActivated(() => { isActive = true; if (editorView) setActiveEditor(editorView) })
+onDeactivated(() => { isActive = false; rememberDocument(); setActiveEditor(null) })
 
 onBeforeUnmount(() => {
   editorRef.value?.removeEventListener('paste', handlePaste as EventListener)

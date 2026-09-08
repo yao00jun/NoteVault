@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
@@ -16,6 +16,10 @@ import {
 import { useSettingsStore } from '@/stores/settings'
 import type { ThemeType } from '@/types'
 import { AppService } from '@/api'
+import GlobalNavigation from './GlobalNavigation.vue'
+import { useWorkspaceStore } from '@/stores/workspace'
+import { flushOpenEditor } from '@/composables/useEditorSession'
+import { useToast } from '@/composables/useToast'
 
 // Wails v3 窗口控制 API（动态导入，避免模块加载时初始化失败导致整个应用崩溃）
 let currentWindow: any = null
@@ -58,6 +62,8 @@ async function getDialogs() {
 const { t } = useI18n()
 const settingsStore = useSettingsStore()
 const router = useRouter()
+const workspaceStore = useWorkspaceStore()
+const toast = useToast()
 
 const showThemeMenu = ref(false)
 const isMaximised = ref(false)
@@ -82,7 +88,7 @@ function openSettings() {
 }
 
 function goHome() {
-  router.push('/')
+  router.push(workspaceStore.hasWorkspace ? '/today' : '/')
 }
 
 function openSearch() {
@@ -117,6 +123,11 @@ async function requestExit() {
 }
 
 async function confirmExit() {
+  if (!await flushOpenEditor()) {
+    toast.warning('草稿保存失败或存在外部冲突，请处理后再退出。')
+    showExitConfirm.value = false
+    return
+  }
   showExitConfirm.value = false
   // Wails v3 beta 的 app.Quit() 是 InvokeSync(destroy)：Go 端同步等主线程销毁窗口，
   // 主线程又等 WebView2 退出，WebView2 等前端 pending 调用返回 —— 三方死锁（已知 beta 问题）。
@@ -146,6 +157,7 @@ function handleClickOutside(e: MouseEvent) {
 if (typeof window !== 'undefined') {
   document.addEventListener('click', handleClickOutside)
 }
+onBeforeUnmount(() => document.removeEventListener('click', handleClickOutside))
 </script>
 
 <template>
@@ -234,6 +246,7 @@ if (typeof window !== 'undefined') {
       <span class="app-name">NoteVault</span>
     </div>
 
+    <GlobalNavigation />
     <!-- 中间：搜索框 -->
     <div class="titlebar-center">
       <button
@@ -356,8 +369,12 @@ if (typeof window !== 'undefined') {
         aria-modal="true"
         @keydown.esc="cancelExit"
       >
-        <p class="exit-confirm-title">{{ t('titlebar.exitConfirmTitle') }}</p>
-        <p class="exit-confirm-text">{{ t('titlebar.exitConfirm') }}</p>
+        <p class="exit-confirm-title">
+          {{ t('titlebar.exitConfirmTitle') }}
+        </p>
+        <p class="exit-confirm-text">
+          {{ t('titlebar.exitConfirm') }}
+        </p>
         <div class="exit-confirm-actions">
           <button
             class="exit-btn cancel"
@@ -398,7 +415,7 @@ if (typeof window !== 'undefined') {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-width: 140px;
+  min-width: 115px;
 }
 
 .app-icon {
@@ -413,10 +430,11 @@ if (typeof window !== 'undefined') {
 }
 
 .titlebar-center {
-  flex: 1;
+  flex: 0 1 280px;
+  min-width: 50px;
   display: flex;
   justify-content: center;
-  max-width: 480px;
+  max-width: 280px;
 }
 
 .search-box {

@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import { useViewRoute } from '@/composables/useViewRoute'
 import { computed, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import {
   AlertTriangle,
-  ArrowLeft,
   ArrowUpRight,
   BookOpen,
   CheckCircle2,
@@ -37,11 +37,13 @@ import {
   type TaskPeriod,
 } from '@/utils/workbenchCollections'
 import '@/styles/workbench-collections.css'
+import { requestSourceImport } from '@/composables/useSourceImport'
+import CollectionOnboarding from '@/components/workbench/CollectionOnboarding.vue'
 
 const workbench = useWorkbenchStore()
 const workspace = useWorkspaceStore()
 const router = useRouter()
-const route = useRoute()
+const route = useViewRoute('/projects')
 const toast = useToast()
 const search = ref('')
 const statusFilter = ref('all')
@@ -230,14 +232,6 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
 <template>
   <div class="collection-page projects-page">
     <div class="collection-shell">
-      <button
-        v-if="selectedProject"
-        class="collection-back"
-        type="button"
-        @click="showPortfolio"
-      >
-        <ArrowLeft :size="14" /> 全部项目
-      </button>
       <header class="collection-hero">
         <div>
           <div class="collection-eyebrow">
@@ -253,6 +247,22 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
           </p>
         </div>
         <div class="collection-actions">
+          <template v-if="workspace.hasWorkspace">
+            <button
+              class="collection-button primary"
+              data-testid="create-collection"
+              @click="requestSourceImport({ kind: 'project', sourceType: 'empty' })"
+            >
+              新建项目
+            </button>
+            <button
+              class="collection-button"
+              data-testid="import-collection"
+              @click="requestSourceImport({ kind: 'project', sourceType: 'folder', targetFolder: selectedProject?.folder, name: selectedProject?.name })"
+            >
+              {{ selectedProject ? '添加资料' : '从资料创建' }}
+            </button>
+          </template>
           <template v-if="selectedProject">
             <button
               class="collection-icon-button"
@@ -326,6 +336,10 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
         </button>
       </div>
       <template v-else>
+        <CollectionOnboarding
+          v-if="!selectedProject"
+          kind="project"
+        />
         <div
           v-if="!selectedProject"
           class="collection-metrics"
@@ -759,9 +773,9 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
             v-if="!workbench.projects.length"
             class="collection-button"
             type="button"
-            @click="router.push({ path: '/editor', query: { folder: 'Projects' } })"
+            @click="requestSourceImport({ kind: 'project', sourceType: 'empty' })"
           >
-            打开项目空间 <ArrowUpRight :size="14" />
+            创建第一个项目 <Plus :size="14" />
           </button>
         </div>
       </template>

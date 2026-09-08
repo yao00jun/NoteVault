@@ -241,9 +241,8 @@ function openInEditor() {
   if (!selectedPath.value) return
   const abs = joinWorkspacePath(selectedPath.value)
   if (!abs) return
-  router.push('/editor')
-  workspaceStore.openFile(abs)
-  workspaceStore.setActiveFile(abs)
+  workspaceStore.openFile(selectedPath.value)
+  router.push({ path: '/editor', query: { file: selectedPath.value } })
 }
 
 /** 拼出绝对路径时保留工作区原有的分隔符风格，Windows 下不要混用 */

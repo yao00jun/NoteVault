@@ -738,6 +738,7 @@ export default {
     loadFailed: '加载图谱失败：{msg}',
   },
   editor: {
+    drawer: { toggle: '辅助抽屉', outline: '大纲', backlinks: '反向链接', outlineEmpty: '没有标题', backlinksEmpty: '暂无反向链接' },
     conflict: {
       banner: '⚠️ 「{name}」在外部被修改（如 Git 同步），本地有未保存草稿。请选择处理方式：',
       reload: '放弃草稿并重载',
@@ -879,7 +880,6 @@ export default {
     weekday: { 0: '周日', 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六' },
     month: '月',
     day: '日',
-    drawer: { toggle: '辅助抽屉', outline: '大纲', backlinks: '反向链接', outlineEmpty: '没有标题', backlinksEmpty: '暂无反向链接' },
     capturePlaceholder: '快速记一笔，回车即建笔记…',
     captured: '已创建「{name}」',
     captureFailed: '创建失败：{msg}',

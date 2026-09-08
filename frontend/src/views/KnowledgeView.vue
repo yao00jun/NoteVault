@@ -245,7 +245,7 @@ async function loadAll() {
 function openFile(file: { path: string; name: string }) {
   workspaceStore.openFile(file.path)
   workspaceStore.incrementFileTreeVersion()
-  router.push('/editor')
+  router.push({ path: '/editor', query: { file: file.path } })
 }
 
 async function createNewDoc() {
@@ -265,7 +265,7 @@ async function createNewDoc() {
     if (node) {
       workspaceStore.incrementFileTreeVersion()
       workspaceStore.openFile((node as any).path)
-      router.push('/editor')
+      router.push({ path: '/editor', query: { file: (node as any).path } })
     }
   } catch (e) {
     if ((e as Error).message?.includes('exist')) {
@@ -328,7 +328,7 @@ function onTemplateCreated(path: string) {
   showTemplateDialog.value = false
   workspaceStore.incrementFileTreeVersion()
   workspaceStore.openFile(path)
-  router.push('/editor')
+  router.push({ path: '/editor', query: { file: path } })
 }
 
 /** 切换待办完成状态 */
@@ -467,8 +467,12 @@ watch(() => workspaceStore.fileTreeVersion, () => {
           />
         </div>
         <div class="kv-space-body">
-          <div class="kv-space-name">{{ space.label }}</div>
-          <div class="kv-space-desc">{{ space.desc }}</div>
+          <div class="kv-space-name">
+            {{ space.label }}
+          </div>
+          <div class="kv-space-desc">
+            {{ space.desc }}
+          </div>
         </div>
         <span class="kv-space-count">{{ space.count }}</span>
       </button>

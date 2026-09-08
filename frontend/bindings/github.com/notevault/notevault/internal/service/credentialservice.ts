@@ -5,8 +5,7 @@
  * CredentialService 把 API Key 等敏感凭据从 localStorage 迁到系统凭据库（P2-5）。
  * 
  * 为什么做成 Wails 服务而不是继续留在前端：凭据库只能由宿主进程访问，
- * 前端拿到的只是"读写这个 key 的能力"，而且 value 不再落进 WebView 的
- * localStorage——渲染进程被攻破也读不到明文。
+ * 前端按需读取使用，value 不再持久化到 WebView 的 localStorage。
  * @module
  */
 

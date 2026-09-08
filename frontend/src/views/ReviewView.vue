@@ -1,20 +1,21 @@
 <script setup lang="ts">
+import { useViewRoute } from '@/composables/useViewRoute'
 /**
  * ReviewView - 「回顾」容器（Codex 式架构：同族功能 tab 化聚合）
  * 报表(热力图/周报/那年今日) / 任务(待办+提醒) / 版本(历史)——都是「回看过去」的同一族能力。
  * 现有视图原样作为子组件复用，零逻辑改动；tab 状态走路由 query 支持深链。
  */
 import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { BarChart3, CheckSquare, History, ArrowLeft } from '@lucide/vue'
+import { BarChart3, CheckSquare, History, } from '@lucide/vue'
 import ReportsView from '@/views/ReportsView.vue'
 import TodosView from '@/views/TodosView.vue'
 import RemindersView from '@/views/RemindersView.vue'
 import HistoryView from '@/views/HistoryView.vue'
 
 const { t } = useI18n()
-const route = useRoute()
+const route = useViewRoute('/review')
 const router = useRouter()
 
 const TABS = [
@@ -46,14 +47,6 @@ function setQuery(patch: Record<string, string>) {
 <template>
   <div class="review-view">
     <header class="review-header">
-      <button
-        class="back-btn"
-        data-testid="review-back"
-        @click="router.push('/knowledge')"
-      >
-        <ArrowLeft :size="16" />
-        <span>{{ t('common.backToKnowledge') }}</span>
-      </button>
       <div class="review-title">
         {{ t('review.title') }}
       </div>

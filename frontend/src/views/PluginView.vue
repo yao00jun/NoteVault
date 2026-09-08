@@ -1,14 +1,6 @@
 <template>
   <div class="plugin-view">
     <header class="pv-header">
-      <button
-        class="back-btn"
-        data-testid="plugin-back"
-        @click="router.push('/knowledge')"
-      >
-        <ArrowLeft :size="16" />
-        <span>{{ t('common.backToKnowledge') }}</span>
-      </button>
       <h1>
         <Puzzle :size="22" />
         <span>{{ t('plugins.title') }}</span>
@@ -60,7 +52,7 @@
       data-testid="plugin-runtime-failed"
     >
       <AlertCircle :size="14" />
-            <span>{{ t('plugins.runtime.failedTitle') }}：{{ failedPluginNames.join('、') }}</span>
+      <span>{{ t('plugins.runtime.failedTitle') }}：{{ failedPluginNames.join('、') }}</span>
     </div>
 
     <div
@@ -198,7 +190,9 @@
               {{ t('plugins.trust.revoke') }}
             </button>
           </div>
-          <p class="pv-trust-note">{{ t('plugins.trust.note') }}</p>
+          <p class="pv-trust-note">
+            {{ t('plugins.trust.note') }}
+          </p>
 
           <div
             v-if="pendingGrantId === p.manifest.id"
@@ -306,8 +300,7 @@ import {
   AlertTriangle,
   FileCode,
   Hash as HashIcon,
-  ArrowLeft,
-} from '@lucide/vue'
+  } from '@lucide/vue'
 import type { PluginSettingItem } from '@/plugins/types'
 import { usePluginRuntimeStore } from '@/stores/pluginRuntime'
 import { useToast } from '@/composables/useToast'

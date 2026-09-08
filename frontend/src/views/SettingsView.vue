@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
-import { Settings, Palette, Keyboard, Info, ArrowLeft, Sparkles, Eye, EyeOff, AlertTriangle, PackageOpen } from '@lucide/vue'
+import { Settings, Palette, Keyboard, Info, Sparkles, Eye, EyeOff, AlertTriangle, PackageOpen, GitBranch } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
@@ -12,6 +12,7 @@ import type { Locale } from '@/i18n'
 import { FileService } from '@/api'
 import { confirmDialog } from '@/composables/useConfirm'
 import { useToast } from '@/composables/useToast'
+import ThemePreview from '@/components/settings/ThemePreview.vue'
 
 const { t } = useI18n()
 const toast = useToast()
@@ -77,13 +78,6 @@ const {
   onDragStart, onDrop, addCustomCommand, removeCustomCommand,
 } = useEditorToolbarSettings()
 
-function goBack() {
-  if (window.history.length > 1) {
-    router.back()
-  } else {
-    router.push('/')
-  }
-}
 
 const themes: { value: ThemeType; label: string }[] = [
   { value: 'macos', label: 'macOS' },
@@ -101,6 +95,7 @@ const sections = computed(() => [
   { id: 'rerank', label: t('settings.nav.rerank'), icon: Sparkles },
   { id: 'shortcuts', label: t('settings.nav.shortcuts'), icon: Keyboard },
   { id: 'assets', label: t('settings.nav.assets'), icon: PackageOpen },
+  { id: 'versioning', label: '版本与备份', icon: GitBranch },
   { id: 'errorReport', label: t('settings.nav.errorReport'), icon: AlertTriangle },
   { id: 'about', label: t('settings.nav.about'), icon: Info },
 ])
@@ -143,13 +138,6 @@ async function scrollToSection(id: string) {
 <template>
   <div class="settings-view">
     <div class="settings-sidebar">
-      <button
-        class="back-button"
-        @click="goBack"
-      >
-        <ArrowLeft :size="16" />
-        <span>{{ t('settings.back') }}</span>
-      </button>
       <h2 class="settings-title">
         {{ t('settings.title') }}
       </h2>
@@ -185,16 +173,14 @@ async function scrollToSection(id: string) {
             <span class="setting-label">{{ t('settings.appearance.theme') }}</span>
             <span class="setting-desc">{{ t('settings.appearance.themeDesc') }}</span>
           </div>
-          <div class="theme-options">
-            <button
+          <div class="theme-previews">
+            <ThemePreview
               v-for="th in themes"
               :key="th.value"
-              class="theme-option"
-              :class="{ active: settingsStore.settings.theme === th.value }"
-              @click="settingsStore.setTheme(th.value)"
-            >
-              {{ th.label }}
-            </button>
+              :theme="th.value"
+              :selected="settingsStore.settings.theme === th.value"
+              @select="settingsStore.setTheme"
+            />
           </div>
         </div>
 
@@ -247,9 +233,15 @@ async function scrollToSection(id: string) {
             <option value="system">
               {{ t('settings.appearance.fontSystem') }}
             </option>
-            <option value="inter">Inter</option>
-            <option value="segoe">Segoe UI</option>
-            <option value="yahei">Microsoft YaHei UI</option>
+            <option value="inter">
+              Inter
+            </option>
+            <option value="segoe">
+              Segoe UI
+            </option>
+            <option value="yahei">
+              Microsoft YaHei UI
+            </option>
           </select>
         </div>
 
@@ -265,10 +257,18 @@ async function scrollToSection(id: string) {
             <option value="theme">
               {{ t('settings.appearance.fontFollowTheme') }}
             </option>
-            <option value="jetbrains">JetBrains Mono</option>
-            <option value="cascadia">Cascadia Code</option>
-            <option value="fira">Fira Code</option>
-            <option value="consolas">Consolas</option>
+            <option value="jetbrains">
+              JetBrains Mono
+            </option>
+            <option value="cascadia">
+              Cascadia Code
+            </option>
+            <option value="fira">
+              Fira Code
+            </option>
+            <option value="consolas">
+              Consolas
+            </option>
           </select>
         </div>
       </div>
@@ -407,8 +407,12 @@ async function scrollToSection(id: string) {
                   v-model="cmd.type"
                   class="setting-select"
                 >
-                  <option value="wrap">{{ t('settings.editor.toolbar.cmdWrap') }}</option>
-                  <option value="regex">{{ t('settings.editor.toolbar.cmdRegex') }}</option>
+                  <option value="wrap">
+                    {{ t('settings.editor.toolbar.cmdWrap') }}
+                  </option>
+                  <option value="regex">
+                    {{ t('settings.editor.toolbar.cmdRegex') }}
+                  </option>
                 </select>
                 <template v-if="cmd.type === 'wrap'">
                   <input
@@ -475,11 +479,21 @@ async function scrollToSection(id: string) {
             v-model="settingsStore.settings.ai.protocol"
             class="setting-select"
           >
-            <option value="openai-chat">{{ t('settings.ai.protocolOpenAIChat') }}</option>
-            <option value="openai-responses">{{ t('settings.ai.protocolOpenAIResponses') }}</option>
-            <option value="anthropic-messages">{{ t('settings.ai.protocolAnthropicMessages') }}</option>
-            <option value="google-gemini">{{ t('settings.ai.protocolGoogleGemini') }}</option>
-            <option value="google-vertex">{{ t('settings.ai.protocolGoogleVertex') }}</option>
+            <option value="openai-chat">
+              {{ t('settings.ai.protocolOpenAIChat') }}
+            </option>
+            <option value="openai-responses">
+              {{ t('settings.ai.protocolOpenAIResponses') }}
+            </option>
+            <option value="anthropic-messages">
+              {{ t('settings.ai.protocolAnthropicMessages') }}
+            </option>
+            <option value="google-gemini">
+              {{ t('settings.ai.protocolGoogleGemini') }}
+            </option>
+            <option value="google-vertex">
+              {{ t('settings.ai.protocolGoogleVertex') }}
+            </option>
           </select>
         </div>
         <div
@@ -633,9 +647,15 @@ async function scrollToSection(id: string) {
             v-model="settingsStore.settings.embedding.provider"
             class="setting-select"
           >
-            <option value="ollama">{{ t('settings.embedding.providerOllama') }}</option>
-            <option value="siliconflow">{{ t('settings.embedding.providerSiliconflow') }}</option>
-            <option value="cohere">{{ t('settings.embedding.providerCohere') }}</option>
+            <option value="ollama">
+              {{ t('settings.embedding.providerOllama') }}
+            </option>
+            <option value="siliconflow">
+              {{ t('settings.embedding.providerSiliconflow') }}
+            </option>
+            <option value="cohere">
+              {{ t('settings.embedding.providerCohere') }}
+            </option>
           </select>
         </div>
         <div class="setting-item">
@@ -770,8 +790,12 @@ async function scrollToSection(id: string) {
             v-model="settingsStore.settings.rerank.provider"
             class="setting-select"
           >
-            <option value="">{{ t('settings.rerank.none') }}</option>
-            <option value="cohere">{{ t('settings.rerank.providerCohere') }}</option>
+            <option value="">
+              {{ t('settings.rerank.none') }}
+            </option>
+            <option value="cohere">
+              {{ t('settings.rerank.providerCohere') }}
+            </option>
           </select>
         </div>
         <div class="setting-item">
@@ -957,6 +981,26 @@ async function scrollToSection(id: string) {
 
       <!-- 5. 错误监控 -->
       <div
+        id="settings-section-versioning"
+        class="settings-section"
+      >
+        <h3 class="section-title">
+          版本与备份
+        </h3>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">Markdown 文件与 Git 版本记录</span><span class="setting-desc">查看当前工作区的版本状态、保存本地提交；知识库的“更多”菜单提供 Markdown 导出。</span>
+          </div>
+          <button
+            class="collection-button"
+            :disabled="!workspaceStore.hasWorkspace"
+            @click="router.push('/import#workspace-versioning')"
+          >
+            管理版本记录
+          </button>
+        </div>
+      </div>
+      <div
         id="settings-section-errorReport"
         class="settings-section"
       >
@@ -1023,6 +1067,9 @@ async function scrollToSection(id: string) {
 </template>
 
 <style scoped>
+.theme-previews { display: grid; grid-template-columns: repeat(3, minmax(145px, 1fr)); gap: 12px; width: 100%; margin-top: 12px; }
+.setting-item:has(.theme-previews) { flex-wrap: wrap; }
+@media (max-width: 1100px) { .theme-previews { grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); } }
 .settings-view {
   flex: 1;
   display: flex;
