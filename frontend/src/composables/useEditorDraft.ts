@@ -51,6 +51,14 @@ export function useEditorDraft(options: {
   const saveErrors = ref<Record<string, string>>({})
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   const reloadVersions = new WeakMap<EditorTab, number>()
+  const externalChangePaths = ref(new Set<string>())
+  const isApplyingExternalChanges = computed(() => externalChangePaths.value.size > 0)
+
+  // Reserve case aliases together: Windows may resolve differently cased paths
+  // to the same Markdown file. Keep each tab's original path for disk access.
+  function externalPathKey(path: string) {
+    return path.replace(/\\/g, '/').toLowerCase()
+  }
 
   function activeTab(): EditorTab | null {
     const i = options.activeTabIndex.value
@@ -59,15 +67,21 @@ export function useEditorDraft(options: {
 
   // 保存指定标签页
   async function saveTab(index: number): Promise<boolean> {
+    return persistTab(index, false)
+  }
+
+  async function persistTab(index: number, ownsExternalChange: boolean): Promise<boolean> {
     const tab = options.tabs.value[index]
     const wsPath = workspacePath()
     if (!tab || !wsPath || conflictedPaths.value.has(tab.path)) return false
+    if (externalChangePaths.value.has(externalPathKey(tab.path)) && !ownsExternalChange) return false
 
     const pending = pendingSaves.get(tab)
     if (pending) {
       await pending
       if (wsPath !== options.workspacePath.value || !options.tabs.value.includes(tab) || conflictedPaths.value.has(tab.path)) return false
-      return !tab.isDirty || saveTab(options.tabs.value.indexOf(tab))
+      if (externalChangePaths.value.has(externalPathKey(tab.path)) && !ownsExternalChange) return false
+      return !tab.isDirty || persistTab(options.tabs.value.indexOf(tab), ownsExternalChange)
     }
     const saving = writeTab(tab, wsPath)
     pendingSaves.set(tab, saving)
@@ -128,6 +142,8 @@ export function useEditorDraft(options: {
     if (!workspacePath()) return
     if (!payload?.path || !['modify', 'create'].includes(payload.type ?? '')) return
     const rel = payload.path
+    // A known backend mutation owns these files until its final disk reload.
+    if (externalChangePaths.value.has(externalPathKey(rel))) return
     const idx = options.findTabIndex(rel)
     if (idx < 0) return
     const tab = options.tabs.value[idx]!
@@ -156,6 +172,10 @@ export function useEditorDraft(options: {
       tab.isDirty = false
       clearConflict(tab.path)
     } catch (e) {
+      if (wsPath === options.workspacePath.value && options.tabs.value.includes(tab) && reloadVersions.get(tab) === version) {
+        markConflict(tab.path)
+        saveErrors.value[tab.path] = `无法读取文件最新内容：${e instanceof Error ? e.message : String(e)}`
+      }
       console.error('[conflict] reload failed:', e)
     }
   }
@@ -164,6 +184,49 @@ export function useEditorDraft(options: {
     const next = new Set(conflictedPaths.value)
     next.delete(path)
     conflictedPaths.value = next
+    delete saveErrors.value[path]
+  }
+
+  /** Flush and reserve every open file a backend Markdown operation may change. */
+  async function withExternalFileChanges(paths: string[], operation: () => Promise<void>): Promise<void> {
+    const wsPath = workspacePath()
+    if (!wsPath) throw new Error('工作区已变化，请重新打开文档')
+    if (isApplyingExternalChanges.value) throw new Error('上一项文档操作正在保存，请稍候')
+    const affected = new Set(paths.map(externalPathKey))
+    if (!affected.size) throw new Error('没有需要更新的文档')
+    externalChangePaths.value = affected
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
+    const originals = options.tabs.value.filter(tab => affected.has(externalPathKey(tab.path)))
+    let started = false
+    try {
+      for (const tab of originals) {
+        // A disk read begun before the reservation cannot replace newer content.
+        reloadVersions.set(tab, (reloadVersions.get(tab) ?? 0) + 1)
+        if (conflictedPaths.value.has(tab.path)) throw new Error(`请先处理文档冲突：${tab.path}`)
+        if ((tab.isDirty || pendingSaves.has(tab)) && !await persistTab(options.tabs.value.indexOf(tab), true)) {
+          throw new Error(`文档保存未完成，请先处理草稿：${tab.path}`)
+        }
+      }
+      if (workspacePath() !== wsPath || originals.some(tab => !options.tabs.value.includes(tab))) {
+        throw new Error('工作区或文档已变化，请重新打开沉淀窗口')
+      }
+      if (originals.some(tab => tab.isDirty || conflictedPaths.value.has(tab.path))) {
+        throw new Error('文档仍有未保存的修改或冲突，请保存后重试')
+      }
+      started = true
+      await operation()
+    } finally {
+      // Failed multi-file writes may still have changed a file. Reconcile before
+      // releasing the save lock; dirty text stays a conflict, never overwritten.
+      if (started && workspacePath() === wsPath) {
+        for (const tab of options.tabs.value.filter(tab => affected.has(externalPathKey(tab.path)))) {
+          await reloadTabFromDisk(options.tabs.value.indexOf(tab))
+        }
+      }
+      externalChangePaths.value = new Set()
+      const current = activeTab()
+      if (current?.isDirty && !affected.has(externalPathKey(current.path))) scheduleAutoSave()
+    }
   }
 
   const activeConflictPath = computed(() => {
@@ -246,6 +309,7 @@ export function useEditorDraft(options: {
   }
 
   async function flushAllTabs(): Promise<boolean> {
+    if (isApplyingExternalChanges.value) return false
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
     let saved = true
     for (let index = 0; index < options.tabs.value.length; index++) {
@@ -272,6 +336,8 @@ export function useEditorDraft(options: {
     scheduleAutoSave,
     flushDirtyTab,
     flushAllTabs,
+    withExternalFileChanges,
+    isApplyingExternalChanges,
     conflictedPaths,
     diffModal,
     activeConflictPath,

@@ -1,7 +1,7 @@
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { ReminderService, WorkbenchService } from '@/api'
-import type { InterviewCard, WorkbenchSnapshot, WorkbenchTask } from '@/api/workbench'
+import type { DistillRequest, InterviewCard, WorkbenchSnapshot, WorkbenchTask } from '@/api/workbench'
 import { useWorkspaceStore } from './workspace'
 import { localDateKey, selectReviewSession, selectTodayTasks } from '@/utils/workbench'
 
@@ -118,6 +118,9 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   function addTask(projectFolder: string, title: string, kind: string, due: string) {
     return mutate((path, day) => WorkbenchService.AddWorkbenchTask(path, projectFolder, title.trim(), kind, due, day))
   }
+  function distillKnowledge(request: DistillRequest) {
+    return mutate(path => WorkbenchService.DistillKnowledge(path, { ...request }))
+  }
 
   function updateDay() {
     const day = localDateKey()
@@ -137,5 +140,5 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     if (typeof window !== 'undefined') window.removeEventListener('focus', onFocus)
   })
 
-  return { snapshot, today, loading, busy, error, reminderError, tasks, projects, books, cards, documents, progress, radar, todayTasks, blockers, reviewQueue, reviewedToday, reviewTarget, dueCards, reminders, dueReminders, lastUpdated, warnings, refresh, scheduleRefresh, toggleTask, recordProgress, setBlocker, reviewCard, addTask }
+  return { snapshot, today, loading, busy, error, reminderError, tasks, projects, books, cards, documents, progress, radar, todayTasks, blockers, reviewQueue, reviewedToday, reviewTarget, dueCards, reminders, dueReminders, lastUpdated, warnings, refresh, scheduleRefresh, toggleTask, recordProgress, setBlocker, reviewCard, addTask, distillKnowledge }
 })

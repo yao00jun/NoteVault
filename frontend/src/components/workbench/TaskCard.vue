@@ -154,7 +154,7 @@ function openSource() {
         v-model="entry"
         type="text"
         :aria-label="mode === 'progress' ? '进展记录' : '阻塞原因'"
-        :placeholder="mode === 'progress' ? '记录进展，回车保存到任务与今日日记…' : '具体卡在哪里，需要谁来协助？'"
+        :placeholder="mode === 'progress' ? '记录进展，回车保存到任务原文…' : '具体卡在哪里，需要谁来协助？'"
         :disabled="store.busy"
         @keydown.enter="onEnter"
         @keydown.esc="mode = null"

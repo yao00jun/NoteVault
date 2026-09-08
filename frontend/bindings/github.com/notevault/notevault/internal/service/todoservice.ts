@@ -19,6 +19,14 @@ export function AddWorkbenchTask(workspacePath: string, projectFolder: string, t
 }
 
 /**
+ * DistillKnowledge appends linked learning assets without replacing project
+ * notes, existing chapters, or the later review state of a retried interview card.
+ */
+export function DistillKnowledge(workspacePath: string, req: $models.DistillRequest): $CancellablePromise<void> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.TodoService.DistillKnowledge", workspacePath, req);
+}
+
+/**
  * GetAllTodos 获取工作区中所有待办事项
  */
 export function GetAllTodos(workspacePath: string): $CancellablePromise<($models.TodoItem | null)[] | null> {

@@ -8,6 +8,7 @@ import { getActiveEditor } from '@/plugins/editorBridge'
 import { useSettingsStore } from '@/stores/settings'
 import { i18n } from '@/i18n'
 import MarkdownEditor from './MarkdownEditor.vue'
+import EditorToolbar from './EditorToolbar.vue'
 
 vi.mock('@/api', () => ({
   CredentialService: { GetCredential: vi.fn(async () => ''), SaveCredential: vi.fn(async () => undefined) },
@@ -28,6 +29,19 @@ function mountEditor() {
 }
 
 describe('document editor sessions', () => {
+  it('forwards the project distillation action from its Markdown toolbar without editing the note', async () => {
+    const wrapper = mountEditor()
+    useSettingsStore().settings.toolbar.mode = 'top'
+    await wrapper.setProps({ canDistill: true, isDistilling: false })
+    const toolbar = wrapper.findComponent(EditorToolbar)
+    expect(toolbar.props('canDistill')).toBe(true)
+    toolbar.vm.$emit('distill')
+    expect(wrapper.emitted('distill')).toHaveLength(1)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    await wrapper.setProps({ canDistill: false })
+    expect(toolbar.props('canDistill')).toBe(false)
+  })
+
   it('keeps undo and cursor per document and cannot undo into another file', async () => {
     const wrapper = mountEditor()
     const first = getActiveEditor()!

@@ -293,6 +293,19 @@ export interface DiffOp {
 }
 
 /**
+ * DistillRequest turns a saved project note into portable learning Markdown.
+ */
+export interface DistillRequest {
+    "sourceFile": string;
+    "targetMode": string;
+    "targetFolder": string;
+    "targetTitle": string;
+    "question": string;
+    "answer": string;
+    "summary": string;
+}
+
+/**
  * EmbeddingProbeResult 嵌入端点连通性自检结果（镜像 RerankProbeResult / LLMProbeResult）。
  * 供前端「设置 → 语义检索」页的「测试连接」按钮使用，让 embedding 配置在保存前
  * 就被明确校验——避免「以为配好、实际建向量索引才 404」的等待浪费，与「不静默」红线对齐。

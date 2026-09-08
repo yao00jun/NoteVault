@@ -81,6 +81,7 @@ export type {
     CompileResult,
     DayActivity,
     DiffOp,
+    DistillRequest,
     EmbeddingProbeResult,
     FileNode,
     GitStatus,

@@ -24,7 +24,7 @@ var (
 	workbenchStatusRE   = regexp.MustCompile(`(?:\[status::[ \t]*([a-z_-]+)\]|[（(]status:[ \t]*([a-z_-]+)[）)]|\bstatus:[ \t]*([a-z_-]+))`)
 	workbenchFenceRE    = regexp.MustCompile("^[ \\t]*(`{3,}|~{3,})(.*)$")
 	workbenchDateRE     = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
-	workbenchHeadingRE  = regexp.MustCompile(`^(?:\x{FEFF})?[ \t]{0,3}(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$`)
+	workbenchHeadingRE  = regexp.MustCompile(`^(?:\x{FEFF})?[ \t]{0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$`)
 )
 
 type workbenchLine struct {
@@ -91,29 +91,41 @@ func workbenchVisibleLines(lines []workbenchLine, content string) []bool {
 			continue
 		}
 		text := strings.TrimPrefix(line.text, "\ufeff")
-		if inComment {
-			if strings.Contains(text, "-->") {
-				inComment = false
-			}
-			continue
-		}
-		if fence == 0 {
-			if start := strings.Index(text, "<!--"); start >= 0 && !strings.Contains(text[start:], "-->") {
-				inComment = true
-				continue
-			}
-		}
-		if match := workbenchFenceRE.FindStringSubmatch(text); match != nil {
-			if fence == 0 {
-				fence, fenceLength = match[1][0], len(match[1])
-				continue
-			}
-			if match[1][0] == fence && len(match[1]) >= fenceLength && strings.TrimSpace(match[2]) == "" {
-				fence = 0
-				continue
+		if !inComment {
+			if match := workbenchFenceRE.FindStringSubmatch(text); match != nil {
+				if fence == 0 {
+					fence, fenceLength = match[1][0], len(match[1])
+					continue
+				}
+				if match[1][0] == fence && len(match[1]) >= fenceLength && strings.TrimSpace(match[2]) == "" {
+					fence = 0
+					continue
+				}
 			}
 		}
 		if fence != 0 {
+			continue
+		}
+		// Single-line comments stay visible to the task/SRS metadata parsers.
+		// Scan every boundary: a closed comment can be followed by an open one.
+		startedInComment := inComment
+		remaining := text
+		for {
+			if inComment {
+				end := strings.Index(remaining, "-->")
+				if end < 0 {
+					break
+				}
+				remaining, inComment = remaining[end+3:], false
+			} else {
+				start := strings.Index(remaining, "<!--")
+				if start < 0 {
+					break
+				}
+				remaining, inComment = remaining[start+4:], true
+			}
+		}
+		if startedInComment || inComment {
 			continue
 		}
 		visible[i] = true

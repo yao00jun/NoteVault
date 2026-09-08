@@ -114,8 +114,8 @@ func verifyWorkbenchChange(change workbenchChange) error {
 	return nil
 }
 
-// Stage both Markdown documents before committing progress. A failed second
-// write rolls back the first only while it still contains our exact new text.
+// Verify all Markdown changes before committing. A failed later write rolls back
+// earlier writes only while they still contain our exact new text.
 func commitWorkbenchChanges(changes ...workbenchChange) error {
 	for _, change := range changes {
 		if err := verifyWorkbenchChange(change); err != nil {
@@ -298,47 +298,9 @@ func (s *TodoService) updateWorkbenchTask(workspacePath, filePath string, lineIn
 		}
 		insert := workbenchLine{text: text, ending: ending}
 		file.lines = append(file.lines[:lineIndex+1], append([]workbenchLine{insert}, file.lines[lineIndex+1:]...)...)
-		change.after = joinWorkbenchLines(file.lines)
-		dailyPath := "Daily/" + date + ".md"
-		if strings.EqualFold(change.relative, dailyPath) {
-			return commitWorkbenchChanges(change)
-		}
-		daily, err := readWorkbenchChange(workspacePath, dailyPath)
-		if err != nil {
-			return err
-		}
-		daily.after = appendWorkbenchDailyProgress(daily.before, progress, string(metadata))
-		return commitWorkbenchChanges(daily, change)
 	}
 	change.after = joinWorkbenchLines(file.lines)
 	return commitWorkbenchChanges(change)
-}
-
-func appendWorkbenchDailyProgress(content string, progress WorkbenchProgress, metadata string) string {
-	newline := workbenchNewline(content)
-	if content == "" {
-		content = "# " + progress.At[:10] + newline + newline
-	}
-	text := "- " + progress.At[11:16] + " · " + html.EscapeString(progress.TaskTitle) + "：" + html.EscapeString(progress.Note) + " [[" + progress.FilePath + "]] <!-- workbench-mirror: " + metadata + " -->"
-	file := newWorkbenchFile("", content, "")
-	for i, line := range file.lines {
-		if !file.visible[i] || strings.TrimSpace(line.text) != "## 工作进展" {
-			continue
-		}
-		if file.lines[i].ending == "" {
-			file.lines[i].ending = newline
-		}
-		end := len(file.lines)
-		for j := i + 1; j < len(file.lines); j++ {
-			if heading := workbenchHeadingRE.FindStringSubmatch(file.lines[j].text); file.visible[j] && heading != nil && len(heading[1]) <= 2 {
-				end = j
-				break
-			}
-		}
-		before := joinWorkbenchLines(file.lines[:end])
-		return appendWorkbenchMarkdown(before, text, newline) + joinWorkbenchLines(file.lines[end:])
-	}
-	return appendWorkbenchMarkdown(content, newline+"## 工作进展"+newline+text, newline)
 }
 
 func (s *TodoService) ReadDailyReport(workspacePath, date string) (string, error) {
@@ -394,22 +356,27 @@ func (s *TodoService) AddWorkbenchTask(workspacePath, projectFolder, title, kind
 	if kind != "" && kind != "todo" && kind != "US" && kind != "DTS" && kind != "额外" {
 		return fmt.Errorf("未知任务类型：%s", kind)
 	}
-	relative := "Daily/" + date + ".md"
-	if projectFolder != "" {
-		projectFolder = strings.ReplaceAll(projectFolder, "\\", "/")
-		parts := strings.Split(projectFolder, "/")
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Projects") || parts[1] == "" || parts[1] == "." || parts[1] == ".." {
-			return fmt.Errorf("任务必须保存到 Projects 下的项目目录")
-		}
-		relative = projectFolder + "/Tasks.md"
+	const generalProjectFolder = "Projects/通用事务"
+	projectFolder = strings.ReplaceAll(projectFolder, "\\", "/")
+	if projectFolder == "" {
+		projectFolder = generalProjectFolder
 	}
+	parts := strings.Split(projectFolder, "/")
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Projects") || parts[1] == "" || parts[1] == "." || parts[1] == ".." {
+		return fmt.Errorf("任务必须保存到 Projects 下的项目目录")
+	}
+	generalProject := strings.EqualFold(projectFolder, generalProjectFolder)
+	if generalProject {
+		projectFolder = generalProjectFolder
+	}
+	relative := projectFolder + "/Tasks.md"
 	s.workbenchMu.Lock()
 	defer s.workbenchMu.Unlock()
 	change, err := readWorkbenchChange(workspacePath, relative)
 	if err != nil {
 		return err
 	}
-	change.requireParent = projectFolder != ""
+	change.requireParent = !generalProject
 	line := "- [ ] "
 	if kind != "" && kind != "todo" {
 		line += "[" + kind + "] "
@@ -421,17 +388,23 @@ func (s *TodoService) AddWorkbenchTask(workspacePath, projectFolder, title, kind
 	newline := workbenchNewline(change.before)
 	content := change.before
 	if content == "" {
-		if projectFolder == "" {
-			content = "# " + date + newline + newline
-		} else {
-			content = "# 任务清单" + newline + newline
-		}
+		content = "# 任务清单" + newline + newline
 	}
 	change.after = appendWorkbenchMarkdown(content, line, newline)
 	file := newWorkbenchFile(change.relative, change.after, "")
 	last := len(file.lines) - 1
 	if last < 0 || !file.visible[last] || parseWorkbenchTask(change.relative, last, file.lines[last].text) == nil {
 		return fmt.Errorf("任务无法显示，请检查标题以及文件末尾是否有未闭合的代码块或注释")
+	}
+	if generalProject {
+		project, err := readWorkbenchChange(workspacePath, projectFolder+"/project.md")
+		if err != nil {
+			return err
+		}
+		if !project.existed {
+			project.after = "---\ntitle: 通用事务\nstatus: 进行中\n---\n\n# 通用事务\n"
+			return commitWorkbenchChanges(project, change)
+		}
 	}
 	return commitWorkbenchChanges(change)
 }

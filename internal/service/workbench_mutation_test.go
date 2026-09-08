@@ -21,11 +21,11 @@ func workbenchWriter(t *testing.T, service *TodoService) workbenchTaskWriter {
 	return writer
 }
 
-func TestWorkbenchProgressIsReadableMirroredAndReconstructable(t *testing.T) {
+func TestWorkbenchProgressIsReadableAndReconstructableFromItsProject(t *testing.T) {
 	root := t.TempDir()
 	relative := "Projects/商城/Tasks.md"
 	source := "\ufeff# Tasks\r\n\r\n- [ ] [US] 订单接口 #date/2026-09-08  \r\n  - 保留已有细节\r\n\r\n- [ ] Next\r\n尾注"
-	daily := "# 私人日记\r\n保留流水账\r\n"
+	daily := "# 私人日记\r\n保留流水账\r\n\r\n## 工作进展\r\n- 08:00 · 历史镜像 <!-- workbench-mirror: {\"id\":\"legacy\",\"taskId\":\"Projects/商城/Tasks.md:2\",\"filePath\":\"Projects/商城/Tasks.md\",\"taskTitle\":\"订单接口\",\"project\":\"商城\",\"note\":\"历史镜像\",\"at\":\"2026-09-08T08:00:00+08:00\"} -->\r\n"
 	workbenchWrite(t, root, relative, source)
 	workbenchWrite(t, root, "Daily/2026-09-08.md", daily)
 	service := NewTodoService()
@@ -41,13 +41,12 @@ func TestWorkbenchProgressIsReadableMirroredAndReconstructable(t *testing.T) {
 	if strings.Count(updated, "\n") != strings.Count(updated, "\r\n") {
 		t.Fatal("progress changed the note's CRLF endings")
 	}
-	mirror := workbenchRead(t, root, "Daily/2026-09-08.md")
-	if !strings.HasPrefix(mirror, daily) || !strings.Contains(mirror, "订单接口") || !strings.Contains(mirror, "接口已联调") {
-		t.Fatalf("daily mirror must retain the diary and include task context: %q", mirror)
+	if got := workbenchRead(t, root, "Daily/2026-09-08.md"); got != daily {
+		t.Fatalf("project progress must leave the existing diary unchanged: %q", got)
 	}
 	rebuilt := workbenchSnapshot(t, NewTodoService(), root, "2026-09-08")
 	if len(rebuilt.Progress) != 1 || len(rebuilt.Tasks[0].Progress) != 1 || rebuilt.Progress[0].Note != note || rebuilt.Progress[0].ID == "" || !strings.HasPrefix(rebuilt.Progress[0].At, "2026-09-08T") {
-		t.Fatalf("progress reconstructs once from the task, without double-counting its diary mirror: %#v", rebuilt.Progress)
+		t.Fatalf("progress reconstructs once from the original task without counting a legacy diary mirror: %#v", rebuilt.Progress)
 	}
 	if rebuilt.Progress[0].TaskID != rebuilt.Tasks[0].ID || rebuilt.Progress[0].FilePath != relative {
 		t.Fatalf("progress belongs to its current Markdown task: %#v", rebuilt.Progress[0])
@@ -134,13 +133,39 @@ func TestWorkbenchTaskRejectsStaleUnsafeAndInvalidMutations(t *testing.T) {
 	}
 }
 
-func TestWorkbenchProgressPreflightsDailyMirrorBeforeChangingTask(t *testing.T) {
+func TestWorkbenchProgressDoesNotDependOnDailyStorage(t *testing.T) {
 	root := t.TempDir()
-	workbenchWrite(t, root, "Tasks.md", "- [ ] Keep me\n")
+	workbenchWrite(t, root, "Projects/A/Tasks.md", "- [ ] Keep me\n")
 	workbenchWrite(t, root, "Daily", "this is a file, not a folder")
-	err := workbenchWriter(t, NewTodoService()).UpdateWorkbenchTask(root, "Tasks.md", 0, "- [ ] Keep me", "progress", "cannot mirror", "2026-09-08")
-	if err == nil || workbenchRead(t, root, "Tasks.md") != "- [ ] Keep me\n" {
-		t.Fatalf("failure to prepare the daily mirror must leave the task unchanged: %v", err)
+	err := workbenchWriter(t, NewTodoService()).UpdateWorkbenchTask(root, "Projects/A/Tasks.md", 0, "- [ ] Keep me", "progress", "source only", "2026-09-08")
+	if err != nil {
+		t.Fatalf("recording project progress must not depend on a Daily folder: %v", err)
+	}
+	if got := workbenchRead(t, root, "Daily"); got != "this is a file, not a folder" {
+		t.Fatalf("progress changed unrelated Daily storage: %q", got)
+	}
+	snapshot := workbenchSnapshot(t, NewTodoService(), root, "2026-09-08")
+	if len(snapshot.Progress) != 1 || snapshot.Progress[0].Note != "source only" || snapshot.Progress[0].FilePath != "Projects/A/Tasks.md" {
+		t.Fatalf("the timeline must use the project's task progress: %#v", snapshot.Progress)
+	}
+}
+
+func TestWorkbenchProgressDoesNotCreateADailyDiary(t *testing.T) {
+	for _, relative := range []string{"Projects/A/Tasks.md", "Daily/2020-01-01.md"} {
+		t.Run(relative, func(t *testing.T) {
+			root := t.TempDir()
+			workbenchWrite(t, root, relative, "- [ ] Carryover\n")
+			if err := NewTodoService().UpdateWorkbenchTask(root, relative, 0, "- [ ] Carryover", "progress", "advanced today", "2026-09-08"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(filepath.Join(root, "Daily", "2026-09-08.md")); !os.IsNotExist(err) {
+				t.Fatalf("progress must not create another daily diary: %v", err)
+			}
+			snapshot := workbenchSnapshot(t, NewTodoService(), root, "2026-09-08")
+			if len(snapshot.Progress) != 1 || snapshot.Progress[0].FilePath != relative {
+				t.Fatalf("project and legacy task progress must remain editable at their source: %#v", snapshot.Progress)
+			}
+		})
 	}
 }
 
@@ -175,7 +200,7 @@ func TestWorkbenchDailyReportsPersistExactDraftAndPropagateErrors(t *testing.T) 
 	}
 }
 
-func TestWorkbenchAddTaskCreatesPortableProjectAndDailyTasks(t *testing.T) {
+func TestWorkbenchAddTaskCreatesPortableProjectAndGeneralTasks(t *testing.T) {
 	service := NewTodoService()
 	adder, ok := any(service).(interface {
 		AddWorkbenchTask(string, string, string, string, string, string) error
@@ -202,6 +227,15 @@ func TestWorkbenchAddTaskCreatesPortableProjectAndDailyTasks(t *testing.T) {
 		if task.Type == "US" && (task.Project != "A" || task.Due != "2026-09-10" || task.Title != "联调接口") {
 			t.Errorf("project task metadata: %#v", task)
 		}
+		if task.Type == "额外" && (task.Project != "通用事务" || task.FilePath != "Projects/通用事务/Tasks.md" || task.ProjectPath != "Projects/通用事务/project.md") {
+			t.Errorf("a general task must belong to its own project: %#v", task)
+		}
+	}
+	if len(snapshot.Projects) != 1 || snapshot.Projects[0].Name != "通用事务" || len(snapshot.Projects[0].TaskIDs) != 1 {
+		t.Errorf("the general project must be discoverable immediately: %#v", snapshot.Projects)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Daily")); !os.IsNotExist(err) {
+		t.Fatalf("adding a task must not create daily storage: %v", err)
 	}
 	if !strings.HasPrefix(workbenchRead(t, root, "Projects/A/Tasks.md"), "# Existing\r\nKeep this paragraph\r\n") {
 		t.Fatal("adding a task must preserve existing Markdown and newline style")
@@ -238,11 +272,59 @@ func TestWorkbenchLegacyToggleKeepsCompletionDatesConsistent(t *testing.T) {
 
 func TestWorkbenchAddTaskDoesNotWriteIntoAnUnclosedExample(t *testing.T) {
 	root := t.TempDir()
-	source := "# Daily\n```md\nexample that is still being edited\n"
-	workbenchWrite(t, root, "Daily/2026-09-08.md", source)
+	source := "# Tasks\n```md\nexample that is still being edited\n"
+	workbenchWrite(t, root, "Projects/通用事务/Tasks.md", source)
 	err := NewTodoService().AddWorkbenchTask(root, "", "Real task", "todo", "", "2026-09-08")
-	if err == nil || workbenchRead(t, root, "Daily/2026-09-08.md") != source {
+	if err == nil || workbenchRead(t, root, "Projects/通用事务/Tasks.md") != source {
 		t.Fatalf("an invisible task must not be silently written into a code sample: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "Projects", "通用事务", "project.md")); !os.IsNotExist(err) {
+		t.Fatalf("an invalid task must not partially create project metadata: %v", err)
+	}
+}
+
+func TestWorkbenchAddTaskInitializesExplicitGeneralProject(t *testing.T) {
+	for _, folder := range []string{"", "Projects/通用事务", "Projects\\通用事务"} {
+		t.Run(folder, func(t *testing.T) {
+			root := t.TempDir()
+			if err := NewTodoService().AddWorkbenchTask(root, folder, "处理报销", "todo", "", "2026-09-08"); err != nil {
+				t.Fatal(err)
+			}
+			snapshot := workbenchSnapshot(t, NewTodoService(), root, "2026-09-08")
+			if len(snapshot.Projects) != 1 || snapshot.Projects[0].Folder != "Projects/通用事务" || snapshot.Projects[0].Status != "进行中" || len(snapshot.Tasks) != 1 || snapshot.Tasks[0].FilePath != "Projects/通用事务/Tasks.md" {
+				t.Fatalf("empty or explicit general selection must create a discoverable project and task: %#v", snapshot)
+			}
+		})
+	}
+}
+
+func TestWorkbenchAddTaskPreservesExistingGeneralProjectMetadata(t *testing.T) {
+	for _, metadata := range []string{"", "\ufeff---\r\ntitle: 自定义杂务\r\nstatus: paused\r\ncustom: keep\r\n---\r\n手写说明  "} {
+		t.Run(metadata, func(t *testing.T) {
+			root := t.TempDir()
+			workbenchWrite(t, root, "Projects/通用事务/project.md", metadata)
+			if err := NewTodoService().AddWorkbenchTask(root, "Projects/通用事务", "一般事项", "todo", "", "2026-09-08"); err != nil {
+				t.Fatal(err)
+			}
+			if got := workbenchRead(t, root, "Projects/通用事务/project.md"); got != metadata {
+				t.Fatalf("an existing project.md must be preserved verbatim, including an empty file: %q", got)
+			}
+		})
+	}
+}
+
+func TestWorkbenchAddTaskPreflightsGeneralProjectMetadata(t *testing.T) {
+	root := t.TempDir()
+	source := "# Existing tasks\r\n- [ ] Keep me\r\n"
+	workbenchWrite(t, root, "Projects/通用事务/Tasks.md", source)
+	if err := os.Mkdir(filepath.Join(root, "Projects", "通用事务", "project.md"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewTodoService().AddWorkbenchTask(root, "Projects/通用事务", "cannot save", "todo", "", "2026-09-08"); err == nil {
+		t.Fatal("invalid project metadata must reject the whole change")
+	}
+	if got := workbenchRead(t, root, "Projects/通用事务/Tasks.md"); got != source {
+		t.Fatalf("metadata preparation failure must leave tasks unchanged: %q", got)
 	}
 }
 

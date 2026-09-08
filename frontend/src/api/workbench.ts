@@ -1,5 +1,15 @@
 import { Call } from '@wailsio/runtime'
 
+export interface DistillRequest {
+  sourceFile: string
+  targetMode: 'book' | 'interview'
+  targetFolder: string
+  targetTitle: string
+  question: string
+  answer: string
+  summary: string
+}
+
 export interface WorkbenchDocument {
   path: string
   title: string
@@ -94,6 +104,9 @@ const service = 'github.com/notevault/notevault/internal/service.TodoService'
 
 /** The existing registered TodoService owns the Markdown workbench domain. */
 export const WorkbenchService = {
+  DistillKnowledge(workspacePath: string, request: DistillRequest): Promise<void> {
+    return Call.ByName(`${service}.DistillKnowledge`, workspacePath, request)
+  },
   GetWorkbench(workspacePath: string, date: string): Promise<WorkbenchSnapshot> {
     return Call.ByName(`${service}.GetWorkbench`, workspacePath, date)
   },

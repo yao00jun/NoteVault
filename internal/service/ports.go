@@ -86,6 +86,7 @@ type TodoOperator interface {
 	ReadDailyReport(workspacePath string, date string) (string, error)
 	SaveDailyReport(workspacePath string, date string, content string, expectedContent string) (string, error)
 	AddWorkbenchTask(workspacePath string, projectFolder string, title string, kind string, due string, date string) error
+	DistillKnowledge(workspacePath string, req DistillRequest) error
 }
 
 // ---------------------------------------------------------------------------

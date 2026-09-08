@@ -12,8 +12,10 @@ import type { FileNode } from '@/components/editor/FileTree.vue'
 import MarkdownEditor from '@/components/editor/MarkdownEditor.vue'
 import MarkdownPreview from '@/components/editor/MarkdownPreview.vue'
 import DocumentPropertiesPanel from '@/components/editor/DocumentPropertiesPanel.vue'
+import DistillKnowledgeModal from '@/components/workbench/DistillKnowledgeModal.vue'
 import { buildContent, extractTags, splitFrontMatter } from '@/utils/frontmatter'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useWorkbenchStore } from '@/stores/workbench'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
@@ -30,9 +32,13 @@ import { useEditorDraft, type EditorTab } from '@/composables/useEditorDraft'
 import { useEditorBacklinks } from '@/composables/useEditorBacklinks'
 import { editorSession, registerEditorFlush } from '@/composables/useEditorSession'
 import { normalizeNotePath } from '@/utils/navigation'
+import { findFileByName } from '@/utils/wikiLinkFiles'
 import { useEditorLayout } from '@/composables/useEditorLayout'
+import { distillationPaths, distillNoteTitle, isProjectMarkdown, type DistillationSource } from '@/utils/distillKnowledge'
+import type { DistillRequest } from '@/api/workbench'
 
 const workspaceStore = useWorkspaceStore()
+const workbenchStore = useWorkbenchStore()
 const route = useRoute()
 const router = useRouter()
 const settingsStore = useSettingsStore()
@@ -46,6 +52,8 @@ type Tab = EditorTab
 const fileTree = ref<FileNode[]>([])
 const tabs = ref<Tab[]>([])
 const activeTabIndex = ref(-1)
+const distillSource = ref<DistillationSource | null>(null)
+const preparingDistillation = ref(false)
 const { mainRef, panesRef, treeWidth, showTree, overlayTree, splitPercent, effectiveViewMode, toggleTree, toggleViewMode, beginResize, adjust } = useEditorLayout()
 let openFileVersion = 0
 
@@ -56,6 +64,7 @@ const activeTab = computed(() => {
   }
   return null
 })
+const canDistill = computed(() => !!activeTab.value && isProjectMarkdown(activeTab.value.path))
 
 // 编辑器只显示正文（front matter 元数据不在正文区渲染）；
 // 编辑/保存时透明地与 front matter 合并，文件中仍保留元数据（兼容 Obsidian / git）。
@@ -187,6 +196,8 @@ const {
   scheduleAutoSave,
   flushDirtyTab,
   flushAllTabs,
+  withExternalFileChanges,
+  isApplyingExternalChanges,
   conflictedPaths,
   diffModal,
   activeConflictPath,
@@ -205,6 +216,40 @@ const {
 })
 
 const unregisterFlush = registerEditorFlush(flushAllTabs)
+
+async function openDistillModal() {
+  const tab = activeTab.value
+  const workspacePath = currentWorkspace.value?.path
+  if (!tab || !workspacePath || !canDistill.value || preparingDistillation.value || isApplyingExternalChanges.value) return
+  preparingDistillation.value = true
+  try {
+    // Synchronize the source before taking the immutable extraction snapshot.
+    await withExternalFileChanges([tab.path], async () => undefined)
+    if (currentWorkspace.value?.path !== workspacePath || activeTab.value !== tab || route.path !== '/editor') return
+    if (conflictedPaths.value.has(tab.path)) throw new Error('请先处理来源文档的保存错误或冲突，再沉淀知识。')
+    distillSource.value = { workspacePath, path: tab.path, title: distillNoteTitle(tab.name, tab.content), content: tab.content }
+  } catch (cause) {
+    if (currentWorkspace.value?.path === workspacePath) toast.warning(cause instanceof Error ? cause.message : String(cause))
+  } finally {
+    preparingDistillation.value = false
+  }
+}
+
+async function persistDistillation(request: DistillRequest) {
+  const source = distillSource.value
+  if (!source || request.sourceFile !== source.path || currentWorkspace.value?.path !== source.workspacePath) {
+    throw new Error('来源文档或工作区已变化，请重新打开沉淀窗口')
+  }
+  await withExternalFileChanges(distillationPaths(request), async () => {
+    if (currentWorkspace.value?.path !== source.workspacePath) throw new Error('工作区已变化，请重新打开文档')
+    await workbenchStore.distillKnowledge(request)
+  })
+}
+
+function onDistilled(path: string) {
+  toast.success(`知识已保存到 ${path}`)
+  if (activeConflictPath.value) toast.warning('文件已更新，另有编辑器草稿需要处理，请查看冲突提示。')
+}
 watch(() => [activeTab.value?.path, activeTab.value?.isDirty, isSaving.value, saveErrors.value, activeConflictPath.value, wordCount.value, tabs.value.filter(tab => tab.isDirty).length], () => {
   if (workspaceStore.currentWorkspace?.path !== sessionWorkspacePath) return
   const tab = activeTab.value
@@ -537,21 +582,6 @@ function cssEscape(s: string): string {
   }
 }
 
-// 按文件名查找文件
-function findFileByName(nodes: FileNode[], name: string): FileNode | null {
-  for (const node of nodes) {
-    const nodeName = node.name.replace(/\.md$/, '').replace(/\.markdown$/, '')
-    if (nodeName === name || node.name === name) {
-      return node
-    }
-    if (node.children) {
-      const found = findFileByName(node.children, name)
-      if (found) return found
-    }
-  }
-  return null
-}
-
 // 新建指定名称的文件
 async function handleNewFileWithName(fileName: string) {
   if (!currentWorkspace.value) return
@@ -875,7 +905,7 @@ function escapeHtml(s: string): string {
 // onDeactivated 才能覆盖"切页面前最后 1 秒（一个 debounce 窗口）的编辑"；
 // dispose 保留作真卸载时的兜底。注意 deactivated 时不能清 saveTimer：
 // 组件仍保活，用户可能切回来继续编辑，定时器要照常工作。
-onDeactivated(flushDirtyTab)
+onDeactivated(() => { distillSource.value = null; flushDirtyTab() })
 onBeforeUnmount(() => {
   unregisterFlush()
   disposeDraft()
@@ -925,6 +955,7 @@ onMounted(async () => {
 // 工作区变化时重新加载文件树并清空标签页
 watch(() => currentWorkspace.value?.path, () => {
   openFileVersion++
+  distillSource.value = null
   tabs.value = []
   activeTabIndex.value = -1
   loadFileTree()
@@ -966,6 +997,8 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       :tree-open="showTree"
       :is-exporting="isExporting"
       :is-compiling="isCompiling"
+      :is-distilling="preparingDistillation || isApplyingExternalChanges"
+      @distill="openDistillModal"
       @switch-tab="switchToTab"
       @close-tab="closeTab"
       @new-file="handleNewFile(newDocumentFolder)"
@@ -1108,7 +1141,11 @@ watch(() => workspaceStore.fileTreeVersion, () => {
                 <MarkdownEditor
                   v-model="fileContent"
                   :document-id="`${currentWorkspace?.path}/${activeTab.path}`"
+                  :can-distill="canDistill"
+                  :is-distilling="preparingDistillation || isApplyingExternalChanges"
+                  :readonly="isApplyingExternalChanges"
                   data-testid="editor-input"
+                  @distill="openDistillModal"
                   @save="saveCurrentTab"
                   @paste-image="handlePasteImage"
                 />
@@ -1166,6 +1203,13 @@ watch(() => workspaceStore.fileTreeVersion, () => {
         @insert="insertSummaryToNote"
       />
     </div>
+    <DistillKnowledgeModal
+      v-if="distillSource"
+      :source="distillSource"
+      :persist="persistDistillation"
+      @saved="onDistilled"
+      @close="distillSource = null"
+    />
     <!-- 冲突对比弹窗 -->
     <div
       v-if="diffModal"

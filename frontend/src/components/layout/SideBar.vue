@@ -14,7 +14,7 @@ import {
   Check,
   Zap,
   BookOpen,
-  Calendar,
+  FileCheck2,
   Rocket,
   Pin,
   PinOff,
@@ -29,13 +29,13 @@ import { useI18n } from 'vue-i18n'
 import { FileService, WorkspaceService } from '@/api'
 import { useToast } from '@/composables/useToast'
 import { promptDialog } from '@/composables/usePrompt'
-import { useDailyNote } from '@/composables/useDailyNote'
+import { useWorkLog } from '@/composables/useWorkLog'
 import { usePageContext } from '@/composables/usePageContext'
 import { flushOpenEditor } from '@/composables/useEditorSession'
 import { requestSourceImport } from '@/composables/useSourceImport'
 
 const toast = useToast()
-const { openTodayNote } = useDailyNote()
+const { openTodayWorkLog } = useWorkLog()
 
 const { t } = useI18n()
 const settingsStore = useSettingsStore()
@@ -513,12 +513,12 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-wi
         <button
           class="action-btn"
           data-testid="action-daily"
-          :title="t('sidebar.nav.daily')"
-          :aria-label="t('sidebar.nav.daily')"
-          @click="openTodayNote"
+          title="每日工作日志 / 汇报"
+          aria-label="每日工作日志 / 汇报"
+          @click="openTodayWorkLog"
         >
-          <Calendar :size="15" />
-          <span v-if="!collapsed">{{ t('sidebar.nav.daily') }}</span>
+          <FileCheck2 :size="15" />
+          <span v-if="!collapsed">每日工作日志</span>
         </button>
         <button
           class="action-btn report-btn"

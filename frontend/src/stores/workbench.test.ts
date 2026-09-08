@@ -4,9 +4,9 @@ import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { flushPromises } from '@vue/test-utils'
 import type { WorkbenchSnapshot, WorkbenchTask } from '@/api/workbench'
 
-const api = vi.hoisted(() => ({ snapshot: vi.fn(), update: vi.fn(), review: vi.fn(), add: vi.fn(), reminders: vi.fn() }))
+const api = vi.hoisted(() => ({ snapshot: vi.fn(), update: vi.fn(), review: vi.fn(), add: vi.fn(), distill: vi.fn(), reminders: vi.fn() }))
 vi.mock('@/api', () => ({
-  WorkbenchService: { GetWorkbench: api.snapshot, UpdateWorkbenchTask: api.update, ReviewInterviewCard: api.review, AddWorkbenchTask: api.add },
+  WorkbenchService: { GetWorkbench: api.snapshot, UpdateWorkbenchTask: api.update, ReviewInterviewCard: api.review, AddWorkbenchTask: api.add, DistillKnowledge: api.distill },
   ReminderService: { GetAllReminders: api.reminders },
 }))
 import { useWorkbenchStore } from './workbench'
@@ -30,6 +30,39 @@ beforeEach(() => {
 afterEach(() => { disposePinia(pinia); vi.useRealTimers() })
 
 describe('workbench derived state', () => {
+  it('refreshes the Markdown projection and file tree after knowledge distillation', async () => {
+    const workspace = useWorkspaceStore()
+    workspace.setCurrentWorkspace(ws('a'))
+    const store = useWorkbenchStore()
+    await flushPromises()
+    const before = workspace.fileTreeVersion
+    const request = { sourceFile: 'Projects/A/复盘.md', targetMode: 'book' as const, targetFolder: 'Learning/Go', targetTitle: '并发', summary: '限制并发', question: '', answer: '' }
+    await store.distillKnowledge(request)
+    expect(api.distill).toHaveBeenCalledWith('/vault/a', request)
+    expect(workspace.fileTreeVersion).toBe(before + 1)
+    expect(api.snapshot).toHaveBeenCalledTimes(2)
+    expect(store.busy).toBe(false)
+  })
+
+  it('does not refresh a different workspace when an earlier distillation finishes', async () => {
+    let finish!: () => void
+    api.distill.mockImplementation(() => new Promise<void>(resolve => { finish = resolve }))
+    const workspace = useWorkspaceStore()
+    workspace.setCurrentWorkspace(ws('a'))
+    const store = useWorkbenchStore()
+    await flushPromises()
+    const saving = store.distillKnowledge({ sourceFile: 'Projects/A/复盘.md', targetMode: 'interview', targetFolder: 'Learning/面试宝典', targetTitle: 'Go', summary: '', question: '如何定位？', answer: '观察指标' })
+    workspace.setCurrentWorkspace(ws('b'))
+    await flushPromises()
+    const version = workspace.fileTreeVersion
+    const reads = api.snapshot.mock.calls.length
+    finish()
+    await saving
+    expect(workspace.fileTreeVersion).toBe(version)
+    expect(api.snapshot).toHaveBeenCalledTimes(reads)
+    expect(store.busy).toBe(false)
+  })
+
   it('discards a late response from the previous workspace', async () => {
     let finishOld!: (value: WorkbenchSnapshot) => void
     api.snapshot.mockImplementation((path: string) => path === '/vault/a' ? new Promise(resolve => { finishOld = resolve }) : Promise.resolve(snapshot()))

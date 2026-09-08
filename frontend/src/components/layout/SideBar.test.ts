@@ -6,7 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { nextTick } from 'vue'
 import { i18n } from '@/i18n'
 
-// Keep stores and daily-note behavior real; replace only native service boundaries.
+// Keep stores and work-log behavior real; replace only native service boundaries.
 vi.mock('@/api', async () => ({
   WorkbenchService: (await import('@/api/workbench')).WorkbenchService,
   ReminderService: { GetAllReminders: vi.fn().mockResolvedValue([]) },
@@ -52,10 +52,10 @@ import SideBar from './SideBar.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkbenchStore } from '@/stores/workbench'
-import { FileService, WorkbenchService } from '@/api'
+import { FileService, TemplateService, WorkbenchService } from '@/api'
 import type { WorkbenchSnapshot } from '@/api/workbench'
 import { promptDialog } from '@/composables/usePrompt'
-import { todayNotePath } from '@/composables/useDailyNote'
+import { localDateKey } from '@/utils/workbench'
 import { resetToasts, useToast } from '@/composables/useToast'
 
 const workspace = { id: 'ws_1', name: '我的笔记库', path: '/tmp/vault', createdAt: '', lastOpenedAt: '' }
@@ -89,6 +89,7 @@ describe('SideBar', () => {
     localStorage.clear()
     document.body.innerHTML = ''
     vi.clearAllMocks()
+    vi.mocked(WorkbenchService.ReadDailyReport).mockReset().mockResolvedValue('')
     resetToasts()
   })
 
@@ -104,7 +105,7 @@ describe('SideBar', () => {
       'nav-today', 'nav-projects', 'nav-learning', 'nav-vault',
     ])
     expect(wrapper.find('[data-testid="action-new"]').text()).toContain('新建')
-    expect(wrapper.find('[data-testid="action-daily"]').text()).toContain('今日日记')
+    expect(wrapper.find('[data-testid="action-daily"]').text()).toContain('每日工作日志')
     expect(wrapper.find('[data-testid="action-report"]').text()).toContain('生成日报')
     expect(wrapper.find('[data-testid="sidebar-pins"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="sidebar-recent"]').exists()).toBe(true)
@@ -119,7 +120,7 @@ describe('SideBar', () => {
     expect(wrapper.get('[data-testid="nav-' + destination + '"]').attributes('aria-current')).toBe('page')
   })
 
-  it('opens Today when the daily action has no workspace', async () => {
+  it('opens Today when the work-log action has no workspace', async () => {
     const { wrapper, router } = mountSideBar()
     await flushPromises()
     await wrapper.get('[data-testid="action-daily"]').trigger('click')
@@ -127,15 +128,51 @@ describe('SideBar', () => {
     expect(router.currentRoute.value.path).toBe('/today')
   })
 
-  it('opens the current daily note through the shared daily-note behavior', async () => {
+  it('opens the saved daily report without creating a diary', async () => {
     const { wrapper, workspaceStore, router } = mountSideBar()
+    vi.mocked(WorkbenchService.ReadDailyReport).mockResolvedValueOnce('# 今日工作汇报\n已完成联调')
     workspaceStore.setCurrentWorkspace({ ...workspace })
     await flushPromises()
     await wrapper.get('[data-testid="action-daily"]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/editor')
-    expect(router.currentRoute.value.query.file).toBe(todayNotePath())
-    expect(workspaceStore.activeFile).toBe(todayNotePath())
+    expect(router.currentRoute.value.query.file).toBe(`Daily/Reports/${localDateKey()}-日报.md`)
+    expect(workspaceStore.activeFile).toBe(`Daily/Reports/${localDateKey()}-日报.md`)
+    expect(WorkbenchService.ReadDailyReport).toHaveBeenCalledWith('/tmp/vault', localDateKey())
+    expect(FileService.CreateFile).not.toHaveBeenCalled()
+    expect(TemplateService.CreateFromTemplate).not.toHaveBeenCalled()
+  })
+
+  it('opens the existing generator when today has no saved work log', async () => {
+    const { wrapper, workspaceStore, router } = mountSideBar()
+    workspaceStore.setCurrentWorkspace({ ...workspace })
+    await router.push('/projects')
+    const openReport = vi.fn()
+    window.addEventListener('notevault:daily-report', openReport)
+    try {
+      await wrapper.get('[data-testid="action-daily"]').trigger('click')
+      await flushPromises()
+      expect(openReport).toHaveBeenCalledTimes(1)
+      expect(router.currentRoute.value.path).toBe('/projects')
+      expect(workspaceStore.activeFile).toBeNull()
+      expect(useToast().toasts.value.some(toast => toast.kind === 'info' && toast.message.includes('尚未生成'))).toBe(true)
+      expect(FileService.CreateFile).not.toHaveBeenCalled()
+      expect(TemplateService.CreateFromTemplate).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('notevault:daily-report', openReport)
+    }
+  })
+
+  it('surfaces a work-log read error without routing to a nonexistent report', async () => {
+    const { wrapper, workspaceStore, router } = mountSideBar()
+    workspaceStore.setCurrentWorkspace({ ...workspace })
+    await router.push('/projects')
+    vi.mocked(WorkbenchService.ReadDailyReport).mockRejectedValueOnce(new Error('没有读取权限'))
+    await wrapper.get('[data-testid="action-daily"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/projects')
+    expect(workspaceStore.activeFile).toBeNull()
+    expect(useToast().toasts.value.some(toast => toast.kind === 'error' && toast.message.includes('没有读取权限'))).toBe(true)
   })
 
   it('opens the shared report preview without changing the current page', async () => {
@@ -256,7 +293,7 @@ describe('SideBar', () => {
     await nextTick()
     expect(wrapper.findAll('.nav-label')).toHaveLength(0)
     expect(wrapper.findAll('.nav-item.collapsed')).toHaveLength(4)
-    expect(wrapper.get('[data-testid="action-daily"]').attributes('aria-label')).toContain('今日日记')
+    expect(wrapper.get('[data-testid="action-daily"]').attributes('aria-label')).toContain('每日工作日志')
     expect(wrapper.get('[data-testid="action-report"]').attributes('aria-label')).toContain('生成日报')
   })
 

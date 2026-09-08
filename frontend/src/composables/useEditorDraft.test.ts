@@ -42,6 +42,148 @@ function mountDraft() {
 }
 
 describe('editor and Markdown workbench integration', () => {
+  it('flushes affected drafts and prevents stale saves until a distillation backlink has reloaded', async () => {
+    const { draft, tabs } = mountDraft()
+    const source = tabs.value[0]!
+    source.content = 'My latest project notes'
+    source.isDirty = true
+    let disk = ''
+    vi.mocked(FileService.SaveFile).mockImplementation((_workspace, _path, content) => {
+      disk = content
+      return Promise.resolve() as ReturnType<typeof FileService.SaveFile>
+    })
+    vi.mocked(FileService.ReadFile).mockImplementation(() => Promise.resolve(disk) as ReturnType<typeof FileService.ReadFile>)
+    let finish!: () => void
+    const mutation = vi.fn(async () => {
+      expect(disk).toBe('My latest project notes')
+      await new Promise<void>(resolve => { finish = resolve })
+      disk += '\n\n> 💡 [[Learning/Go/Note.md|知识]]\n'
+    })
+
+    const changing = draft.withExternalFileChanges([source.path], mutation)
+    await flushPromises()
+    expect(mutation).toHaveBeenCalledTimes(1)
+    expect(await draft.saveTab(0)).toBe(false)
+    expect(await draft.flushAllTabs()).toBe(false)
+    finish()
+    await changing
+
+    expect(source.content).toBe(disk)
+    expect(source.isDirty).toBe(false)
+    expect(FileService.SaveFile).toHaveBeenCalledTimes(1)
+    expect(await draft.flushAllTabs()).toBe(true)
+  })
+
+  it('preserves typing made during distillation as a conflict rather than erasing the saved backlink', async () => {
+    vi.useFakeTimers()
+    const { draft, tabs, activeTabIndex } = mountDraft()
+    activeTabIndex.value = 0
+    const source = tabs.value[0]!
+    let finish!: () => void
+    vi.mocked(FileService.ReadFile).mockResolvedValue('Source\n> 💡 saved backlink')
+    const changing = draft.withExternalFileChanges([source.path], () => new Promise<void>(resolve => { finish = resolve }))
+    await flushPromises()
+    source.content = 'New unsaved typing'
+    source.isDirty = true
+    draft.scheduleAutoSave()
+    await vi.advanceTimersByTimeAsync(300)
+    finish()
+    await changing
+
+    expect(source.content).toBe('New unsaved typing')
+    expect(source.isDirty).toBe(true)
+    expect(draft.conflictedPaths.value.has(source.path)).toBe(true)
+    expect(await draft.saveTab(0)).toBe(false)
+    expect(FileService.SaveFile).not.toHaveBeenCalled()
+  })
+
+  it('waits for an already running source save before starting the backend mutation', async () => {
+    const { draft, tabs } = mountDraft()
+    let finishSave!: () => void
+    vi.mocked(FileService.SaveFile).mockImplementationOnce(() => new Promise<void>(resolve => { finishSave = resolve }) as ReturnType<typeof FileService.SaveFile>)
+    tabs.value[0]!.isDirty = true
+    const saving = draft.saveTab(0)
+    const mutation = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(FileService.ReadFile).mockResolvedValue('Source with backlink')
+    const changing = draft.withExternalFileChanges([tabs.value[0]!.path], mutation)
+    await flushPromises()
+    expect(mutation).not.toHaveBeenCalled()
+    finishSave()
+    await Promise.all([saving, changing])
+    expect(mutation).toHaveBeenCalledTimes(1)
+    expect(tabs.value[0]!.content).toBe('Source with backlink')
+  })
+
+  it('reserves Windows case aliases of an open interview topic before a delayed save can erase the new card', async () => {
+    const { draft, tabs } = mountDraft()
+    tabs.value[1] = { path: 'Learning/面试宝典/Go.md', name: 'Go.md', content: 'Existing topic draft', isDirty: true, lastSavedAt: '' }
+    let finishSave!: () => void
+    let topicDisk = 'Existing topic'
+    vi.mocked(FileService.SaveFile).mockImplementationOnce((_workspace, _path, content) => new Promise<void>(resolve => {
+      finishSave = () => { topicDisk = content; resolve() }
+    }) as ReturnType<typeof FileService.SaveFile>)
+    vi.mocked(FileService.ReadFile).mockImplementation((_workspace, path) => Promise.resolve(path.toLowerCase().endsWith('/go.md') ? topicDisk : tabs.value[0]!.content) as ReturnType<typeof FileService.ReadFile>)
+    const saving = draft.saveTab(1)
+    const appendCard = vi.fn(async () => { topicDisk += '\nNEW SRS CARD' })
+    const changing = draft.withExternalFileChanges([tabs.value[0]!.path, 'Learning/面试宝典/go.md'], appendCard)
+    await flushPromises()
+    expect(appendCard).not.toHaveBeenCalled()
+    expect(await draft.saveTab(1)).toBe(false)
+    finishSave()
+    await Promise.all([saving, changing])
+    expect(topicDisk).toBe('Existing topic draft\nNEW SRS CARD')
+    expect(tabs.value[1]!.content).toBe(topicDisk)
+    expect(tabs.value[1]!.isDirty).toBe(false)
+    expect(FileService.SaveFile).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not run distillation if saving fails or the source has an unresolved conflict', async () => {
+    const { draft, tabs } = mountDraft()
+    tabs.value[0]!.isDirty = true
+    const mutation = vi.fn()
+    vi.mocked(FileService.SaveFile).mockRejectedValue(new Error('disk full'))
+    await expect(draft.withExternalFileChanges([tabs.value[0]!.path], mutation)).rejects.toThrow('保存')
+    draft.conflictedPaths.value.add(tabs.value[0]!.path)
+    await expect(draft.withExternalFileChanges([tabs.value[0]!.path], mutation)).rejects.toThrow('冲突')
+    expect(mutation).not.toHaveBeenCalled()
+    expect(tabs.value[0]!.isDirty).toBe(true)
+  })
+
+  it('reconciles partial backend writes on failure before allowing any later save', async () => {
+    const { draft, tabs } = mountDraft()
+    vi.mocked(FileService.ReadFile).mockResolvedValue('Source with recovered badge')
+    await expect(draft.withExternalFileChanges([tabs.value[0]!.path], async () => {
+      throw new Error('target write failed')
+    })).rejects.toThrow('target write failed')
+    expect(tabs.value[0]!.content).toBe('Source with recovered badge')
+    expect(FileService.SaveFile).not.toHaveBeenCalled()
+  })
+
+  it('blocks a stale source save if the post-distillation reload fails', async () => {
+    const { draft, tabs } = mountDraft()
+    vi.mocked(FileService.ReadFile).mockRejectedValue(new Error('read unavailable'))
+    await draft.withExternalFileChanges([tabs.value[0]!.path], async () => undefined)
+    expect(draft.conflictedPaths.value.has(tabs.value[0]!.path)).toBe(true)
+    expect(await draft.saveTab(0)).toBe(false)
+    expect(FileService.SaveFile).not.toHaveBeenCalled()
+  })
+
+  it('does not start distillation after its source workspace changes while flushing', async () => {
+    const { draft, tabs, workspace } = mountDraft()
+    let finishSave!: () => void
+    tabs.value[0]!.isDirty = true
+    vi.mocked(FileService.SaveFile).mockImplementationOnce(() => new Promise<void>(resolve => { finishSave = resolve }) as ReturnType<typeof FileService.SaveFile>)
+    const mutation = vi.fn()
+    const changing = draft.withExternalFileChanges([tabs.value[0]!.path], mutation)
+    const result = expect(changing).rejects.toThrow()
+    await flushPromises()
+    workspace.value = '/workspace-b'
+    finishSave()
+    await result
+    expect(mutation).not.toHaveBeenCalled()
+    expect(FileService.ReadFile).not.toHaveBeenCalled()
+  })
+
   it('flushes inactive dirty tabs and retains failed drafts until a successful retry', async () => {
     const { draft, tabs } = mountDraft()
     for (const tab of tabs.value) tab.isDirty = true

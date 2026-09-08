@@ -40,12 +40,15 @@ const props = defineProps<{
   modelValue: string
   documentId?: string
   readonly?: boolean
+  canDistill?: boolean
+  isDistilling?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   'save': []
   'paste-image': [payload: { file: File; insertText: (text: string) => void }]
+  distill: []
 }>()
 
 const { t } = useI18n()
@@ -542,6 +545,9 @@ defineExpose({
       ref="toolbarRef"
       :brush-active="brushActive"
       :floating-style="settingsStore.settings.toolbar.mode === 'floating' ? floatingStyle : null"
+      :can-distill="canDistill"
+      :is-distilling="isDistilling"
+      @distill="emit('distill')"
       @command="onCommand"
       @apply-color="applyColor"
       @toggle-brush="toggleBrush"

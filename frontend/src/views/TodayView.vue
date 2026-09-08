@@ -1,24 +1,28 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowRight, CalendarDays, CheckCircle2, CircleAlert, Clock3, FileText, Plus, RefreshCw, Sparkles, X, BookOpen, MessageSquarePlus } from '@lucide/vue'
+import { ArrowRight, FileCheck2, CheckCircle2, CircleAlert, Clock3, FileText, Plus, RefreshCw, Sparkles, X, BookOpen, MessageSquarePlus } from '@lucide/vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { useDailyNote } from '@/composables/useDailyNote'
+import { useWorkLog } from '@/composables/useWorkLog'
 import { isImeComposing } from '@/utils/ime'
 import { isCarryoverTask } from '@/utils/workbench'
+import { defaultTaskProject, GENERAL_PROJECT_FOLDER } from '@/utils/defaultTaskProject'
 import TaskCard from '@/components/workbench/TaskCard.vue'
 import InterviewReview from '@/components/workbench/InterviewReview.vue'
 
 const store = useWorkbenchStore()
 const workspace = useWorkspaceStore()
 const router = useRouter()
-const { openTodayNote } = useDailyNote()
+const { openTodayWorkLog } = useWorkLog()
 const filter = ref('all')
 const creating = ref(false)
 const newTitle = ref('')
 const newType = ref('US')
-const newProject = ref('')
+const newProject = ref(GENERAL_PROJECT_FOLDER)
+const projectSelected = ref(false)
+const suggestedProject = computed(() => defaultTaskProject(store.projects, store.tasks, store.today))
+const otherProjects = computed(() => store.projects.filter(project => project.folder !== GENERAL_PROJECT_FOLDER))
 const newDue = ref(store.today)
 const createError = ref('')
 let formGeneration = 0
@@ -28,10 +32,18 @@ watch(() => workspace.currentWorkspace?.path, () => {
   creating.value = false
   newTitle.value = ''
   newType.value = 'US'
-  newProject.value = ''
+  projectSelected.value = false
+  newProject.value = suggestedProject.value
   newDue.value = store.today
   createError.value = ''
 }, { flush: 'sync' })
+watch(() => [suggestedProject.value, ...store.projects.map(project => project.folder)], () => {
+  const selectionExists = newProject.value === GENERAL_PROJECT_FOLDER || store.projects.some(project => project.folder === newProject.value)
+  if (!projectSelected.value || !selectionExists) {
+    projectSelected.value = false
+    newProject.value = suggestedProject.value
+  }
+}, { immediate: true, flush: 'sync' })
 watch(() => store.today, (day, previous) => {
   if (newDue.value === previous) newDue.value = day
 })
@@ -49,7 +61,7 @@ async function addTask() {
   const generation = formGeneration
   createError.value = ''
   try {
-    if (newProject.value && !store.projects.some(project => project.folder === newProject.value)) throw new Error('项目已变更，请重新选择归属项目')
+    if (newProject.value !== GENERAL_PROJECT_FOLDER && !store.projects.some(project => project.folder === newProject.value)) throw new Error('项目已变更，请重新选择归属项目')
     await store.addTask(newProject.value, newTitle.value, newType.value, newDue.value)
     if (generation !== formGeneration) return
     newTitle.value = ''
@@ -80,9 +92,9 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
           <button
             type="button"
             class="soft-button"
-            @click="openTodayNote"
+            @click="openTodayWorkLog"
           >
-            <CalendarDays :size="15" />今日日记
+            <FileCheck2 :size="15" />查看今日日志
           </button><button
             type="button"
             class="primary-button"
@@ -244,11 +256,12 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
                 </select><select
                   v-model="newProject"
                   aria-label="归属项目"
+                  @change="projectSelected = true"
                 >
-                  <option value="">
-                    今日日记
+                  <option :value="GENERAL_PROJECT_FOLDER">
+                    通用事务
                   </option><option
-                    v-for="project in store.projects"
+                    v-for="project in otherProjects"
                     :key="project.path"
                     :value="project.folder"
                   >
@@ -268,6 +281,13 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
                 </button>
               </div>
               <p
+                class="task-destination"
+                data-testid="task-destination"
+                role="status"
+              >
+                保存到 <span>{{ newProject }}/Tasks.md</span>
+              </p>
+              <p
                 v-if="createError"
                 role="alert"
                 class="inline-error"
@@ -286,7 +306,7 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
               v-else-if="!visibleTasks.length && !store.error"
               class="empty-tasks"
             >
-              <CheckCircle2 :size="30" /><h3>{{ filter === 'blocked' ? '没有阻塞的任务' : '给今天留一个明确的目标' }}</h3><p>新建任务，或在日记和项目笔记中勾选待办。</p>
+              <CheckCircle2 :size="30" /><h3>{{ filter === 'blocked' ? '没有阻塞的任务' : '给今天留一个明确的目标' }}</h3><p>在项目中安排任务，今天的行动会自动汇聚到这里。</p>
             </div>
             <div class="task-list">
               <TaskCard
@@ -431,6 +451,8 @@ h1 { font-size: 27px; font-weight: 600; letter-spacing: -.03em; margin: 0 0 12px
 .new-task input, .new-task select { border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: var(--bg-content); color: var(--text-primary); min-width: 0; font-size: 12px; }
 .new-task>input { width: 100%; box-sizing: border-box; }
 .new-task-fields { display: grid; grid-template-columns: 72px minmax(90px,1fr) 125px auto; gap: 7px; margin-top: 10px; }
+.task-destination { margin: 10px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.task-destination span { color: var(--text-secondary); }
 .inline-error { font-size: 12px; }
 .timeline-section { margin-top: 30px; }
 .timeline-count { font-size: 11px; color: var(--text-muted); white-space: nowrap; }

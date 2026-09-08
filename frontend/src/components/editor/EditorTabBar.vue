@@ -5,6 +5,7 @@
  */
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { isProjectMarkdown } from '@/utils/distillKnowledge'
 import {
   FileText,
   Plus,
@@ -19,6 +20,7 @@ import {
   FileCode,
   PanelRight,
   PanelLeft,
+  Zap,
 } from '@lucide/vue'
 
 const { t } = useI18n()
@@ -40,6 +42,7 @@ const props = defineProps<{
   isExporting: boolean
   isCompiling: boolean
   treeOpen?: boolean
+  isDistilling?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -54,6 +57,7 @@ const emit = defineEmits<{
   (e: 'export-html'): void
   (e: 'save'): void
   (e: 'toggle-view'): void
+  (e: 'distill'): void
 }>()
 
 // 编译流水线仅处理 Inbox/ 下的笔记（后端 CompileNote 亦强校验），
@@ -124,6 +128,17 @@ const compileTooltip = computed(() => {
 
     <!-- 右侧工具栏 -->
     <div class="tab-tools">
+      <button
+        v-if="activeTab && isProjectMarkdown(activeTab.path)"
+        type="button"
+        class="distill-btn"
+        data-testid="editor-distill"
+        title="把项目经验沉淀为技术笔记或面试题卡"
+        :disabled="isDistilling || isSaving"
+        @click="emit('distill')"
+      >
+        <Zap :size="14" /><span>沉淀为知识</span>
+      </button>
       <span
         v-if="isSaving"
         class="save-status"
@@ -197,6 +212,26 @@ const compileTooltip = computed(() => {
 </template>
 
 <style scoped>
+.distill-btn {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 5px;
+  min-height: 28px;
+  padding: 4px 9px;
+  margin-right: 5px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
+  color: var(--accent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 8%, transparent);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.distill-btn:hover { background: color-mix(in srgb, var(--accent) 17%, var(--bg-card)); }
+.distill-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.distill-btn:disabled { opacity: .5; cursor: default; }
 .tab-bar {
   display: flex;
   align-items: center;

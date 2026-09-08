@@ -12,6 +12,7 @@
 // ============================================================================
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Zap } from '@lucide/vue'
 import { useSettingsStore } from '@/stores/settings'
 import { usePluginRuntimeStore } from '@/stores/pluginRuntime'
 import { TOOLBAR_ITEMS, TEXT_TOOLS, CALLOUT_TYPES, TABLE_TOOLS, type ToolbarItem } from './toolbarButtons'
@@ -23,6 +24,8 @@ const props = defineProps<{
   brushActive: boolean
   /** floating 模式的定位样式（父组件根据光标坐标计算） */
   floatingStyle: { left: string; top: string } | null
+  canDistill?: boolean
+  isDistilling?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -40,6 +43,7 @@ const emit = defineEmits<{
   callout: [type: string]
   /** 插件注入的工具栏按钮 */
   'plugin-button': [btn: RegisteredPluginToolbarButton, event?: MouseEvent]
+  distill: []
 }>()
 
 const { t } = useI18n()
@@ -169,7 +173,22 @@ defineExpose({
     :class="[settingsStore.settings.toolbar.mode, { floating: settingsStore.settings.toolbar.mode === 'floating' }]"
     :style="settingsStore.settings.toolbar.mode === 'floating' ? props.floatingStyle ?? undefined : undefined"
   >
-    <template v-for="(btn, i) in visibleItems" :key="btn.id || 'b' + i">
+    <button
+      v-if="canDistill"
+      type="button"
+      class="tb-btn tb-distill"
+      data-testid="markdown-distill"
+      title="沉淀为知识"
+      aria-label="沉淀为知识"
+      :disabled="isDistilling"
+      @click="emit('distill')"
+    >
+      <Zap :size="14" />
+    </button>
+    <template
+      v-for="(btn, i) in visibleItems"
+      :key="btn.id || 'b' + i"
+    >
       <!-- 颜色/背景色：label[for] 触发隐藏 input，避免 WebView2 拒绝 input.click()/showPicker() -->
       <label
         v-if="btn.type === 'color'"
@@ -316,6 +335,9 @@ defineExpose({
 </template>
 
 <style scoped>
+.tb-btn.tb-distill { display: inline-flex; align-items: center; justify-content: center; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.tb-btn.tb-distill:disabled { opacity: .5; cursor: default; }
+.tb-btn.tb-distill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .editor-toolbar {
   display: flex;
   flex-wrap: wrap;
