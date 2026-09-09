@@ -46,3 +46,7 @@ export function OpenFileDialog(filter: string): $CancellablePromise<string> {
 export function OpenFolderDialog(): $CancellablePromise<string> {
     return $Call.ByName("github.com/notevault/notevault/internal/app.AppService.OpenFolderDialog");
 }
+
+export function OpenWorkspaceAttachment(workspacePath: string, relativePath: string): $CancellablePromise<void> {
+    return $Call.ByName("github.com/notevault/notevault/internal/app.AppService.OpenWorkspaceAttachment", workspacePath, relativePath);
+}

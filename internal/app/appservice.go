@@ -7,6 +7,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/notevault/notevault/internal/core"
+	"github.com/notevault/notevault/internal/service"
 )
 
 // AppService 是 NoteVault 的核心应用服务
@@ -24,6 +25,14 @@ func (s *AppService) GetVersion() string {
 // GetAppName 返回应用名称
 func (s *AppService) GetAppName() string {
 	return core.AppName
+}
+
+func (s *AppService) OpenWorkspaceAttachment(workspacePath, relativePath string) error {
+	full, err := service.ResolveWorkspaceAttachment(workspacePath, relativePath)
+	if err != nil {
+		return err
+	}
+	return s.app().Browser.OpenFile(full)
 }
 
 // OpenFolderDialog 弹出系统原生对话框选择文件夹，返回绝对路径（用户取消返回空串）

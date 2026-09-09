@@ -67,6 +67,8 @@ type SourceImportResult struct {
 	Warnings     []string `json:"warnings"`
 	Files        []string `json:"files"`
 	Cancelled    bool     `json:"cancelled"`
+	Readable     int      `json:"readable"`
+	Attachments  int      `json:"attachments"`
 }
 
 const (
@@ -291,6 +293,18 @@ func prepareSourceImportSetup(workspacePath string, request SourceImportRequest)
 	case "empty":
 		if request.Name == "" {
 			return setup, fmt.Errorf("请填写名称")
+		}
+	case "attachments":
+		if request.Kind != "book" || request.TargetFolder != "" && request.TargetFolder != request.Source {
+			return setup, fmt.Errorf("只能在原分册中提取已有 PDF")
+		}
+		setup.inputs, err = sourceStoredPDFInputs(workspace, request.Source)
+		if err != nil {
+			return setup, err
+		}
+		request.TargetFolder = request.Source
+		if request.Name == "" {
+			request.Name = path.Base(request.Source)
 		}
 	case "folder", "adopt":
 		if request.Source == "" && request.SourceType == "adopt" {

@@ -444,6 +444,9 @@ func sourcePDFPreflight(ctx context.Context, data []byte) error {
 	}
 	tokens := []string{}
 	objects := map[int]sourcePDFObjectID{}
+	streamsByOffset := map[int]sourcePDFVerifiedStream{}
+	objectOffset, compressedIndex := -1, -1
+	objectHadStream := false
 	rows := []sourcePDFXrefEntry{}
 	containers := []string{}
 	previousOffsets := [2]int{}
@@ -482,11 +485,6 @@ func sourcePDFPreflight(ctx context.Context, data []byte) error {
 		if len(tokens) > 500000 {
 			return fmt.Errorf("PDF 标记数量超出上限")
 		}
-		if token == "/XRef" && len(tokens) > 1 && tokens[len(tokens)-2] == "/Type" {
-			// This also excludes type-2 entries, which the dependency can
-			// recursively resolve without doing a budgeted ReaderAt call.
-			return fmt.Errorf("%w：暂不提取压缩索引流", errSourcePDFReferences)
-		}
 		switch token {
 		case "obj":
 			if inObject || len(containers) != 0 || len(tokens) < 3 {
@@ -498,6 +496,8 @@ func sourcePDFPreflight(ctx context.Context, data []byte) error {
 				return fmt.Errorf("%w：对象编号无效", errSourcePDFReferences)
 			}
 			objects[priorOffsets[0]] = sourcePDFObjectID{number: number, generation: generation}
+			objectOffset = priorOffsets[0]
+			objectHadStream = false
 			inObject, header = true, nil
 		case "endobj":
 			if !inObject || len(containers) != 0 {
@@ -550,6 +550,10 @@ func sourcePDFPreflight(ctx context.Context, data []byte) error {
 				header = tokens[dictStart:]
 			}
 		case "stream":
+			if objectHadStream {
+				return fmt.Errorf("%w：一个对象不能包含多个流", errSourcePDFReferences)
+			}
+			objectHadStream = true
 			streams++
 			if streams > 20000 || len(header) == 0 || !inObject || len(containers) != 0 || len(tokens) < 2 || tokens[len(tokens)-2] != ">>" {
 				return fmt.Errorf("PDF 流数量或声明无效")
@@ -595,6 +599,19 @@ func sourcePDFPreflight(ctx context.Context, data []byte) error {
 					}
 				}
 			}
+			fields, err := sourcePDFDictionary(header)
+			if err != nil {
+				return err
+			}
+			if kind := fields["/Type"]; len(kind) == 1 && (kind[0] == "/XRef" || kind[0] == "/ObjStm") {
+				streamsByOffset[objectOffset] = sourcePDFVerifiedStream{object: objects[objectOffset], fields: fields, data: decoded}
+				if kind[0] == "/XRef" {
+					if compressedIndex >= 0 || table >= 0 {
+						return fmt.Errorf("%w：暂不支持增量或混合索引", errSourcePDFReferences)
+					}
+					compressedIndex = objectOffset
+				}
+			}
 			total += int64(len(decoded))
 			if total > sourceMaxTotalBytes {
 				return fmt.Errorf("PDF 解码总量超过 100 MiB 上限")
@@ -605,6 +622,17 @@ func sourcePDFPreflight(ctx context.Context, data []byte) error {
 	}
 	if inObject || len(containers) != 0 || expectTrailer {
 		return fmt.Errorf("%w：容器未结束", errSourcePDFReferences)
+	}
+	if compressedIndex >= 0 {
+		if table >= 0 {
+			return fmt.Errorf("%w：暂不支持混合索引", errSourcePDFReferences)
+		}
+		var err error
+		rows, err = sourcePDFCompressedReferences(streamsByOffset[compressedIndex], streamsByOffset, objects)
+		if err != nil {
+			return fmt.Errorf("%w：%v", errSourcePDFReferences, err)
+		}
+		table = compressedIndex
 	}
 	if err := sourcePDFCheckReferences(data, marker, table, rows, objects); err != nil {
 		return err

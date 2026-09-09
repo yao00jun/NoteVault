@@ -1,7 +1,7 @@
 import { Call } from '@wailsio/runtime'
 
 export type CollectionKind = 'project' | 'book' | 'topic'
-export type SourceImportType = 'empty' | 'folder' | 'adopt' | 'files' | 'url'
+export type SourceImportType = 'empty' | 'folder' | 'adopt' | 'files' | 'url' | 'attachments'
 
 export interface SourceImportOpenRequest {
   kind?: CollectionKind
@@ -53,6 +53,8 @@ export interface SourceImportResult {
   warnings: string[]
   files: string[]
   cancelled: boolean
+  readable?: number
+  attachments?: number
 }
 
 const service = 'github.com/notevault/notevault/internal/service.ImportService'

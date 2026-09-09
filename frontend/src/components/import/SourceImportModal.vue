@@ -123,7 +123,7 @@
                 从一个空白{{ kindLabel }}开始，之后随时添加笔记和资料。
               </p>
               <template v-else-if="state.draft.sourceType !== 'files'">
-                <label for="source-location">{{ state.draft.sourceType === 'url' ? '网页、仓库或在线资料链接' : state.draft.sourceType === 'adopt' ? '工作区中的已有目录' : '来源文件夹' }}</label>
+                <label for="source-location">{{ state.draft.sourceType === 'url' ? '网页、仓库或在线资料链接' : ['adopt', 'attachments'].includes(state.draft.sourceType) ? '工作区中的已有目录' : '来源文件夹' }}</label>
                 <div class="si-location-row">
                   <input
                     id="source-location"
@@ -132,10 +132,10 @@
                     type="text"
                     autocomplete="off"
                     spellcheck="false"
-                    :placeholder="state.draft.sourceType === 'url' ? 'https://…' : state.draft.sourceType === 'adopt' ? `${space}/集合名称` : '输入绝对路径，如 E:\\资料\\项目'"
+                    :placeholder="state.draft.sourceType === 'url' ? 'https://…' : ['adopt', 'attachments'].includes(state.draft.sourceType) ? `${space}/集合名称` : '输入绝对路径，如 E:\\资料\\项目'"
                   >
                   <button
-                    v-if="state.draft.sourceType !== 'url'"
+                    v-if="!['url', 'attachments'].includes(state.draft.sourceType)"
                     type="button"
                     class="si-btn"
                     data-testid="source-pick-folder"
@@ -146,7 +146,7 @@
                   </button>
                 </div>
                 <p class="si-hint">
-                  {{ state.draft.sourceType === 'adopt' ? '为已有目录补齐工作台入口，保留原有笔记内容。' : state.draft.sourceType === 'folder' ? '复制支持的资料，保留来源文件夹。' : '支持公开网页、GitHub 仓库及可下载的资料链接。' }}
+                  {{ state.draft.sourceType === 'attachments' ? '提取分册中已保存的 PDF，在原目录生成章节正文。原文件和已编辑笔记会保留。' : state.draft.sourceType === 'adopt' ? '为已有目录补齐工作台入口，保留原有笔记内容。' : state.draft.sourceType === 'folder' ? '复制支持的资料，保留来源文件夹。' : '支持公开网页、GitHub 仓库及可下载的资料链接。' }}
                 </p>
               </template>
               <template v-else>
@@ -401,6 +401,13 @@
               class="si-result"
             >
               <h3>{{ resultTitle }}</h3>
+              <p
+                v-if="state.draft.sourceType !== 'empty' && (state.result.readable || state.result.attachments)"
+                class="si-hint"
+                data-testid="source-content-summary"
+              >
+                正文可用 {{ state.result.readable ?? 0 }} 份 · 仅保存附件 {{ state.result.attachments ?? 0 }} 份
+              </p>
               <code>{{ state.result.metadataPath }}</code>
               <div class="si-stats">
                 <div data-testid="source-result-imported">
@@ -542,10 +549,11 @@ const choosingFolder = ref(false)
 let opener: HTMLElement | null = null
 let mounted = true
 
-const sourceTabs: { value: SourceImportType; label: string }[] = [
+const sourceTabOptions: { value: SourceImportType; label: string }[] = [
   { value: 'empty', label: '空白新建' }, { value: 'folder', label: '本地文件夹' },
-  { value: 'files', label: '上传文件' }, { value: 'url', label: '链接' }, { value: 'adopt', label: '已有目录' },
+  { value: 'files', label: '上传文件' }, { value: 'url', label: '链接' }, { value: 'adopt', label: '已有目录' }, { value: 'attachments', label: '已有 PDF' },
 ]
+const sourceTabs = computed(() => sourceTabOptions.filter(tab => tab.value !== 'attachments' || state.value?.draft.kind === 'book'))
 const kindLabel = computed(() => ({ project: '项目', book: '图书', topic: '专题' }[state.value?.draft.kind ?? 'project']))
 const space = computed(() => collectionSpaces[state.value?.draft.kind ?? 'project'])
 const aiConfig = computed(() => ({ apiKey: settings.settings.ai.apiKey ?? '', baseURL: settings.settings.ai.baseURL ?? '', model: settings.settings.ai.model ?? '' }))
@@ -557,6 +565,7 @@ const resultTitle = computed(() => {
   const hasSaved = !!entry.result.metadataPath || entry.result.files.length > 0 || entry.result.imported + entry.result.updated > 0
   if (entry.phase === 'cancelled' || entry.result.cancelled) return hasSaved ? '已取消，已保存的内容会保留' : '已取消'
   if (entry.phase === 'failed') return hasSaved ? '任务未完成，已保存的内容会保留' : '任务未完成'
+  if (entry.result.attachments) return entry.result.readable ? '部分正文已提取，原始附件已保留' : '原始资料已保存，正文尚未提取'
   return entry.draft.sourceType === 'empty' ? '创建完成' : '导入完成'
 })
 const canSubmit = computed(() => {
@@ -575,10 +584,13 @@ const metadataPath = computed(() => {
 watch([() => props.open, () => props.request], ([open, request]) => {
   if (!open) return
   const accepted = intake.prepare(request ?? {}, true)
-  if (accepted && request?.autoStart && request.kind && request.source?.trim() && ['folder', 'adopt', 'url'].includes(request.sourceType ?? '')) void intake.start(aiConfig.value)
+  if (accepted && request?.autoStart && request.kind && request.source?.trim() && ['folder', 'adopt', 'url', 'attachments'].includes(request.sourceType ?? '')) void intake.start(aiConfig.value)
 }, { immediate: true })
 
 watch(() => state.value?.draft, () => intake.invalidatePreview(), { deep: true })
+watch(() => state.value?.draft.kind, kind => {
+  if (kind !== 'book' && state.value?.draft.sourceType === 'attachments') state.value.draft.sourceType = 'empty'
+})
 watch(() => state.value?.result, result => {
   const entry = state.value
   if (result && entry && !entry.completionEmitted) {
@@ -606,8 +618,9 @@ function selectSource(type: SourceImportType) {
 function onTabKeydown(event: KeyboardEvent, index: number) {
   if (isImeComposing(event) || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
   event.preventDefault()
-  const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? sourceTabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + sourceTabs.length) % sourceTabs.length
-  const tab = sourceTabs[nextIndex]!
+  const tabs = sourceTabs.value
+  const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
+  const tab = tabs[nextIndex]!
   selectSource(tab.value)
   void nextTick(() => dialog.value?.querySelector<HTMLElement>(`#source-tab-${tab.value}`)?.focus())
 }

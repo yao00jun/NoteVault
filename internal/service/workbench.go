@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"math"
 	"path"
 	"sort"
@@ -41,15 +42,18 @@ type WorkbenchProject struct {
 }
 
 type WorkbenchBook struct {
-	Name        string              `json:"name"`
-	Path        string              `json:"path"`
-	Folder      string              `json:"folder"`
-	Status      string              `json:"status"`
-	Progress    float64             `json:"progress"`
-	Projects    []string            `json:"projects"`
-	Chapters    []WorkbenchDocument `json:"chapters"`
-	NoteCount   int                 `json:"noteCount"`
-	ReviewCount int                 `json:"reviewCount"`
+	Name              string                `json:"name"`
+	Path              string                `json:"path"`
+	Folder            string                `json:"folder"`
+	Status            string                `json:"status"`
+	Progress          float64               `json:"progress"`
+	Projects          []string              `json:"projects"`
+	Chapters          []WorkbenchDocument   `json:"chapters"`
+	NoteCount         int                   `json:"noteCount"`
+	ReviewCount       int                   `json:"reviewCount"`
+	Attachments       []WorkbenchAttachment `json:"attachments"`
+	StudyPlanPath     string                `json:"studyPlanPath"`
+	SourceRecordsPath string                `json:"sourceRecordsPath"`
 }
 
 type InterviewCard struct {
@@ -168,6 +172,9 @@ func (s *TodoService) GetWorkbench(workspacePath, date string) (*WorkbenchSnapsh
 			}
 		}
 		book.NoteCount = len(book.Chapters)
+		if err := workbenchBookSources(workspacePath, book); err != nil {
+			snapshot.Warnings = append(snapshot.Warnings, fmt.Sprintf("无法完整读取 %s 的来源资料：%v", book.Name, err))
+		}
 		for _, card := range snapshot.Cards {
 			if workbenchCardBelongsToBook(card, *book, files) && card.LastReviewed != date && (card.Due == "" || card.Due <= date) {
 				book.ReviewCount++

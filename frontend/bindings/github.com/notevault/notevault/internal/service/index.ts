@@ -122,6 +122,7 @@ export type {
     TrashedFile,
     WeeklyReportAIConfig,
     WeeklyReportResult,
+    WorkbenchAttachment,
     WorkbenchBook,
     WorkbenchDocument,
     WorkbenchProgress,

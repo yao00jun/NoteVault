@@ -59,6 +59,14 @@ export interface WorkbenchProject {
   modifiedAt: string
 }
 
+export interface WorkbenchAttachment {
+  path: string
+  name: string
+  size: number
+  notePath: string
+  warning: string
+}
+
 export interface WorkbenchBook {
   name: string
   path: string
@@ -69,6 +77,9 @@ export interface WorkbenchBook {
   chapters: WorkbenchDocument[]
   noteCount: number
   reviewCount: number
+  attachments?: WorkbenchAttachment[]
+  studyPlanPath?: string
+  sourceRecordsPath?: string
 }
 
 export interface InterviewCard {

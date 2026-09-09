@@ -23,6 +23,7 @@ import {
   Terminal,
 } from '@lucide/vue'
 import type { InterviewCard, WorkbenchBook } from '@/api/workbench'
+import { AppService } from '@/api'
 import InterviewReview from '@/components/workbench/InterviewReview.vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -86,6 +87,21 @@ const chapters = computed(() =>
     a.path.localeCompare(b.path, 'zh-CN', { numeric: true })
   )
 )
+const attachments = computed(() => selectedBook.value?.attachments ?? [])
+const hasPDFs = computed(() => attachments.value.some(attachment => /\.pdf$/i.test(attachment.path)))
+
+async function openAttachment(path: string) {
+  const workspacePath = workspace.currentWorkspace?.path
+  if (!workspacePath) return
+  try { await AppService.OpenWorkspaceAttachment(workspacePath, path) }
+  catch (error) { toast.error(`无法打开原始资料：${error instanceof Error ? error.message : String(error)}`) }
+}
+
+function extractBookPDFs() {
+  const book = selectedBook.value
+  if (!book) return
+  requestSourceImport({ kind: 'book', sourceType: 'attachments', name: book.name, source: book.folder, targetFolder: book.folder, autoStart: true })
+}
 const weakGroups = computed(() => {
   const groups = new Map<string, InterviewCard[]>()
   for (const card of weakCards.value)
@@ -145,7 +161,7 @@ function explainCard(card: InterviewCard) {
 }
 function planBookStudy() {
   const book = selectedBook.value
-  if (!book) return
+  if (!book || !chapters.value.length) return
   requestCopilot({
     source: 'learning',
     workspacePath: workspace.currentWorkspace?.path,
@@ -223,6 +239,9 @@ watch(
             <button
               class="collection-button primary"
               type="button"
+              data-testid="book-plan-study"
+              :disabled="!chapters.length"
+              :title="chapters.length ? '梳理章节学习重点' : '先提取正文或添加章节笔记'"
               @click="planBookStudy"
             >
               <Sparkles :size="14" /> 梳理学习重点
@@ -338,63 +357,137 @@ watch(
               <Brain :size="15" /> 开始今日复习
             </button>
           </aside>
-          <section class="collection-panel learning-chapters">
-            <div class="collection-section-title">
-              <h2>
-                章节与笔记 <span class="collection-tab-count">{{ chapters.length }}</span>
-              </h2>
-              <button
-                class="collection-button subtle"
-                type="button"
-                @click="router.push({ path: '/editor', query: { folder: selectedBook.folder } })"
-              >
-                打开目录 <ArrowUpRight :size="13" />
-              </button>
-            </div>
-            <div
-              v-if="chapters.length"
-              class="collection-document-list"
-            >
-              <div
-                v-for="(chapter, index) in chapters"
-                :key="chapter.path"
-                class="collection-document-row"
-              >
+          <div class="learning-book-content">
+            <section class="collection-panel learning-chapters">
+              <div class="collection-section-title">
+                <h2>
+                  章节与笔记 <span class="collection-tab-count">{{ chapters.length }}</span>
+                </h2>
                 <button
-                  class="collection-document-open"
+                  class="collection-button subtle"
                   type="button"
-                  @click="openDocument(chapter.path)"
+                  @click="router.push({ path: '/editor', query: { folder: selectedBook.folder } })"
                 >
-                  <span class="learning-chapter-number">{{
-                    String(index + 1).padStart(2, '0')
-                  }}</span><span class="collection-document-copy"><strong>{{ chapter.title }}</strong><small>{{ chapter.path }}</small></span>
-                </button>
-                <span class="collection-document-date">{{
-                  collectionDateLabel(chapter.modifiedAt)
-                }}</span>
-                <button
-                  class="collection-icon-button"
-                  :class="{ pinned: workspace.isPinned(chapter.path) }"
-                  :aria-label="
-                    (workspace.isPinned(chapter.path) ? '取消固定 ' : '固定 ') + chapter.title
-                  "
-                  :aria-pressed="workspace.isPinned(chapter.path)"
-                  type="button"
-                  @click="togglePin(chapter.path, chapter.title)"
-                >
-                  <Pin :size="14" />
+                  打开目录 <ArrowUpRight :size="13" />
                 </button>
               </div>
-            </div>
-            <div
-              v-else
-              class="collection-empty"
+              <div
+                v-if="chapters.length"
+                class="collection-document-list"
+              >
+                <div
+                  v-for="(chapter, index) in chapters"
+                  :key="chapter.path"
+                  class="collection-document-row"
+                >
+                  <button
+                    class="collection-document-open"
+                    type="button"
+                    @click="openDocument(chapter.path)"
+                  >
+                    <span class="learning-chapter-number">{{
+                      String(index + 1).padStart(2, '0')
+                    }}</span><span class="collection-document-copy"><strong>{{ chapter.title }}</strong><small>{{ chapter.path }}</small></span>
+                  </button>
+                  <span class="collection-document-date">{{
+                    collectionDateLabel(chapter.modifiedAt)
+                  }}</span>
+                  <button
+                    class="collection-icon-button"
+                    :class="{ pinned: workspace.isPinned(chapter.path) }"
+                    :aria-label="
+                      (workspace.isPinned(chapter.path) ? '取消固定 ' : '固定 ') + chapter.title
+                    "
+                    :aria-pressed="workspace.isPinned(chapter.path)"
+                    type="button"
+                    @click="togglePin(chapter.path, chapter.title)"
+                  >
+                    <Pin :size="14" />
+                  </button>
+                </div>
+              </div>
+              <div
+                v-else
+                class="collection-empty"
+              >
+                <FileText :size="30" />
+                <h3>{{ attachments.length ? `已保存 ${attachments.length} 份原始资料` : '从第一篇章节笔记开始' }}</h3>
+                <p>{{ attachments.length ? '尚未生成章节正文。可在下方打开原文件，或提取 PDF 正文。' : '分册目录中的笔记会按章节顺序列在这里。' }}</p>
+              </div>
+            </section>
+            <section
+              v-if="attachments.length || selectedBook.studyPlanPath || selectedBook.sourceRecordsPath"
+              class="collection-panel learning-sources"
+              data-testid="book-sources"
             >
-              <FileText :size="30" />
-              <h3>从第一篇章节笔记开始</h3>
-              <p>分册目录中的笔记会按章节顺序列在这里。</p>
-            </div>
-          </section>
+              <div class="collection-section-title">
+                <h2>原始资料 <span class="collection-tab-count">{{ attachments.length }}</span></h2>
+                <button
+                  v-if="hasPDFs"
+                  class="collection-button"
+                  type="button"
+                  data-testid="book-extract-pdfs"
+                  @click="extractBookPDFs"
+                >
+                  <RefreshCw :size="14" />提取 PDF 正文
+                </button>
+              </div>
+              <div
+                v-if="attachments.length"
+                class="learning-source-list"
+              >
+                <div
+                  v-for="attachment in attachments"
+                  :key="attachment.path"
+                  class="learning-source-row"
+                >
+                  <FileText :size="20" />
+                  <div class="learning-source-copy">
+                    <strong>{{ attachment.name }}</strong><small>{{ attachment.notePath ? '已有可读正文' : '原文件已保存 · 尚未提取正文' }} · {{ Math.max(1, Math.round(attachment.size / 1024)) }} KB</small>
+                  </div>
+                  <div class="learning-source-actions">
+                    <button
+                      v-if="attachment.notePath"
+                      class="collection-button subtle"
+                      type="button"
+                      data-testid="book-source-note"
+                      @click="openDocument(attachment.notePath)"
+                    >
+                      阅读正文
+                    </button>
+                    <button
+                      class="collection-button subtle"
+                      type="button"
+                      data-testid="book-open-attachment"
+                      @click="openAttachment(attachment.path)"
+                    >
+                      打开原文件<ArrowUpRight :size="13" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="learning-source-links">
+                <button
+                  v-if="selectedBook.studyPlanPath"
+                  class="collection-button subtle"
+                  type="button"
+                  data-testid="book-study-plan"
+                  @click="openDocument(selectedBook.studyPlanPath)"
+                >
+                  <Sparkles :size="14" />AI 整理建议（待确认）
+                </button>
+                <button
+                  v-if="selectedBook.sourceRecordsPath"
+                  class="collection-button subtle"
+                  type="button"
+                  data-testid="book-source-records"
+                  @click="openDocument(selectedBook.sourceRecordsPath)"
+                >
+                  查看导入记录
+                </button>
+              </div>
+            </section>
+          </div>
         </section>
         <template v-else>
           <div class="collection-metrics">
@@ -955,6 +1048,20 @@ watch(
 }
 .learning-chapters {
   min-width: 0;
+}
+.learning-book-content { display: grid; gap: 18px; min-width: 0; }
+.learning-source-list { max-height: 340px; overflow-y: auto; }
+.learning-source-row { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border-light); }
+.learning-source-row > svg { flex-shrink: 0; color: var(--accent); }
+.learning-source-copy { flex: 1; min-width: 0; }
+.learning-source-copy strong { display: block; font-size: 13px; overflow-wrap: anywhere; }
+.learning-source-copy small { display: block; margin-top: 6px; color: var(--text-secondary); font-size: 11px; }
+.learning-source-actions, .learning-source-links { display: flex; gap: 8px; flex-wrap: wrap; }
+.learning-source-actions { justify-content: flex-end; flex-shrink: 0; }
+.learning-source-links { margin-top: 14px; }
+@media (max-width: 1050px) {
+  .learning-source-row { flex-wrap: wrap; }
+  .learning-source-actions { margin-left: auto; }
 }
 .learning-chapter-number {
   color: var(--text-secondary);

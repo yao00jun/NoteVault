@@ -90,7 +90,7 @@ function absoluteSource(path: string): boolean {
 }
 
 function validate(request: SourceImportRequest, workspace: string): string {
-  if (!collectionSpaces[request.kind] || !['empty', 'folder', 'adopt', 'files', 'url'].includes(request.sourceType)) return '请选择有效的来源和类型'
+  if (!collectionSpaces[request.kind] || !['empty', 'folder', 'adopt', 'files', 'url', 'attachments'].includes(request.sourceType)) return '请选择有效的来源和类型'
   if (request.sourceType === 'empty' && !request.name) return '请填写名称'
   if (request.name && !safeFolderName(request.name)) return '名称不能包含路径分隔符、特殊字符或保留的文件名'
   if (request.targetFolder && !destinationValid(request.targetFolder, request.kind)) return `保存位置应为 ${collectionSpaces[request.kind]}/集合名称，集合必须直接位于该空间下`
@@ -112,6 +112,7 @@ function validate(request: SourceImportRequest, workspace: string): string {
     } catch { return '请输入有效的 HTTP(S) 链接' }
   }
   if (request.sourceType === 'files' && request.files.length === 0) return '请先选择或拖入文件'
+  if (request.sourceType === 'attachments' && (request.kind !== 'book' || !destinationValid(request.source, 'book') || (request.targetFolder && request.targetFolder !== request.source))) return '请选择当前工作区 Learning 下的原分册目录'
   return ''
 }
 

@@ -1,5 +1,7 @@
 // Acceptance against the production Wails binary and real Markdown files.
+// NOTEVAULT_QA_PDF_DIR optionally supplies local PDF samples; their bytes stay outside Git.
 const { spawn } = require('node:child_process')
+const { createHash } = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
 const os = require('node:os')
@@ -18,6 +20,12 @@ const windowsSourcePath = 'Projects/商城/Windows示例.md'
 const chapterPath = 'Learning/系统设计/订单幂等复盘.md'
 const topicPath = 'Learning/面试宝典/Go.md'
 const reportPath = `Daily/Reports/${today}-日报.md`
+const pdfDirectory = process.env.NOTEVAULT_QA_PDF_DIR
+const pdfFolder = 'Learning/PDF验收'
+const pdfNames = pdfDirectory ? fs.readdirSync(pdfDirectory, { withFileTypes: true }).filter(entry => entry.isFile() && /\.pdf$/i.test(entry.name)).map(entry => entry.name).sort() : []
+if (pdfDirectory && !pdfNames.length) throw new Error('NOTEVAULT_QA_PDF_DIR contains no PDF samples')
+const pdfHashes = new Map()
+const fileHash = filename => createHash('sha256').update(fs.readFileSync(filename)).digest('hex')
 const checks = [], diagnostics = []
 function write(relative, content) {
   const filename = path.join(vault, relative)
@@ -41,6 +49,16 @@ function seed() {
   write(topicPath, '# Go\n\n保留专题手写前言。\n')
   write('Resources/参考.md', '# 参考资料\n')
   write('Daily/' + dayAfter(-1) + '.md', '# 历史日记\n\n历史资料仍然保留。\n')
+  if (pdfNames.length) {
+    write(pdfFolder + '/book.md', '---\nname: PDF验收\nstatus: 待读\nprogress: 0\n---\n# PDF验收\n')
+    write(pdfFolder + '/ai-plan.md', '# 已有学习建议\n\n保留已有建议，等待用户确认。\n')
+    write(pdfFolder + '/sources.md', '# 导入记录\n\n原始 PDF 已保存在本目录，等待提取正文。\n')
+    for (const name of pdfNames) {
+      const original = path.join(pdfDirectory, name)
+      fs.copyFileSync(original, path.join(vault, pdfFolder, name))
+      pdfHashes.set(name, fileHash(original))
+    }
+  }
   fs.mkdirSync(path.join(profile, 'NoteVault'), { recursive: true })
   const workspace = { id: 'v3-qa', name: 'v3 验收工作区', path: vault, createdAt: new Date().toISOString(), lastOpenedAt: new Date().toISOString() }
   fs.writeFileSync(path.join(profile, 'NoteVault/workspaces.json'), JSON.stringify([workspace]))
@@ -78,7 +96,7 @@ async function main() {
     page = browser.contexts()[0].pages()[0]
     page.setDefaultTimeout(12000)
     page.on('pageerror', error => diagnostics.push({ phase, type: 'pageerror', text: error.message }))
-    page.on('console', message => { if (message.type() === 'error') diagnostics.push({ phase, type: 'console', text: message.text() }) })
+    page.on('console', message => { if (message.type() === 'error') diagnostics.push({ phase, type: 'console', text: message.text(), location: message.location() }) })
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.waitForLoadState('domcontentloaded')
     await page.locator('main').getByRole('button', { name: /v3 验收工作区/ }).click()
@@ -386,6 +404,96 @@ async function main() {
       }
       await page.setViewportSize({ width: 1440, height: 960 })
     })
+
+    if (pdfNames.length) {
+      const pdfBook = read(pdfFolder + '/book.md'), pdfPlan = read(pdfFolder + '/ai-plan.md')
+      const pdfChapters = () => fs.readdirSync(path.join(vault, pdfFolder)).filter(name => /\.md$/i.test(name) && !['book.md', 'sources.md', 'ai-plan.md'].includes(name)).sort()
+      await step('Attachment-only books show every original PDF and a clear extraction action', async () => {
+        await navigateTo('learning')
+        await page.locator('.learning-book-cover button').filter({ hasText: 'PDF验收' }).click()
+        await expect(page.getByTestId('book-detail')).toBeVisible()
+        await expect(page.locator('.learning-source-row')).toHaveCount(pdfNames.length)
+        await expect(page.locator('.learning-chapters .collection-document-row')).toHaveCount(0)
+        await expect(page.locator('.learning-chapters')).toContainText(`已保存 ${pdfNames.length} 份原始资料`)
+        await expect(page.getByTestId('book-plan-study')).toBeDisabled()
+        await expect(page.getByTestId('book-extract-pdfs')).toBeVisible()
+        await expect(page.getByTestId('book-study-plan')).toBeVisible()
+        await expect(page.getByTestId('book-source-records')).toBeVisible()
+        for (const name of pdfNames) await expect(page.getByTestId('book-sources')).toContainText(name)
+        await screenshot('pdf-book-originals-before-extraction')
+      })
+      await step('Stored PDFs extract into readable Markdown chapters through the native import modal', async () => {
+        await page.getByTestId('book-extract-pdfs').click()
+        await expect(page.getByTestId('source-content-summary')).toHaveText(`正文可用 ${pdfNames.length} 份 · 仅保存附件 0 份`, { timeout: 120000 })
+        await expect(page.getByTestId('source-result-conflicts')).toContainText('0')
+        await screenshot('pdf-extraction-result')
+        await page.getByTestId('source-open-result').click()
+        await expect(page.locator('.learning-chapters .collection-document-row')).toHaveCount(pdfNames.length)
+        await expect(page.getByTestId('book-source-note')).toHaveCount(pdfNames.length)
+        await expect(page.getByTestId('book-plan-study')).toBeEnabled()
+        expect(pdfChapters()).toHaveLength(pdfNames.length)
+        for (const chapter of pdfChapters()) expect(read(pdfFolder + '/' + chapter).length).toBeGreaterThan(100)
+        for (const name of pdfNames) expect(fileHash(path.join(vault, pdfFolder, name))).toBe(pdfHashes.get(name))
+        expect(read(pdfFolder + '/book.md')).toBe(pdfBook)
+        expect(read(pdfFolder + '/ai-plan.md')).toBe(pdfPlan)
+        await screenshot('pdf-book-readable-chapters')
+      })
+      await step('Extracted chapters are readable and global Back returns to their book', async () => {
+        await page.getByTestId('book-source-note').first().click()
+        const file = new URLSearchParams((await route()).split('?')[1]).get('file')
+        expect(pdfChapters().map(name => pdfFolder + '/' + name)).toContain(file)
+        const editor = page.locator('.cm-content')
+        await expect(editor).toBeVisible()
+        await expect.poll(() => page.locator('.markdown-preview').innerText().then(text => text.length)).toBeGreaterThan(100)
+        await screenshot('pdf-chapter-reading')
+        await editor.click(); await editor.press('Control+End'); await editor.press('Enter'); await editor.pressSequentially('PDF QA preserved personal note')
+        await page.getByTestId('save-button').click()
+        await expect.poll(() => read(file)).toContain('PDF QA preserved personal note')
+        await page.getByTestId('global-back').click()
+        await expect(page.getByTestId('book-detail')).toBeVisible()
+        await expect(page.locator('.learning-chapters .collection-document-row')).toHaveCount(pdfNames.length)
+      })
+      await step('Repeated PDF extraction preserves edited notes, metadata and original bytes without duplicates', async () => {
+        const chapters = pdfChapters(), before = new Map(chapters.map(name => [name, read(pdfFolder + '/' + name)]))
+        await page.getByTestId('book-extract-pdfs').click()
+        await expect(page.getByTestId('source-content-summary')).toHaveText(`正文可用 ${pdfNames.length} 份 · 仅保存附件 0 份`, { timeout: 120000 })
+        await expect(page.getByTestId('source-result-imported')).toContainText('0')
+        await expect(page.getByTestId('source-result-updated')).toContainText('0')
+        await page.getByTestId('source-open-result').click()
+        expect(pdfChapters()).toEqual(chapters)
+        for (const chapter of chapters) expect(read(pdfFolder + '/' + chapter)).toBe(before.get(chapter))
+        for (const name of pdfNames) expect(fileHash(path.join(vault, pdfFolder, name))).toBe(pdfHashes.get(name))
+        expect(read(pdfFolder + '/book.md')).toBe(pdfBook)
+        expect(read(pdfFolder + '/ai-plan.md')).toBe(pdfPlan)
+        await page.getByTestId('book-source-records').click()
+        await expect(page.locator('.cm-content')).toContainText('导入记录')
+        await page.getByTestId('global-back').click()
+        await expect(page.getByTestId('book-detail')).toBeVisible()
+      })
+      await step('Book chapters and originals fit all themes at desktop and compact window sizes', async () => {
+        for (const [theme, label] of [['macos', 'macOS'], ['winui', 'WinUI'], ['islands-dark', 'Islands Dark']]) {
+          await page.locator('.theme-switcher > button').click()
+          await page.locator('.theme-item').filter({ hasText: label }).click()
+          for (const [size, width, height] of [['desktop', 1440, 960], ['compact', 1000, 720]]) {
+            await page.setViewportSize({ width, height })
+            expect(await page.getByTestId('book-detail').evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+            await page.getByTestId('book-extract-pdfs').scrollIntoViewIfNeeded()
+            await expect(page.getByTestId('book-extract-pdfs')).toBeInViewport()
+            await expect(page.getByTestId('book-open-attachment')).toHaveCount(pdfNames.length)
+            await screenshot(`${theme}-${size}-pdf-book`)
+          }
+        }
+        await page.setViewportSize({ width: 1440, height: 960 })
+      })
+      await step('Restart discovers extracted PDF chapters and original-source links from Markdown', async () => {
+        await stopApp(); await delay(500); launchApp(); await connect()
+        await navigateTo('learning')
+        await page.locator('.learning-book-cover button').filter({ hasText: 'PDF验收' }).click()
+        await expect(page.locator('.learning-chapters .collection-document-row')).toHaveCount(pdfNames.length)
+        await expect(page.getByTestId('book-source-note')).toHaveCount(pdfNames.length)
+        expect(pdfChapters().some(name => read(pdfFolder + '/' + name).includes('PDF QA preserved personal note'))).toBe(true)
+      })
+    }
 
     expect(diagnostics.filter(item => item.type === 'pageerror')).toEqual([])
     console.log('ALL PASS: ' + checks.length + ' native flows')

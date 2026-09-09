@@ -960,6 +960,8 @@ export interface SourceImportResult {
     "warnings": string[] | null;
     "files": string[] | null;
     "cancelled": boolean;
+    "readable": number;
+    "attachments": number;
 }
 
 /**
@@ -1180,6 +1182,14 @@ export interface WeeklyReportResult {
     "message": string;
 }
 
+export interface WorkbenchAttachment {
+    "path": string;
+    "name": string;
+    "size": number;
+    "notePath": string;
+    "warning": string;
+}
+
 export interface WorkbenchBook {
     "name": string;
     "path": string;
@@ -1190,6 +1200,9 @@ export interface WorkbenchBook {
     "chapters": WorkbenchDocument[] | null;
     "noteCount": number;
     "reviewCount": number;
+    "attachments": WorkbenchAttachment[] | null;
+    "studyPlanPath": string;
+    "sourceRecordsPath": string;
 }
 
 export interface WorkbenchDocument {

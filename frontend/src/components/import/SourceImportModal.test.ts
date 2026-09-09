@@ -69,6 +69,22 @@ afterEach(() => {
 })
 
 describe('SourceImportModal', () => {
+  it('distinguishes saved attachments from extracted text on completion', async () => {
+    taskStatus = 'succeeded'
+    backend.result.mockResolvedValue({ taskId: 'task-1', targetFolder: 'Learning/Design', metadataPath: 'Learning/Design/book.md', imported: 5, updated: 0, skipped: 0, conflicts: [], warnings: ['正文未提取'], files: ['paper.pdf'], cancelled: false, readable: 0, attachments: 5 })
+    const { wrapper } = await mountModal({ kind: 'book', sourceType: 'folder', source: 'E:/Source', name: 'Design' })
+    await wrapper.get('[data-testid="source-start"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('原始资料已保存，正文尚未提取')
+    expect(wrapper.get('[data-testid="source-content-summary"]').text()).toContain('仅保存附件 5 份')
+  })
+
+  it('starts extraction from a saved book without asking for another upload', async () => {
+    taskStatus = 'succeeded'
+    await mountModal({ kind: 'book', sourceType: 'attachments', source: 'Learning/Design', targetFolder: 'Learning/Design', name: 'Design', autoStart: true })
+    expect(submitted[0]).toMatchObject({ sourceType: 'attachments', source: 'Learning/Design', targetFolder: 'Learning/Design' })
+  })
+
   it('provides a labelled dialog and explains that a workspace is required', async () => {
     const { wrapper } = await mountModal(undefined, false)
     expect(wrapper.get('[role="dialog"]').attributes('aria-modal')).toBe('true')
@@ -257,5 +273,19 @@ describe('SourceImportModal', () => {
     await wrapper.setProps({ open: false })
     await nextTick()
     expect(document.activeElement).toBe(opener)
+  })
+
+  it('limits stored PDF extraction to books and resets the source when changing collection type', async () => {
+    const { wrapper, intake } = await mountModal({ kind: 'project' })
+    expect(wrapper.find('#source-tab-attachments').exists()).toBe(false)
+    await wrapper.get('[data-testid="source-kind"]').setValue('book')
+    await wrapper.get('#source-tab-attachments').trigger('click')
+    expect(wrapper.get('#source-location').attributes('placeholder')).toContain('Learning/')
+    expect(wrapper.find('[data-testid="source-pick-folder"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="source-kind"]').setValue('topic')
+    expect(wrapper.find('#source-tab-attachments').exists()).toBe(false)
+    expect(intake.current!.draft.sourceType).toBe('empty')
+    await wrapper.get('#source-tab-empty').trigger('keydown', { key: 'End' })
+    expect(intake.current!.draft.sourceType).toBe('adopt')
   })
 })
