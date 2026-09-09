@@ -429,7 +429,7 @@ watch(
                   data-testid="book-extract-pdfs"
                   @click="extractBookPDFs"
                 >
-                  <RefreshCw :size="14" />提取 PDF 正文
+                  <RefreshCw :size="14" />提取并优化 PDF 排版
                 </button>
               </div>
               <div

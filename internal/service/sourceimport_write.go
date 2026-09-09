@@ -209,13 +209,14 @@ func sourceNumberedPath(relative string, number int) string {
 const sourceManifestStart = "<!-- notevault-source-import:v1\n"
 
 type sourceManifestEntry struct {
-	Origin         string `json:"origin"`
-	Source         string `json:"source"`
-	Path           string `json:"path"`
-	SHA256         string `json:"sha256"`
-	SourceSHA256   string `json:"sourceSha256"`
-	ExtractionMode string `json:"extractionMode,omitempty"`
-	Warning        string `json:"warning,omitempty"`
+	Origin            string `json:"origin"`
+	Source            string `json:"source"`
+	Path              string `json:"path"`
+	SHA256            string `json:"sha256"`
+	SourceSHA256      string `json:"sourceSha256"`
+	ExtractionMode    string `json:"extractionMode,omitempty"`
+	ExtractionVersion int    `json:"extractionVersion,omitempty"`
+	Warning           string `json:"warning,omitempty"`
 }
 
 type sourceGeneratedRecord struct {
@@ -573,9 +574,12 @@ func sourceImportOne(root *os.Root, request SourceImportRequest, output sourceIm
 	if sourceHash == "" {
 		sourceHash = hash
 	}
-	if existed && (sourceChecksum(before) == hash || (previous != nil && previous.SourceSHA256 == sourceHash)) {
-		if sourceChecksum(before) == hash && (previous == nil || previous.SourceSHA256 != sourceHash || previous.SHA256 != hash || previous.ExtractionMode != output.extractionMode || previous.Warning != output.warning) {
-			if err := sourceSaveManifest(root, request.TargetFolder, sourceManifestEntry{Origin: output.origin, Source: output.source, Path: final, SHA256: hash, SourceSHA256: sourceHash, ExtractionMode: output.extractionMode, Warning: output.warning}); err != nil {
+	// A newer PDF formatter can improve an unchanged source. Re-enter the usual
+	// conflict check so only a hash-verified, unedited generated note is updated.
+	formatUpgrade := previous != nil && output.extractionMode == "pdf-text" && previous.ExtractionVersion < output.extractionVersion
+	if existed && (sourceChecksum(before) == hash || (previous != nil && previous.SourceSHA256 == sourceHash && !formatUpgrade)) {
+		if sourceChecksum(before) == hash && (previous == nil || previous.SourceSHA256 != sourceHash || previous.SHA256 != hash || previous.ExtractionMode != output.extractionMode || previous.ExtractionVersion != output.extractionVersion || previous.Warning != output.warning) {
+			if err := sourceSaveManifest(root, request.TargetFolder, sourceManifestEntry{Origin: output.origin, Source: output.source, Path: final, SHA256: hash, SourceSHA256: sourceHash, ExtractionMode: output.extractionMode, ExtractionVersion: output.extractionVersion, Warning: output.warning}); err != nil {
 				return err
 			}
 		}
@@ -600,7 +604,7 @@ func sourceImportOne(root *os.Root, request SourceImportRequest, output sourceIm
 				return err
 			}
 			if existed {
-				if err := sourceSaveManifest(root, request.TargetFolder, sourceManifestEntry{Origin: output.origin, Source: output.source, Path: final, SHA256: hash, SourceSHA256: sourceHash, ExtractionMode: output.extractionMode, Warning: output.warning}); err != nil {
+				if err := sourceSaveManifest(root, request.TargetFolder, sourceManifestEntry{Origin: output.origin, Source: output.source, Path: final, SHA256: hash, SourceSHA256: sourceHash, ExtractionMode: output.extractionMode, ExtractionVersion: output.extractionVersion, Warning: output.warning}); err != nil {
 					return err
 				}
 				result.Skipped++
@@ -614,7 +618,7 @@ func sourceImportOne(root *os.Root, request SourceImportRequest, output sourceIm
 			return nil
 		}
 	}
-	manifestUpdate, err := sourcePrepareManifest(root, request.TargetFolder, sourceManifestEntry{Origin: output.origin, Source: output.source, Path: final, SHA256: hash, SourceSHA256: sourceHash, ExtractionMode: output.extractionMode, Warning: output.warning})
+	manifestUpdate, err := sourcePrepareManifest(root, request.TargetFolder, sourceManifestEntry{Origin: output.origin, Source: output.source, Path: final, SHA256: hash, SourceSHA256: sourceHash, ExtractionMode: output.extractionMode, ExtractionVersion: output.extractionVersion, Warning: output.warning})
 	if err != nil {
 		return err
 	}

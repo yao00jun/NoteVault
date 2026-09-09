@@ -76,6 +76,15 @@ afterEach(() => {
 })
 
 describe('shared source import state', () => {
+  it('re-extracts stored PDFs with guarded updates so unchanged source bytes can receive improved formatting', async () => {
+    const { intake } = setup()
+    intake.prepare({ kind: 'book', sourceType: 'attachments', source: 'Learning/Design', targetFolder: 'Learning/Design', name: 'Design' })
+    await intake.start(ai)
+    await flushPromises()
+    expect(submissions).toHaveLength(1)
+    expect(submissions[0]!.request).toMatchObject({ sourceType: 'attachments', conflictStrategy: 'update', enrich: false, targetFolder: 'Learning/Design' })
+  })
+
   it('dispatches the shared new-source event with the supplied draft', () => {
     const received: unknown[] = []
     const listener = (event: Event) => received.push((event as CustomEvent).detail)

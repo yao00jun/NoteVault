@@ -100,13 +100,14 @@ type sourceImportInput struct {
 }
 
 type sourceImportOutput struct {
-	name           string
-	origin         string
-	source         string
-	sourceHash     string
-	extractionMode string
-	warning        string
-	data           []byte
+	name              string
+	origin            string
+	source            string
+	sourceHash        string
+	extractionMode    string
+	extractionVersion int
+	warning           string
+	data              []byte
 }
 
 type sourceImportSetup struct {
@@ -282,6 +283,9 @@ func prepareSourceImportSetup(workspacePath string, request SourceImportRequest)
 	request.Files = append([]SourceImportFile{}, request.Files...)
 	if request.ConflictStrategy == "" {
 		request.ConflictStrategy = "skip"
+		if request.SourceType == "attachments" {
+			request.ConflictStrategy = "update"
+		}
 	}
 	if request.ConflictStrategy != "skip" && request.ConflictStrategy != "update" && request.ConflictStrategy != "copy" {
 		return setup, fmt.Errorf("冲突策略必须为 skip、update 或 copy")

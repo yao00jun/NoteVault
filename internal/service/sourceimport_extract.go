@@ -209,6 +209,7 @@ func sourceExtractInput(ctx context.Context, input sourceImportInput, budget *so
 			output.warning = "已保留原始 PDF 附件：" + name + "（未提取到可读正文；扫描件需要 OCR）"
 			return []sourceImportOutput{output}, nil, nil
 		}
+		output.extractionVersion = sourcePDFExtractionVersion
 	case ".html", ".htm", ".xhtml":
 		output.extractionMode = "html"
 		var base *url.URL

@@ -48,7 +48,7 @@ function blankDraft(request: SourceImportOpenRequest = {}): SourceImportRequest 
   return {
     kind: request.kind ?? 'project', sourceType: request.sourceType ?? 'empty',
     source: request.source ?? '', name: request.name ?? '', targetFolder: request.targetFolder ?? '',
-    files: [], conflictStrategy: 'skip', enrich: false, instruction: request.instruction ?? '',
+    files: [], conflictStrategy: request.sourceType === 'attachments' ? 'update' : 'skip', enrich: false, instruction: request.instruction ?? '',
     ai: { apiKey: '', baseURL: '', model: '' },
   }
 }

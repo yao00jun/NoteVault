@@ -704,19 +704,5 @@ func sourceExtractPDF(ctx context.Context, data []byte) (text string, err error)
 	if err := walk(reader.Trailer().Key("Root").Key("Pages"), 0); err != nil {
 		return "", err
 	}
-	var out strings.Builder
-	for _, page := range pages {
-		if err := ctx.Err(); err != nil {
-			return "", err
-		}
-		text, err := page.GetPlainText(nil)
-		if err != nil {
-			return "", fmt.Errorf("PDF 字体或正文无法解码")
-		}
-		if out.Len()+len(text) > sourceMaxFileBytes {
-			return "", fmt.Errorf("PDF 正文超出 20 MiB 上限")
-		}
-		out.WriteString(text + "\n\n")
-	}
-	return strings.TrimSpace(out.String()), nil
+	return sourcePDFMarkdown(ctx, pages)
 }

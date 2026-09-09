@@ -146,7 +146,7 @@
                   </button>
                 </div>
                 <p class="si-hint">
-                  {{ state.draft.sourceType === 'attachments' ? '提取分册中已保存的 PDF，在原目录生成章节正文。原文件和已编辑笔记会保留。' : state.draft.sourceType === 'adopt' ? '为已有目录补齐工作台入口，保留原有笔记内容。' : state.draft.sourceType === 'folder' ? '复制支持的资料，保留来源文件夹。' : '支持公开网页、GitHub 仓库及可下载的资料链接。' }}
+                  {{ state.draft.sourceType === 'attachments' ? '按标题、段落和代码块提取 PDF 正文。未改动的旧章节可更新排版，原文件和已编辑笔记会保留。' : state.draft.sourceType === 'adopt' ? '为已有目录补齐工作台入口，保留原有笔记内容。' : state.draft.sourceType === 'folder' ? '复制支持的资料，保留来源文件夹。' : '支持公开网页、GitHub 仓库及可下载的资料链接。' }}
                 </p>
               </template>
               <template v-else>

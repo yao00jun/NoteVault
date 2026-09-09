@@ -143,6 +143,14 @@ func TestSourceImportPDFLocalSamples(t *testing.T) {
 				t.Fatalf("PDF did not produce usable text: %v", err)
 			}
 			t.Logf("extracted %d characters", len([]rune(text)))
+			if output := os.Getenv("NOTEVAULT_QA_PDF_OUTPUT_DIR"); output != "" {
+				if err := os.MkdirAll(output, 0750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(output, strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))+".md"), []byte(text), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
 		})
 	}
 }
