@@ -32,7 +32,8 @@
 | `pnpm test` | 68 suites, 742 tests pass |
 | `pnpm lint` | 0 errors; 8 existing warnings |
 | `pnpm build` and native production Go build | Pass |
-| Real Wails/WebView2 acceptance | 20 flows pass; no uncaught page errors |
+| `CGO_ENABLED=0 wails3 task package` on main | Pass; Windows executable and NSIS installer generated |
+| Real Wails/WebView2 acceptance | 20 flows pass, including a rerun against the packaged main executable; no uncaught page errors |
 
 Native acceptance includes the previous 13 v3 flows (project tasks, reports, bidirectional distillation, SRS, restart persistence and AI orb/Copilot) plus scaffold preservation, pagination and return navigation, nested creation, dirty file/folder rename, collision preservation, template-to-project creation, and compact layouts in all three themes.
 
@@ -42,4 +43,13 @@ The native runner uses an isolated temporary workspace and profile. Run from the
 
 In the selected demo workspace, the one unfinished task from September 6 was migrated to `Projects/通用事务/Tasks.md` with its original date. The September 6–8 legacy diaries were moved through the application's TrashService, retaining recoverable original bytes. Both existing daily reports were verified unchanged. All 24 original Markdown files were accounted for; replaced default templates/guides have byte-preserving backups.
 
-Only the two named extra worktrees are scheduled for removal after main integration and push. Unique ignored review artifacts and the original main specification's line-ending variant have been copied outside the worktrees before cleanup.
+After main integration and push, both `E:/WorkSpace/NoteVault-workbench-experience` and `E:/WorkSpace/NoteVault-workbench-v3` were removed with `git worktree remove`. Both paths are absent and Git lists only `E:/WorkSpace/NoteVault` on `main`. Before removal, their clean state and merge ancestry were checked, all 38 unique ignored review files were preserved and hash-verified, and the original main specification's line-ending variant was retained outside the worktrees.
+
+## Main integration and distributables
+
+- Feature commit: `c7c1a04a21ac7fc9d697f715fe6b832a5eaacb9e` (`fix(workbench): refine templates, file operations and vault pagination`), including the preceding Workbench v3 commit `b6f3ef5`.
+- Published branch: `main` at `https://github.com/yao00jun/NoteVault.git`. All four required verification commands passed again in the main checkout before packaging and push.
+- Wails regenerated bindings without content changes. The build's `go.mod` rewrite was verified to be line-ending-only against the committed Git blob.
+- Executable: `bin/notevault.exe`, 50,940,928 bytes; SHA-256 `EE4CE6757B96EFF0AF7FE510D420756025CA824F1845204850A10A0CE88091D7`.
+- Installer: `bin/notevault-amd64-installer.exe`, 17,096,286 bytes; SHA-256 `ADB72590FA33BCB2BE1EBB57F83F7294221D735DA36633B988BA9907A050B0D4`.
+- Main-package acceptance evidence: `C:/Users/feng/.codex/visualizations/2026/09/07/01a07cc9-447a-7c72-94a0-c53961773338/workspace-refinement/main-package/qa-results.json`. All 20 native flows passed using the executable above.

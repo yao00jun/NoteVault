@@ -57,12 +57,14 @@ Files: `frontend/src/components/editor/FileTree.vue` and tests; `frontend/src/vi
 
 ## Task 5: Verification, build, integration and cleanup
 
-- [ ] Regenerate Wails bindings; run `go test ./internal/...`, `pnpm typecheck`, `pnpm test`, `pnpm lint`, and production build. Repair all failures.
-- [ ] Native acceptance: nested create/rename, dirty rename, reports, templates, pagination/filter/back, distillation and three themes; test new/old workspace initialization.
-- [ ] Independent review and fix any actionable findings.
-- [ ] Commit the result, integrate to `main` in `E:/WorkSpace/NoteVault`, run required verification there, build the distributable and push `origin/main`.
-- [ ] Inventory ignored/untracked files in both extra worktrees; preserve useful unique artifacts and remove only `E:/WorkSpace/NoteVault-workbench-experience` and `E:/WorkSpace/NoteVault-workbench-v3` after validating exact resolved paths.
-- [ ] Report final main commit, package paths, cleanup result and exact test counts.
+- [x] Regenerate Wails bindings; run `go test ./internal/...`, `pnpm typecheck`, `pnpm test`, `pnpm lint`, and production build. Repair all failures.
+- [x] Native acceptance: nested create/rename, dirty rename, reports, templates, pagination/filter/back, distillation and three themes; test new/old workspace initialization.
+- [x] Independent review and fix any actionable findings.
+- [x] Commit the result, integrate to `main` in `E:/WorkSpace/NoteVault`, run required verification there, build the distributable and push `origin/main`.
+- [x] Inventory ignored/untracked files in both extra worktrees; preserve useful unique artifacts and remove only `E:/WorkSpace/NoteVault-workbench-experience` and `E:/WorkSpace/NoteVault-workbench-v3` after validating exact resolved paths.
+- [x] Report final main commit, package paths, cleanup result and exact test counts.
+
+Completed on 2026-09-09. Feature commit `c7c1a04` was published to `https://github.com/yao00jun/NoteVault.git` on `main`. Main verification passed: 10 Go packages, 68 frontend suites / 742 tests, typecheck with 0 errors, and lint with 0 errors / 8 existing warnings. `wails3 task package` generated the Windows executable and installer, and all 20 native flows passed again against that executable. Both extra directories are absent; Git lists only the main checkout. See `docs/design/WORKSPACE-REFINEMENT-ACCEPTANCE.md` for file coverage, artifact hashes and preserved-workspace details.
 
 ## Findings
 
