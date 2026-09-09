@@ -25,8 +25,8 @@ func TestTemplateService_ListTemplates(t *testing.T) {
 		if err != nil {
 			t.Fatalf("不应报错: %v", err)
 		}
-		if len(list) < 5 {
-			t.Fatalf("应至少返回 5 个内置模板, got %d", len(list))
+		if len(list) < 9 {
+			t.Fatalf("应返回工作流所需的内置模板, got %d", len(list))
 		}
 		names := map[string]bool{}
 		for _, tpl := range list {
@@ -35,9 +35,14 @@ func TestTemplateService_ListTemplates(t *testing.T) {
 			}
 			names[tpl.Name] = true
 		}
-		for _, want := range []string{"Daily", "读书笔记", "会议记录", "每周回顾", "项目"} {
+		for _, want := range []string{"项目概览", "项目任务", "技术设计", "排障记录", "技术笔记", "面试卡片", "会议记录", "工作报告", "读书笔记"} {
 			if !names[want] {
 				t.Errorf("缺少内置模板 %q, got %v", want, names)
+			}
+		}
+		for _, retired := range []string{"Daily", "日记模板", "每周回顾", "项目", "待办清单"} {
+			if names[retired] {
+				t.Errorf("旧模板 %q 不应继续作为内置选项", retired)
 			}
 		}
 	})
@@ -70,8 +75,8 @@ func TestTemplateService_ListTemplates(t *testing.T) {
 		if byName["会议"] == nil || byName["会议"].Builtin {
 			t.Fatal("工作区会议模板应存在且非内置")
 		}
-		if byName["Daily"] == nil || !byName["Daily"].Builtin {
-			t.Fatal("内置 Daily 应保留")
+		if byName["技术笔记"] == nil || !byName["技术笔记"].Builtin {
+			t.Fatal("其他内置模板应保留")
 		}
 		if list[0].Name == "" || list[len(list)-1].Name < list[0].Name {
 			t.Fatalf("应按名称排序: %v", list)
@@ -113,12 +118,12 @@ func TestTemplateService_GetTemplateContent(t *testing.T) {
 
 	t.Run("工作区没有时回退内置模板", func(t *testing.T) {
 		svc := NewTemplateService(NewFileService())
-		content, err := svc.GetTemplateContent(t.TempDir(), "Daily")
+		content, err := svc.GetTemplateContent(t.TempDir(), "工作报告")
 		if err != nil {
 			t.Fatalf("内置模板应可直接读取: %v", err)
 		}
 		if !strings.Contains(content, "{{date}}") {
-			t.Fatalf("内置 Daily 内容不符: %q", content)
+			t.Fatalf("内置工作报告内容不符: %q", content)
 		}
 	})
 

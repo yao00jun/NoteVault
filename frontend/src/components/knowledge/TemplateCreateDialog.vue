@@ -4,7 +4,12 @@
       class="tcd-overlay"
       @click.self="emit('close')"
     >
-      <div class="tcd-dialog">
+      <div
+        class="tcd-dialog"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="t('templates.createTitle')"
+      >
         <div class="tcd-header">
           <FileText :size="16" />
           <span>{{ t('templates.createTitle') }}</span>
@@ -39,19 +44,37 @@
         <!-- 正常表单 -->
         <template v-else>
           <div class="tcd-field">
-            <label>{{ t('templates.selectLabel') }}</label>
+            <label for="template-choice">{{ t('templates.selectLabel') }}</label>
             <select
+              id="template-choice"
               v-model="selectedName"
               @change="onTemplateChange"
             >
-              <option
-                v-for="tpl in templates"
-                :key="tpl.name"
-                :value="tpl.name"
+              <optgroup
+                v-for="group in templateGroups"
+                :key="group.category"
+                :label="group.category"
               >
-                {{ tpl.name }}{{ tpl.builtin ? t('templates.builtinTag') : '' }}
-              </option>
+                <option
+                  v-for="tpl in group.templates"
+                  :key="tpl.name"
+                  :value="tpl.name"
+                >
+                  {{ tpl.name }}{{ tpl.builtin ? t('templates.builtinTag') : '' }}
+                </option>
+              </optgroup>
             </select>
+          </div>
+
+          <div class="tcd-purpose">
+            <p>{{ currentTemplate?.description || t('templates.customDescription') }}</p>
+            <p
+              v-if="currentTemplate?.destination"
+              class="tcd-destination"
+            >
+              {{ t('templates.destinationHint') }}
+              <code>{{ recommendedTarget }}</code>
+            </p>
           </div>
 
           <!-- 自定义变量（模板里出现且非内置的占位符） -->
@@ -64,8 +87,9 @@
               :key="name"
               class="tcd-field"
             >
-              <label>{{ varLabel(name) }}</label>
+              <label :for="`template-variable-${name}`">{{ varLabel(name) }}</label>
               <input
+                :id="`template-variable-${name}`"
                 v-model="variableValues[name]"
                 type="text"
                 class="tcd-input"
@@ -76,13 +100,19 @@
           </div>
 
           <div class="tcd-field">
-            <label>{{ t('templates.targetLabel') }}</label>
+            <label for="template-target">{{ t('templates.targetLabel') }}</label>
             <input
+              id="template-target"
               v-model="targetPath"
               type="text"
               class="tcd-input tcd-target"
+              @input="targetEdited = true"
               @keyup.enter="onEnterCreate"
             >
+            <span
+              v-if="hasUnfilledTarget"
+              class="tcd-note"
+            >{{ t('templates.fillDestination') }}</span>
           </div>
 
           <div class="tcd-note">
@@ -98,7 +128,7 @@
             </button>
             <button
               class="tcd-btn tcd-btn-primary"
-              :disabled="creating || !selectedName"
+              :disabled="!canCreate"
               @click="doCreate"
             >
               <Loader2
@@ -124,8 +154,8 @@
 </template>
 
 <script setup lang="ts">
-import { TemplateService, TemplateInfo } from '@/api'
-import { ref, computed, onMounted } from 'vue'
+import { TemplateService, type TemplateInfo } from '@/api'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { isImeComposing } from '@/utils/ime'
 import { FileText, Loader2 } from '@lucide/vue'
@@ -147,8 +177,19 @@ const targetPath = ref('')
 const loading = ref(true)
 const creating = ref(false)
 const errorMsg = ref('')
+const targetEdited = ref(false)
 
 const workspacePath = computed(() => workspaceStore.currentWorkspace?.path ?? '')
+const initialWorkspace = workspacePath.value
+const selectionDate = ref(new Date())
+let workspaceChanged = false
+watch(workspacePath, value => {
+  if (value !== initialWorkspace && !workspaceChanged) {
+    workspaceChanged = true
+    emit('close')
+  }
+}, { flush: 'sync' })
+
 // 内置模板自定义变量的中文标签；未映射的变量（用户自建模板）原样显示
 const VAR_LABEL_KEYS: Record<string, string> = {
   author: 'varAuthor',
@@ -157,31 +198,66 @@ const VAR_LABEL_KEYS: Record<string, string> = {
   project: 'varProject',
   book: 'varBook',
   people: 'varPeople',
+  question: 'varQuestion',
 }
 function varLabel(name: string): string {
   const key = VAR_LABEL_KEYS[name]
   return key ? t(`templates.${key}`) : t('templates.variableLabel', { name })
 }
 
-const currentVariables = computed(() => {
-  const tpl = templates.value.find(tp => tp.name === selectedName.value)
-  return tpl?.variables ?? []
+const currentTemplate = computed(() => templates.value.find(tp => tp.name === selectedName.value))
+const currentVariables = computed(() => currentTemplate.value?.variables ?? [])
+const templateGroups = computed(() => {
+  const groups = new Map<string, TemplateInfo[]>()
+  for (const template of templates.value) {
+    const category = template.category || t('templates.customCategory')
+    const entries = groups.get(category) ?? []
+    entries.push(template)
+    groups.set(category, entries)
+  }
+  return Array.from(groups, ([category, entries]) => ({ category, templates: entries }))
 })
 
-/** 选中模板时：重置变量值，目标路径默认为「模板名.md」。 */
+const placeholderPattern = /\{\{([a-zA-Z][a-zA-Z0-9_-]*)\}\}/g
+const recommendedTarget = computed(() => {
+  const template = currentTemplate.value
+  if (!template) return ''
+  const now = selectionDate.value
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const time = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`
+  const values: Record<string, string> = { ...variableValues.value, title: template.name, date, time, datetime: `${date} ${time}` }
+  return (template.destination || `${template.name}.md`).replace(placeholderPattern, (placeholder, name: string) => values[name]?.trim() || placeholder)
+})
+const suggestedTarget = computed(() => {
+  const folder = (props.defaultFolder ?? '').replaceAll('\\', '/').replace(/\/+$/, '')
+  if (!folder || recommendedTarget.value.startsWith(`${folder}/`)) return recommendedTarget.value
+  const filename = recommendedTarget.value.slice(recommendedTarget.value.lastIndexOf('/') + 1)
+  return `${folder}/${filename}`
+})
+watch(suggestedTarget, value => {
+  if (!targetEdited.value) targetPath.value = value
+})
+const hasUnfilledTarget = computed(() => /\{\{[a-zA-Z][a-zA-Z0-9_-]*\}\}/.test(targetPath.value))
+const canCreate = computed(() => !loading.value && !creating.value && !workspaceChanged && Boolean(selectedName.value) && Boolean(targetPath.value.trim()) && !hasUnfilledTarget.value)
+
+/** Keep a hand-written path when filling variables; changing templates starts a fresh form. */
 function syncSelection(): void {
+  targetEdited.value = false
   variableValues.value = {}
-  targetPath.value = selectedName.value ? `${props.defaultFolder ? props.defaultFolder + '/' : ''}${selectedName.value}.md` : ''
+  selectionDate.value = new Date()
+  targetPath.value = suggestedTarget.value
 }
 
 onMounted(async () => {
-  if (!workspacePath.value) {
+  if (!initialWorkspace) {
     loading.value = false
     return
   }
   try {
     // 绑定层对切片模型统一标可空，先过滤再入表
-    templates.value = ((await TemplateService.ListTemplates(workspacePath.value)) ?? []).filter(
+    const listed = await TemplateService.ListTemplates(initialWorkspace)
+    if (workspaceChanged) return
+    templates.value = (listed ?? []).filter(
       (tp): tp is TemplateInfo => tp !== null,
     )
     if (templates.value.length > 0) {
@@ -207,17 +283,17 @@ function onEnterCreate(e: KeyboardEvent) {
 }
 
 async function doCreate(): Promise<void> {
-  if (!workspacePath.value || !selectedName.value || creating.value) return
+  if (!initialWorkspace || workspacePath.value !== initialWorkspace || !canCreate.value) return
   creating.value = true
   errorMsg.value = ''
   try {
     const node = await TemplateService.CreateFromTemplate(
-      workspacePath.value,
+      initialWorkspace,
       selectedName.value,
       targetPath.value.trim(),
       { ...variableValues.value },
     )
-    if (node) {
+    if (node && !workspaceChanged) {
       emit('created', node.path)
     }
   } catch (e) {
@@ -240,7 +316,7 @@ async function doCreate(): Promise<void> {
   padding: var(--space-4);
 }
 .tcd-dialog {
-  width: 420px;
+  width: 480px;
   max-width: 100%;
   max-height: 80vh;
   overflow-y: auto;
@@ -310,6 +386,26 @@ async function doCreate(): Promise<void> {
   background: var(--bg-window);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+}
+.tcd-purpose {
+  padding: var(--space-3);
+  background: var(--bg-window);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+.tcd-purpose p {
+  margin: 0;
+}
+.tcd-purpose .tcd-destination {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+}
+.tcd-destination code {
+  color: var(--accent);
+  overflow-wrap: anywhere;
 }
 .tcd-note {
   font-size: var(--text-xs);

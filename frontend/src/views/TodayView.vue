@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ArrowRight, FileCheck2, CheckCircle2, CircleAlert, Clock3, FileText, Plus, RefreshCw, Sparkles, X, BookOpen, MessageSquarePlus } from '@lucide/vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -14,6 +14,7 @@ import InterviewReview from '@/components/workbench/InterviewReview.vue'
 const store = useWorkbenchStore()
 const workspace = useWorkspaceStore()
 const router = useRouter()
+const route = useRoute()
 const { openTodayWorkLog } = useWorkLog()
 const filter = ref('all')
 const creating = ref(false)
@@ -47,6 +48,11 @@ watch(() => [suggestedProject.value, ...store.projects.map(project => project.fo
 watch(() => store.today, (day, previous) => {
   if (newDue.value === previous) newDue.value = day
 })
+watch(() => [route.path, route.query.action, workspace.hasWorkspace], () => {
+  if (route.path !== '/today' || route.query.action !== 'new-task' || !workspace.hasWorkspace) return
+  creating.value = true
+  void router.replace({ path: '/today', query: { ...route.query, action: undefined } })
+}, { immediate: true })
 const greeting = new Date().getHours() < 12 ? '早安' : new Date().getHours() < 18 ? '午安' : '晚安'
 const dateLabel = computed(() => new Date(`${store.today}T12:00:00`).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }))
 const completed = computed(() => store.todayTasks.filter(task => task.completed).length)

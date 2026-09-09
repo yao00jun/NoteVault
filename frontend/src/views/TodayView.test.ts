@@ -59,6 +59,16 @@ async function renderToday() {
 }
 
 describe('Today workspace boundaries', () => {
+  it('opens the project task form for legacy create links and consumes the action', async () => {
+    const { wrapper, router } = await renderToday()
+    await router.push('/today?action=new-task')
+    await flushPromises()
+    expect(wrapper.get('[aria-label="任务标题"]').isVisible()).toBe(true)
+    expect(wrapper.get('[data-testid="task-destination"]').text()).toContain('Projects/A/Tasks.md')
+    expect(router.currentRoute.value.query.action).toBeUndefined()
+    expect(harness.addTask).not.toHaveBeenCalled()
+  })
+
   it('opens the saved work log from the secondary header action', async () => {
     const { button, router, workspace } = await renderToday()
     expect(button('查看今日日志')).toBeDefined()

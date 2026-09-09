@@ -20,6 +20,7 @@ import {
 } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { confirmDialog } from '@/composables/useConfirm'
+import { promptDialog } from '@/composables/usePrompt'
 import { useI18n } from 'vue-i18n'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
@@ -262,12 +263,25 @@ async function remove() {
 
 async function rename() {
   if (!isSaved.value || !def.value || !wsPath.value) return
-  const next = window.prompt(t('bases.promptNewName'), selectedName.value)
-  if (!next || next.trim() === selectedName.value) return
+  const workspacePath = wsPath.value
+  const oldName = selectedName.value
+  const original = def.value
+  const next = await promptDialog({ message: t('bases.promptNewName'), defaultValue: oldName })
+  if (!next?.trim() || next.trim() === oldName || wsPath.value !== workspacePath || selectedName.value !== oldName || def.value !== original) return
   try {
-    await BaseService.RenameBase(wsPath.value, selectedName.value, next.trim())
+    await BaseService.RenameBase(workspacePath, oldName, next.trim())
+    if (wsPath.value !== workspacePath || def.value !== original) return
     await loadBases()
-    await selectBase(next.trim())
+    if (wsPath.value === workspacePath && def.value === original) {
+      selectedName.value = next.trim()
+      // A label change must not discard an unsaved filter or view definition.
+      original.name = next.trim()
+      if (savedSnapshot.value) {
+        const saved = JSON.parse(savedSnapshot.value) as BaseDef
+        saved.name = next.trim()
+        savedSnapshot.value = JSON.stringify(saved)
+      }
+    }
   } catch (e) {
     console.error('Failed to rename base:', e)
     errorMsg.value = t('bases.renameFailed', { msg: (e as Error).message })

@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/notevault/notevault/internal/core"
 )
@@ -273,18 +275,41 @@ func (s *FileService) DeleteFile(workspacePath string, relativePath string) erro
 // oldRelativePath: 旧的相对路径
 // newName: 新名称（不含路径）
 func (s *FileService) RenameFile(workspacePath string, oldRelativePath string, newName string) (*FileNode, error) {
-	oldFullPath, err := confineToWorkspace(workspacePath, oldRelativePath)
+	if err := validateFileOperationName(newName); err != nil {
+		return nil, err
+	}
+	oldFullPath, oldRelativePath, err := fileOperationPath(workspacePath, oldRelativePath)
 	if err != nil {
 		return nil, err
+	}
+	oldInfo, err := os.Lstat(oldFullPath)
+	if err != nil {
+		return nil, core.OsToNVError(err, "读取原文件信息失败: "+oldRelativePath)
+	}
+	if !oldInfo.Mode().IsRegular() && !oldInfo.IsDir() {
+		return nil, core.NewError(core.ErrInvalidInput, "只能重命名普通文件或文件夹")
 	}
 	dir := filepath.Dir(oldRelativePath)
 	newRelativePath := filepath.Join(dir, newName)
-	newFullPath, err := confineToWorkspace(workspacePath, newRelativePath)
+	newFullPath, newRelativePath, err := fileOperationPath(workspacePath, newRelativePath)
 	if err != nil {
 		return nil, err
 	}
+	if targetInfo, err := os.Lstat(newFullPath); err == nil {
+		// On case-insensitive filesystems a case-only rename finds the source
+		// itself. File identity keeps that operation valid without allowing a
+		// different file or directory at the destination to be overwritten.
+		if !os.SameFile(oldInfo, targetInfo) {
+			return nil, core.WrapError(core.ErrAlreadyExists, "已存在同名文件或文件夹，请换一个名称: "+newName, os.ErrExist)
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, core.OsToNVError(err, "检查目标路径失败: "+newRelativePath)
+	}
 
 	if err := os.Rename(oldFullPath, newFullPath); err != nil {
+		if os.IsExist(err) {
+			return nil, core.WrapError(core.ErrAlreadyExists, "已存在同名文件或文件夹，请换一个名称: "+newName, err)
+		}
 		return nil, core.OsToNVError(err, "重命名失败: "+oldRelativePath)
 	}
 
@@ -307,9 +332,16 @@ func (s *FileService) RenameFile(workspacePath string, oldRelativePath string, n
 // workspacePath: 工作区根目录
 // relativePath: 相对于工作区根目录的文件夹路径
 func (s *FileService) CreateFolder(workspacePath string, relativePath string) (*FileNode, error) {
-	fullPath, err := confineToWorkspace(workspacePath, relativePath)
+	fullPath, relativePath, err := fileOperationPath(workspacePath, relativePath)
 	if err != nil {
 		return nil, err
+	}
+	if info, err := os.Lstat(fullPath); err == nil {
+		if !info.IsDir() {
+			return nil, core.WrapError(core.ErrAlreadyExists, "此名称已被文件占用，请换一个名称: "+relativePath, os.ErrExist)
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, core.OsToNVError(err, "检查文件夹路径失败: "+relativePath)
 	}
 
 	if err := os.MkdirAll(fullPath, 0750); err != nil {
@@ -322,6 +354,59 @@ func (s *FileService) CreateFolder(workspacePath string, relativePath string) (*
 		FullPath: fullPath,
 		IsDir:    true,
 	}, nil
+}
+
+// Keep this stricter validation local to create-folder and rename operations;
+// existing read, save, import, and history APIs retain their path contracts.
+func fileOperationPath(workspacePath, relativePath string) (string, string, error) {
+	relativePath = strings.ReplaceAll(relativePath, "\\", "/")
+	for _, component := range strings.Split(relativePath, "/") {
+		// MkdirAll has always accepted redundant separators and current-directory
+		// segments. workbenchPath normalizes these and rejects the workspace root.
+		if component == "" || component == "." {
+			continue
+		}
+		if err := validateFileOperationName(component); err != nil {
+			return "", "", err
+		}
+	}
+	fullPath, relativePath, err := workbenchPath(workspacePath, relativePath)
+	if err != nil {
+		if os.IsNotExist(err) || os.IsPermission(err) {
+			return "", "", core.OsToNVError(err, "访问工作区路径失败")
+		}
+		return "", "", core.WrapError(core.ErrInvalidInput, "文件路径无效", err)
+	}
+	return fullPath, relativePath, nil
+}
+
+func validateFileOperationName(name string) error {
+	if strings.TrimSpace(name) == "" || name == "." || name == ".." {
+		return core.NewError(core.ErrInvalidInput, "文件或文件夹名称不能为空，也不能是 . 或 ..")
+	}
+	if !utf8.ValidString(name) || strings.ContainsAny(name, `<>:"/\|?*`) {
+		return core.NewError(core.ErrInvalidInput, "名称不能包含路径分隔符或 <>:\"|?* 等特殊字符")
+	}
+	if strings.HasSuffix(name, ".") || strings.HasSuffix(name, " ") {
+		return core.NewError(core.ErrInvalidInput, "名称不能以空格或句点结尾")
+	}
+	for _, char := range name {
+		if unicode.IsControl(char) || char == '\u2028' || char == '\u2029' {
+			return core.NewError(core.ErrInvalidInput, "名称不能包含控制字符或换行")
+		}
+	}
+	stem := strings.ToUpper(strings.TrimRight(strings.SplitN(name, ".", 2)[0], " "))
+	switch stem {
+	case "CON", "PRN", "AUX", "NUL", "CLOCK$", "CONIN$", "CONOUT$":
+		return core.NewError(core.ErrInvalidInput, "名称不能使用系统保留名称: "+name)
+	}
+	if strings.HasPrefix(stem, "COM") || strings.HasPrefix(stem, "LPT") {
+		number := []rune(stem[3:])
+		if len(number) == 1 && strings.ContainsRune("123456789¹²³", number[0]) {
+			return core.NewError(core.ErrInvalidInput, "名称不能使用系统保留名称: "+name)
+		}
+	}
+	return nil
 }
 
 // SaveImage 保存图片到工作区的 assets 文件夹

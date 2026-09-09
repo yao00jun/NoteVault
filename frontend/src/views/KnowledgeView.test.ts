@@ -6,6 +6,8 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 
 const promptDialogMock = vi.fn()
+const openTodayWorkLogMock = vi.fn()
+vi.mock('@/composables/useWorkLog', () => ({ useWorkLog: () => ({ openTodayWorkLog: openTodayWorkLogMock }) }))
 vi.mock('@/composables/usePrompt', () => ({
   promptDialog: (...args: unknown[]) => promptDialogMock(...args),
 }))
@@ -72,6 +74,14 @@ function mountKnowledge() {
 }
 
 describe('KnowledgeView 工作台（UI-WORKBENCH-REDESIGN 瘦身后）', () => {
+  it('uses the shared work-log action from its Daily space', async () => {
+    const { wrapper } = mountKnowledge()
+    await flushPromises()
+    await wrapper.get('[data-testid="space-daily"]').trigger('click')
+    expect(openTodayWorkLogMock).toHaveBeenCalledOnce()
+    expect(mockedCreateFile).not.toHaveBeenCalled()
+  })
+
   beforeEach(() => {
     localStorage.clear()
     ;(i18n.global.locale as any).value = 'zh-CN'

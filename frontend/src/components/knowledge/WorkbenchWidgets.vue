@@ -17,16 +17,11 @@ import {
   StatsService,
   TodoService,
   ReminderService,
-  FileService,
-  TemplateService,
 } from '@/api'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { useToast } from '@/composables/useToast'
-import { promptDialog } from '@/composables/usePrompt'
 
 const { t } = useI18n()
 const router = useRouter()
-const toast = useToast()
 const workspaceStore = useWorkspaceStore()
 
 interface TodayStats {
@@ -142,38 +137,9 @@ function countdownLabel(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
-function todayPath(): string {
-  const d = new Date()
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `Daily/${d.getFullYear()}-${mm}-${dd}.md`
-}
-
-// 新建待办：写入今天日记（待办的天然归宿），日记不存在时按内置 Daily 模板创建
-async function addTodo() {
-  const ws = workspaceStore.currentWorkspace
-  if (!ws?.path) return
-  const text = await promptDialog({ message: t('knowledge.workbench.addTodoPrompt') })
-  if (!text || !text.trim()) return
-  const path = todayPath()
-  try {
-    let content: string
-    try {
-      content = await FileService.ReadFile(ws.path, path)
-    } catch {
-      await TemplateService.CreateFromTemplate(ws.path, 'Daily', path, {})
-      content = await FileService.ReadFile(ws.path, path)
-    }
-    content = `${content.replace(/\s*$/, '')}
-- [ ] ${text.trim()}
-`
-    await FileService.SaveFile(ws.path, path, content)
-    await load()
-    toast.success(t('knowledge.workbench.todoAdded'))
-  } catch (e) {
-    console.error('[workbench] add todo failed:', e)
-    toast.error(t('knowledge.workbench.addTodoFailed', { msg: (e as Error).message }))
-  }
+// Legacy entry points share Today's project selector and Markdown task flow.
+function addTodo() {
+  if (workspaceStore.currentWorkspace?.path) void router.push({ path: '/today', query: { action: 'new-task' } })
 }
 
 // 新建提醒：提醒是挂在笔记上的服务数据（非 Markdown 模板），进入提醒管理页创建

@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 
 const mocked = {
@@ -31,8 +32,12 @@ function mountWidgets() {
   // 组件仅在存在当前工作区时加载数据
   const wsStore = useWorkspaceStore()
   wsStore.setCurrentWorkspace({ id: 'ws', name: 'V', path: '/tmp/v', createdAt: '', lastOpenedAt: '' })
-  const wrapper = mount(WorkbenchWidgets, { global: { plugins: [pinia, i18n] } })
-  return { wrapper }
+  const router = createRouter({ history: createMemoryHistory(), routes: [
+    { path: '/', component: { template: '<div />' } },
+    { path: '/today', component: { template: '<div />' } },
+  ] })
+  const wrapper = mount(WorkbenchWidgets, { global: { plugins: [pinia, i18n, router] } })
+  return { wrapper, router }
 }
 
 beforeEach(() => {
@@ -62,6 +67,14 @@ afterEach(() => {
 })
 
 describe('WorkbenchWidgets', () => {
+  it('sends new tasks to the project selector instead of creating a legacy diary', async () => {
+    const { wrapper, router } = mountWidgets()
+    await flushPromises()
+    await wrapper.get('[data-testid="wb-add-todo"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/today?action=new-task')
+  })
+
   it('渲染双列看板：待办过滤已完成且高优先级在前，提醒含过期标记', async () => {
     const { wrapper } = mountWidgets()
     await flushPromises()

@@ -139,6 +139,7 @@ function handleTrash(node: FileNode) {
       >
         <div
           class="tree-node"
+          :data-path="node.path"
           :class="{
             'is-dir': node.isDir,
             'is-active': !node.isDir && activeFilePath === node.path,
@@ -186,13 +187,13 @@ function handleTrash(node: FileNode) {
           v-if="node.isDir && isExpanded(node) && node.children"
           class="tree-children"
         >
-        <FileTree
-          :nodes="node.children"
+          <FileTree
+            :nodes="node.children"
             :active-file-path="activeFilePath"
             :focus-folder="childFocusFolder"
             @open-file="(n) => emit('open-file', n)"
-            @new-file="(p) => emit('new-file', node.path + '/' + p)"
-            @new-folder="(p) => emit('new-folder', node.path + '/' + p)"
+            @new-file="(p) => emit('new-file', p)"
+            @new-folder="(p) => emit('new-folder', p)"
             @rename="(n) => emit('rename', n)"
             @delete="(n) => emit('delete', n)"
             @archive="(n) => emit('archive', n)"

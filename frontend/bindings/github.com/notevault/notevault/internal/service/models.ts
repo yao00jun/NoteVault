@@ -1044,9 +1044,24 @@ export interface TemplateInfo {
     "variables": string[] | null;
 
     /**
-     * 是否为应用内置模板（工作区同名模板可覆盖）
+     * 是否为未修改的应用内置模板
      */
     "builtin": boolean;
+
+    /**
+     * 用途分组；自定义模板可以省略
+     */
+    "category"?: string;
+
+    /**
+     * 使用说明
+     */
+    "description"?: string;
+
+    /**
+     * 建议的完整相对路径，可包含占位符
+     */
+    "destination"?: string;
 }
 
 /**

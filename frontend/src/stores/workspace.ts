@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Workspace, FileNode } from '@/types'
+import { isEntryPath, renamedEntryPath, windowsWorkspace } from '@/utils/filePaths'
 
 interface PinnedItem { path: string; title: string }
 interface RecentFile { path: string; title: string; openedAt: string }
@@ -73,13 +74,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   function isPinned(path: string) {
-    return pinnedItems.value.some(item => item.path === normalizePath(path))
+    return pinnedItems.value.some(item => isEntryPath(item.path, path, false, windowsWorkspace(currentWorkspace.value?.path || '')))
   }
 
   function togglePin(path: string, title?: string): boolean {
     path = normalizePath(path)
     if (!path || !currentWorkspace.value) return false
-    const index = pinnedItems.value.findIndex(item => item.path === path)
+    const index = pinnedItems.value.findIndex(item => isEntryPath(item.path, path, false, windowsWorkspace(currentWorkspace.value?.path || '')))
     if (index >= 0) pinnedItems.value.splice(index, 1)
     else {
       if (pinnedItems.value.length >= 8) return false
@@ -103,12 +104,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   function openFile(path: string) {
     path = normalizePath(path)
+    const caseInsensitive = windowsWorkspace(currentWorkspace.value?.path || '')
+    path = openFiles.value.find(existing => isEntryPath(existing, path, false, caseInsensitive)) || path
     if (!openFiles.value.includes(path)) {
       openFiles.value.push(path)
     }
     activeFile.value = path
     // 添加到最近文件
-    const existing = recentFiles.value.findIndex((f) => f.path === path)
+    const existing = recentFiles.value.findIndex((f) => isEntryPath(f.path, path, false, caseInsensitive))
     if (existing >= 0) {
       recentFiles.value.splice(existing, 1)
     }
@@ -137,6 +140,35 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeFile.value = path
   }
 
+  function renameFilePaths(from: string, to: string, directory: boolean) {
+    const remap = (path: string) => renamedEntryPath(path, from, to, directory, windowsWorkspace(currentWorkspace.value?.path || ''))
+    openFiles.value = [...new Set(openFiles.value.map(remap))]
+    if (activeFile.value) activeFile.value = remap(activeFile.value)
+    recentFiles.value = recentFiles.value.map(item => {
+      const path = remap(item.path)
+      return path === item.path ? item : { ...item, path, title: path.split('/').pop() || path }
+    })
+    pinnedItems.value = pinnedItems.value.map(item => {
+      const path = remap(item.path)
+      const oldName = normalizePath(item.path).split('/').pop() || item.path
+      const newName = path.split('/').pop() || path
+      // Preserve user-supplied labels; only rename labels derived from filenames.
+      const title = item.title === oldName ? newName
+        : item.title === oldName.replace(/\.md$/i, '') ? newName.replace(/\.md$/i, '') : item.title
+      return { ...item, path, title }
+    })
+    saveNavigation()
+  }
+
+  function removeFilePaths(path: string, directory: boolean) {
+    const keep = (value: string) => !isEntryPath(value, path, directory, windowsWorkspace(currentWorkspace.value?.path || ''))
+    openFiles.value = openFiles.value.filter(keep)
+    if (activeFile.value && !keep(activeFile.value)) activeFile.value = openFiles.value.at(-1) || null
+    recentFiles.value = recentFiles.value.filter(item => keep(item.path))
+    pinnedItems.value = pinnedItems.value.filter(item => keep(item.path))
+    saveNavigation()
+  }
+
   function incrementFileTreeVersion() {
     fileTreeVersion.value++
   }
@@ -156,6 +188,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openFile,
     closeFile,
     setActiveFile,
+    renameFilePaths,
+    removeFilePaths,
     incrementFileTreeVersion,
     isPinned,
     togglePin,

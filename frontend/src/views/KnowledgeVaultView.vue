@@ -3,10 +3,10 @@ import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   Archive,
-  ArrowDown,
   ArrowUpRight,
   BookOpen,
   Brain,
+  ChevronLeft,
   ChevronRight,
   FileText,
   GitGraph,
@@ -44,14 +44,16 @@ const search = ref('')
 const spaceFilter = ref('all')
 const pinnedOnly = ref(false)
 const sortOrder = ref('recent')
-const visibleLimit = ref(40)
+const page = ref(1)
+const pageSize = ref(10)
+const pageSizes = [10, 20, 50]
 const folderFilter = ref('')
 const spaceCopy: Record<SpaceKey, { label: string; description: string }> = {
   learning: { label: '学习', description: '把理解连成体系' },
   projects: { label: '项目', description: '让经验回到实践' },
   resources: { label: '资料收藏', description: '留住有价值的参考' },
   inbox: { label: '收集箱', description: '为灵感留一个入口' },
-  daily: { label: '日记与日报', description: '看见每天的积累' },
+  daily: { label: '工作日志/日报', description: '回顾工作进展与积累' },
 }
 const spaces = computed(() =>
   SPACE_DEFS.map((space) => ({
@@ -127,7 +129,38 @@ const filteredDocuments = computed(() => {
         : b.modifiedAt.localeCompare(a.modifiedAt)
     )
 })
-const displayedDocuments = computed(() => filteredDocuments.value.slice(0, visibleLimit.value))
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredDocuments.value.length / pageSize.value)))
+const currentPage = computed(() => Math.min(page.value, totalPages.value))
+const pageStart = computed(() => (currentPage.value - 1) * pageSize.value)
+const displayedDocuments = computed(() => filteredDocuments.value.slice(pageStart.value, pageStart.value + pageSize.value))
+const pageNumbers = computed(() => {
+  const total = totalPages.value
+  if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1)
+  const start = Math.max(2, Math.min(currentPage.value - 1, total - 3))
+  const end = Math.min(total - 1, Math.max(currentPage.value + 1, 4))
+  const numbers: (number | string)[] = [1]
+  if (start > 2) numbers.push('before')
+  for (let number = start; number <= end; number++) numbers.push(number)
+  if (end < total - 1) numbers.push('after')
+  numbers.push(total)
+  return numbers
+})
+
+function routePage(value: unknown) {
+  if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) return 1
+  const number = Number(value)
+  return Number.isSafeInteger(number) ? number : 1
+}
+function routeFilters() {
+  return [
+    typeof route.query.q === 'string' ? route.query.q : '',
+    typeof route.query.space === 'string' ? route.query.space : 'all',
+    route.query.pinned === '1',
+    route.query.sort === 'title' ? 'title' : 'recent',
+    typeof route.query.folder === 'string' ? route.query.folder : '',
+    route.query.pageSize === '20' ? 20 : route.query.pageSize === '50' ? 50 : 10,
+  ] as const
+}
 
 function openDocument(path: string) {
   workspace.openFile(path)
@@ -144,21 +177,43 @@ function resetFilters() {
   folderFilter.value = ''
 }
 watch(() => route.fullPath, () => {
-  search.value = typeof route.query.q === 'string' ? route.query.q : ''
-  spaceFilter.value = typeof route.query.space === 'string' ? route.query.space : 'all'
-  folderFilter.value = typeof route.query.folder === 'string' ? route.query.folder : ''
-  pinnedOnly.value = route.query.pinned === '1'
-  sortOrder.value = route.query.sort === 'title' ? 'title' : 'recent'
+  [search.value, spaceFilter.value, pinnedOnly.value, sortOrder.value, folderFilter.value, pageSize.value] = routeFilters()
+  page.value = routePage(route.query.page)
 }, { immediate: true })
-watch([search, spaceFilter, pinnedOnly, sortOrder, folderFilter], () => {
-  visibleLimit.value = 40
+// Back can reactivate the cached list without changing its saved fullPath.
+watch([
+  search, spaceFilter, pinnedOnly, sortOrder, folderFilter, pageSize, page, totalPages,
+  () => workbench.snapshot,
+  () => route.fullPath,
+  () => router.currentRoute.value.path,
+], () => {
   if (router.currentRoute.value.path !== '/vault') return
-  void router.replace({ path: '/vault', query: {
-    ...route.query, q: search.value || undefined, space: spaceFilter.value === 'all' ? undefined : spaceFilter.value,
-    folder: folderFilter.value || undefined, pinned: pinnedOnly.value ? '1' : undefined, sort: sortOrder.value === 'title' ? 'title' : undefined,
+  const filters = [search.value, spaceFilter.value, pinnedOnly.value, sortOrder.value, folderFilter.value, pageSize.value]
+  const restored = routeFilters()
+  const filtersChanged = filters.some((value, index) => value !== restored[index])
+  // A null snapshot means the first index has not arrived, not that the vault is empty.
+  const nextPage = filtersChanged ? 1 : workbench.snapshot ? currentPage.value : page.value
+  if (page.value !== nextPage) {
+    page.value = nextPage
+    return
+  }
+  const target = router.resolve({ path: '/vault', hash: route.hash, query: {
+    ...route.query,
+    q: search.value || undefined,
+    space: spaceFilter.value === 'all' ? undefined : spaceFilter.value,
+    folder: folderFilter.value || undefined,
+    pinned: pinnedOnly.value ? '1' : undefined,
+    sort: sortOrder.value === 'title' ? 'title' : undefined,
+    page: String(page.value),
+    pageSize: String(pageSize.value),
   } })
+  if (target.fullPath !== router.currentRoute.value.fullPath) void router.replace(target)
+}, { immediate: true })
+watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
+  if (!previousPath || path === previousPath) return
+  resetFilters()
+  page.value = 1
 })
-watch(() => workspace.currentWorkspace?.path, resetFilters)
 </script>
 
 <template>
@@ -189,7 +244,7 @@ watch(() => workspace.currentWorkspace?.path, resetFilters)
           </button>
           <VaultActions
             v-if="workspace.hasWorkspace"
-            :folder="folderFilter || (spaceFilter !== 'all' ? spaceFilter : 'Inbox')"
+            :folder="folderFilter || (spaceFilter !== 'all' ? spaceFilter : undefined)"
           />
         </div>
       </header>
@@ -382,15 +437,75 @@ watch(() => workspace.currentWorkspace?.path, resetFilters)
                 新建第一篇文档 <ArrowUpRight :size="13" />
               </button>
             </div>
-            <button
-              v-if="filteredDocuments.length > displayedDocuments.length"
-              class="vault-show-more"
-              type="button"
-              @click="visibleLimit += 40"
+            <nav
+              v-if="filteredDocuments.length"
+              class="vault-pagination"
+              aria-label="文档分页"
             >
-              再显示 {{ Math.min(40, filteredDocuments.length - displayedDocuments.length) }} 篇
-              <ArrowDown :size="14" />
-            </button>
+              <div
+                class="vault-pagination-status"
+                data-testid="vault-pagination-status"
+                role="status"
+              >
+                <span>{{ pageStart + 1 }}–{{ pageStart + displayedDocuments.length }} / 共 {{ filteredDocuments.length }} 篇</span>
+                <span>第 {{ currentPage }} / {{ totalPages }} 页</span>
+              </div>
+              <div class="vault-pagination-actions">
+                <label class="vault-inline-filter vault-page-size">
+                  <span>每页</span>
+                  <select
+                    v-model.number="pageSize"
+                    aria-label="每页文档数"
+                  >
+                    <option
+                      v-for="size in pageSizes"
+                      :key="size"
+                      :value="size"
+                    >{{ size }} 篇</option>
+                  </select>
+                </label>
+                <div class="vault-page-buttons">
+                  <button
+                    class="collection-button"
+                    type="button"
+                    aria-label="上一页"
+                    :disabled="currentPage === 1"
+                    @click="page = currentPage - 1"
+                  >
+                    <ChevronLeft :size="14" />上一页
+                  </button>
+                  <template
+                    v-for="number in pageNumbers"
+                    :key="number"
+                  >
+                    <button
+                      v-if="typeof number === 'number'"
+                      class="collection-button vault-page-number"
+                      type="button"
+                      :aria-label="`第 ${number} 页`"
+                      :aria-current="currentPage === number ? 'page' : undefined"
+                      @click="page = number"
+                    >
+                      {{ number }}
+                    </button>
+                    <span
+                      v-else
+                      class="vault-page-gap"
+                      aria-hidden="true"
+                    >…</span>
+                  </template>
+                  <button
+                    class="collection-button"
+                    type="button"
+                    aria-label="下一页"
+                    :disabled="currentPage === totalPages"
+                    @click="page = currentPage + 1"
+                  >
+                    下一页<ChevronRight :size="14" />
+                  </button>
+                </div>
+              </div>
+            </nav>
           </div>
         </section>
 
@@ -613,17 +728,50 @@ watch(() => workspace.currentWorkspace?.path, resetFilters)
   color: var(--text-secondary);
   font-size: 13px;
 }
-.vault-show-more {
-  width: 100%;
+.vault-pagination {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 16px 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font-size: 12px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border-light);
+}
+.vault-pagination-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.vault-pagination-actions,
+.vault-page-buttons,
+.vault-page-size {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vault-pagination-actions {
+  gap: 12px;
+}
+.vault-page-size {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+.vault-page-number {
+  min-width: var(--control-height);
+  font-variant-numeric: tabular-nums;
+}
+.vault-page-number[aria-current='page'] {
+  background: var(--selection-bg);
+  border-color: var(--selection-border);
+  color: var(--selection-text);
+}
+.vault-page-gap {
+  color: var(--text-secondary);
+  padding: 0 3px;
 }
 .vault-tools {
   margin-top: 32px;

@@ -4,7 +4,7 @@
  *
  * 设计理念（参考 Obsidian 主页）：
  *  - 一屏总览：当前工作区信息、文档数量、未完成任务、近期活动
- *  - 快速入口：新建文档、日记、打开文件
+ *  - 快速入口：新建文档、工作汇报、打开文件
  *  - 最近编辑：最近打开/修改的文档（可固定）
  *  - 知识脉络：双向链接、标签云、待办摘要
  *  - 文档网格：所有文档的卡片视图（支持搜索、筛选、排序）
@@ -26,7 +26,7 @@ import {
 } from '@lucide/vue'
 import WorkbenchWidgets from '@/components/knowledge/WorkbenchWidgets.vue'
 import TemplateCreateDialog from '@/components/knowledge/TemplateCreateDialog.vue'
-import { useDailyNote } from '@/composables/useDailyNote'
+import { useWorkLog } from '@/composables/useWorkLog'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
@@ -140,10 +140,10 @@ async function loadHotTags() {
 }
 
 // 知识空间（分类扫描/统计/过滤已抽到 useWorkbenchSpaces，蓝图 2.1 五空间）
-const { openTodayNote } = useDailyNote()
+const { openTodayWorkLog } = useWorkLog()
 function openSpace(space: { dir: string; key: string }) {
   if (space.key === 'daily') {
-    void openTodayNote()
+    void openTodayWorkLog()
     return
   }
   // 直达知识库编辑页（目录在文件树中就地可见）
@@ -318,11 +318,6 @@ async function exportWorkspace() {
   }
 }
 
-/** 创建今日日记：实现已抽到 composables/useDailyNote.ts（侧栏「今日日记」直达共用） */
-function createDailyNote() {
-  void openTodayNote()
-}
-
 /** P2-2：模板创建成功后打开新笔记 */
 function onTemplateCreated(path: string) {
   showTemplateDialog.value = false
@@ -451,7 +446,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
     <!-- 今日焦点：可勾选待办 / 到期提醒（倒计时） / 今日编辑 -->
     <WorkbenchWidgets />
 
-    <!-- 知识空间分类卡片（蓝图 2.1）：学习 / 项目 / 资料收藏 / 灵感收集箱 / 日记 -->
+    <!-- 知识空间：学习 / 项目 / 资料收藏 / 灵感收集箱 / 工作汇报 -->
     <section class="kv-spaces">
       <button
         v-for="space in knowledgeSpaces"

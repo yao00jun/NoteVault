@@ -19,7 +19,7 @@ import { useWorkbenchStore } from '@/stores/workbench'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
-import { FileService, WorkspaceService, TagService, ArchiveService, TrashService, SummarizeService, ExportService, CompileService } from '@/api'
+import { FileService, WorkspaceService, TagService, SummarizeService, ExportService, CompileService } from '@/api'
 import { arrayBufferToBase64, generateMarkdownImage } from '@/utils/image'
 import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
@@ -27,11 +27,12 @@ import { isLocalBaseURL } from '@/utils/localEndpoint'
 import { toSplitPairs } from '@/utils/textDiff'
 import { useToast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirm'
-import { promptDialog } from '@/composables/usePrompt'
 import { useEditorDraft, type EditorTab } from '@/composables/useEditorDraft'
+import { useEditorFileOperations } from '@/composables/useEditorFileOperations'
 import { useEditorBacklinks } from '@/composables/useEditorBacklinks'
 import { editorSession, registerEditorFlush } from '@/composables/useEditorSession'
 import { normalizeNotePath } from '@/utils/navigation'
+import { isEntryPath, windowsWorkspace } from '@/utils/filePaths'
 import { findFileByName } from '@/utils/wikiLinkFiles'
 import { useEditorLayout } from '@/composables/useEditorLayout'
 import { distillationPaths, distillNoteTitle, isProjectMarkdown, type DistillationSource } from '@/utils/distillKnowledge'
@@ -52,10 +53,13 @@ type Tab = EditorTab
 const fileTree = ref<FileNode[]>([])
 const tabs = ref<Tab[]>([])
 const activeTabIndex = ref(-1)
+const focusFolder = ref<string | null>(null)
 const distillSource = ref<DistillationSource | null>(null)
 const preparingDistillation = ref(false)
 const { mainRef, panesRef, treeWidth, showTree, overlayTree, splitPercent, effectiveViewMode, toggleTree, toggleViewMode, beginResize, adjust } = useEditorLayout()
 let openFileVersion = 0
+let fileTreeRequest = 0
+let deferredOpen: string | null = null
 
 // 计算属性
 const activeTab = computed(() => {
@@ -71,6 +75,7 @@ const canDistill = computed(() => !!activeTab.value && isProjectMarkdown(activeT
 const fileContent = computed({
   get: () => splitFrontMatter(activeTab.value?.content || '').body,
   set: (val: string) => {
+    if (isApplyingExternalChanges.value) return
     if (activeTab.value) {
       const parsed = splitFrontMatter(activeTab.value.content)
       // parsed.raw 以 `---\n...\n---\n` 结尾，直接拼接新正文
@@ -88,7 +93,7 @@ const activeTags = computed<string[]>(() => {
 })
 
 function updateTags(newTags: string[]) {
-  if (!activeTab.value) return
+  if (!activeTab.value || isApplyingExternalChanges.value) return
   const parsed = splitFrontMatter(activeTab.value.content)
   activeTab.value.content = buildContent(parsed, newTags)
   activeTab.value.isDirty = true
@@ -120,10 +125,12 @@ async function invalidateTagCache() {
 
 // 加载文件树
 async function loadFileTree() {
-  if (!currentWorkspace.value?.path) return
+  const workspacePath = currentWorkspace.value?.path
+  if (!workspacePath) return
+  const request = ++fileTreeRequest
   try {
-    const tree = await FileService.GetFileTree(currentWorkspace.value.path)
-    fileTree.value = tree as FileNode[]
+    const tree = await FileService.GetFileTree(workspacePath)
+    if (currentWorkspace.value?.path === workspacePath && request === fileTreeRequest) fileTree.value = tree as FileNode[]
   } catch (e) {
     console.error('Failed to load file tree:', e)
   }
@@ -131,7 +138,7 @@ async function loadFileTree() {
 
 // 查找文件是否已在标签页中
 function findTabIndex(path: string): number {
-  return tabs.value.findIndex((tab) => tab.path === path)
+  return tabs.value.findIndex((tab) => isEntryPath(tab.path, path, false, windowsWorkspace(sessionWorkspacePath || '')))
 }
 
 // 打开文件
@@ -150,6 +157,13 @@ async function openFile(node: FileNode) {
 async function openFileByPath(filePath: string, fromRoute = false) {
   const workspacePath = currentWorkspace.value?.path
   if (!workspacePath || route.path !== '/editor') return
+  if (isApplyingExternalChanges.value) {
+    deferredOpen = filePath
+    if (!fromRoute && route.query.file !== filePath) {
+      void router.push({ path: '/editor', query: { ...route.query, file: filePath, folder: undefined } })
+    }
+    return
+  }
   filePath = normalizeNotePath(filePath)
   const version = ++openFileVersion
   if (activeTab.value?.isDirty && activeTab.value.path !== filePath) void saveTab(activeTabIndex.value)
@@ -157,6 +171,7 @@ async function openFileByPath(filePath: string, fromRoute = false) {
     const existingIndex = findTabIndex(filePath)
     if (existingIndex >= 0) {
       activeTabIndex.value = existingIndex
+      filePath = tabs.value[existingIndex]!.path
     } else {
       const content = await FileService.ReadFile(workspacePath, filePath)
       if (version !== openFileVersion || currentWorkspace.value?.path !== workspacePath || route.path !== '/editor') return
@@ -216,6 +231,15 @@ const {
 })
 
 const unregisterFlush = registerEditorFlush(flushAllTabs)
+watch(isApplyingExternalChanges, applying => {
+  if (applying || !deferredOpen) return
+  const pending = deferredOpen
+  deferredOpen = null
+  if (route.path !== '/editor') return
+  // Same-editor sidebar links can arrive while a rename RPC is in progress.
+  // Honor the latest URL once paths and drafts have been reconciled.
+  void openFileByPath(typeof route.query.file === 'string' ? route.query.file : pending, true)
+})
 
 async function openDistillModal() {
   const tab = activeTab.value
@@ -310,94 +334,18 @@ async function closeTab(index: number, event?: Event) {
   }
 }
 
-// 新建文件
-async function handleNewFile(parentPath: string) {
-  const name = await promptDialog({ message: t('editor.promptFileName'), defaultValue: t('editor.untitledDoc') })
-  if (!name) return
-  const fullPath = parentPath ? `${parentPath}/${name}` : name
-  try {
-    const node = await FileService.CreateFile(currentWorkspace.value!.path, fullPath, `# ${name.replace('.md', '')}\n\n`)
+const { busy: fileOperationsBusy, handleNewFile, handleNewFolder, handleRename, handleDeleteFile, handleArchiveFile, handleTrashFile } = useEditorFileOperations({
+  tabs, activeTabIndex, focusFolder,
+  workspacePath: computed(() => currentWorkspace.value?.path),
+  withExternalFileChanges,
+  openFile,
+  onBegin: () => { openFileVersion++ },
+  refresh: async () => {
     await invalidateTagCache()
     await loadFileTree()
     workspaceStore.incrementFileTreeVersion()
-    if (node) openFile(node as FileNode)
-  } catch (e) {
-    if ((e as Error).message?.includes('exist')) {
-      toast.warning(t('editor.fileExists'))
-    } else {
-      console.error('Failed to create file:', e)
-    }
-  }
-}
-
-// 删除文件
-async function handleDeleteFile(node: FileNode) {
-  if (!(await confirmDialog({ message: t('editor.confirmDelete', { name: node.name }), danger: true }))) return
-  try {
-    await FileService.DeleteFile(currentWorkspace.value!.path, node.path)
-    await invalidateTagCache()
-    // 如果删除的文件在标签页中，关闭该标签页
-    const tabIndex = findTabIndex(node.path)
-    if (tabIndex >= 0) {
-      tabs.value.splice(tabIndex, 1)
-      if (tabs.value.length === 0) {
-        activeTabIndex.value = -1
-      } else if (tabIndex <= activeTabIndex.value) {
-        activeTabIndex.value = Math.max(0, activeTabIndex.value - 1)
-      }
-    }
-    await loadFileTree()
-    workspaceStore.incrementFileTreeVersion()
-  } catch (e) {
-    console.error('Failed to delete file:', e)
-  }
-}
-
-// 归档文件
-async function handleArchiveFile(node: FileNode) {
-  try {
-    await ArchiveService.ArchiveFile(currentWorkspace.value!.path, node.path)
-    await invalidateTagCache()
-    // 如果归档的文件在标签页中，关闭该标签页
-    const tabIndex = findTabIndex(node.path)
-    if (tabIndex >= 0) {
-      tabs.value.splice(tabIndex, 1)
-      if (tabs.value.length === 0) {
-        activeTabIndex.value = -1
-      } else if (tabIndex <= activeTabIndex.value) {
-        activeTabIndex.value = Math.max(0, activeTabIndex.value - 1)
-      }
-    }
-    await loadFileTree()
-    workspaceStore.incrementFileTreeVersion()
-  } catch (e) {
-    console.error('Failed to archive file:', e)
-    toast.error(t('editor.archiveFailed', { msg: (e as Error).message }))
-  }
-}
-
-// 移动到回收站
-async function handleTrashFile(node: FileNode) {
-  try {
-    await TrashService.MoveToTrash(currentWorkspace.value!.path, node.path)
-    await invalidateTagCache()
-    // 如果删除的文件在标签页中，关闭该标签页
-    const tabIndex = findTabIndex(node.path)
-    if (tabIndex >= 0) {
-      tabs.value.splice(tabIndex, 1)
-      if (tabs.value.length === 0) {
-        activeTabIndex.value = -1
-      } else if (tabIndex <= activeTabIndex.value) {
-        activeTabIndex.value = Math.max(0, activeTabIndex.value - 1)
-      }
-    }
-    await loadFileTree()
-    workspaceStore.incrementFileTreeVersion()
-  } catch (e) {
-    console.error('Failed to move to trash:', e)
-    toast.error(t('editor.moveToTrashFailed', { msg: (e as Error).message }))
-  }
-}
+  },
+})
 
 // 切换视图模式
 
@@ -656,7 +604,6 @@ watch(() => workspaceStore.fileTreeVersion, () => {
 // 工作台空间卡直达（?folder=Learning 等）：路由 query 变化时更新聚焦目录，
 // 由 FileTree 展开祖先链并短暂高亮。keep-alive 下本组件不重挂载，
 // query 变化只能靠 watcher 接住。
-const focusFolder = ref<string | null>(null)
 const newDocumentFolder = computed(() => focusFolder.value || (activeTab.value?.path.includes('/') ? activeTab.value.path.slice(0, activeTab.value.path.lastIndexOf('/')) : 'Inbox'))
 watch(
   () => route.query.folder,
@@ -1067,6 +1014,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
         v-show="showTree"
         class="file-tree-pane"
         :style="{ width: `${treeWidth}px` }"
+        :inert="fileOperationsBusy || isApplyingExternalChanges ? true : undefined"
       >
         <FileTree
           :nodes="fileTree"
@@ -1074,6 +1022,8 @@ watch(() => workspaceStore.fileTreeVersion, () => {
           :focus-folder="focusFolder"
           @open-file="openFile"
           @new-file="handleNewFile"
+          @new-folder="handleNewFolder"
+          @rename="handleRename"
           @delete="handleDeleteFile"
           @archive="handleArchiveFile"
           @trash="handleTrashFile"
@@ -1095,7 +1045,10 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       />
 
       <!-- 编辑/预览区域 -->
-      <div class="editor-content">
+      <div
+        class="editor-content"
+        :inert="isApplyingExternalChanges ? true : undefined"
+      >
         <div
           v-if="!activeTab"
           class="empty-state"

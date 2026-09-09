@@ -112,7 +112,7 @@ watch(() => workspace.currentWorkspace?.path, () => { showTemplate.value = false
     </details>
     <TemplateCreateDialog
       v-if="showTemplate"
-      :default-folder="folder || 'Inbox'"
+      :default-folder="folder"
       @close="showTemplate = false"
       @created="created"
     />

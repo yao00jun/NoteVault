@@ -17,6 +17,7 @@ import { FileService } from '@/api'
 import { diffLines, type DiffRow } from '@/utils/textDiff'
 import { useI18n } from 'vue-i18n'
 import { useToast } from '@/composables/useToast'
+import { windowsWorkspace } from '@/utils/filePaths'
 
 export interface EditorTab {
   path: string
@@ -199,6 +200,19 @@ export function useEditorDraft(options: {
     const originals = options.tabs.value.filter(tab => affected.has(externalPathKey(tab.path)))
     let started = false
     try {
+      if (windowsWorkspace(wsPath)) {
+        const identities = new Map<string, EditorTab[]>()
+        for (const tab of originals) {
+          const key = externalPathKey(tab.path)
+          identities.set(key, [...(identities.get(key) || []), tab])
+        }
+        for (const aliases of identities.values()) {
+          if (aliases.length > 1 && aliases.some(tab => tab.isDirty || pendingSaves.has(tab)) && aliases.some(tab => tab.content !== aliases[0]!.content)) {
+            aliases.forEach(tab => markConflict(tab.path))
+            throw new Error('同一文件的多个标签页存在不同草稿，请先另存副本并处理冲突。')
+          }
+        }
+      }
       for (const tab of originals) {
         // A disk read begun before the reservation cannot replace newer content.
         reloadVersions.set(tab, (reloadVersions.get(tab) ?? 0) + 1)
