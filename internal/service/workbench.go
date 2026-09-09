@@ -107,10 +107,14 @@ func (s *TodoService) GetWorkbench(workspacePath, date string) (*WorkbenchSnapsh
 		Radar: WorkbenchRadar{Path: "Learning/技术雷达.md"}, IndexedAt: time.Now().Format(time.RFC3339Nano), Warnings: warnings,
 	}
 	for _, file := range files {
+		parts := strings.Split(file.path, "/")
+		// Template sources remain accessible through TemplateService and the editor.
+		if len(parts) > 1 && strings.EqualFold(parts[0], templatesDirName) {
+			continue
+		}
 		document := workbenchDocument(file)
 		snapshot.Documents = append(snapshot.Documents, document)
 		snapshot.Tasks = append(snapshot.Tasks, parseWorkbenchTasks(file)...)
-		parts := strings.Split(file.path, "/")
 		if len(parts) == 3 && strings.EqualFold(parts[0], "Projects") && strings.EqualFold(parts[2], "project.md") {
 			name := workbenchText(file.props, "name", "title", "名称", "项目名称", "项目")
 			if name == "" {

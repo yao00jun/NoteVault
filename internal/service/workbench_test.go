@@ -74,6 +74,64 @@ func TestWorkbenchTodoIgnoresMarkdownExamples(t *testing.T) {
 	}
 }
 
+func TestWorkbenchDocumentsExcludeTemplatesWithoutHidingRealNotes(t *testing.T) {
+	for _, directory := range []string{"Templates", "templates", "TEMPLATES"} {
+		t.Run(directory, func(t *testing.T) {
+			root := t.TempDir()
+			const templateContent = "# {{title}}\n\n保留自定义模板正文。\n"
+			workbenchWrite(t, root, directory+"/自定义验收.md", templateContent)
+			workbenchWrite(t, root, directory+"/分组/嵌套模板.md", templateContent)
+			want := map[string]bool{
+				"Resources/模板使用指南.md":      false,
+				"Projects/Templates/设计.md": false,
+				"Templates.md":             false,
+				"TemplatesArchive/笔记.md":   false,
+			}
+			for relative := range want {
+				workbenchWrite(t, root, relative, "# 模板设计知识\n\n真正的笔记仍应展示。\n")
+			}
+			snapshot := workbenchSnapshot(t, NewTodoService(), root, "2026-09-09")
+			if len(snapshot.Documents) != len(want) {
+				t.Fatalf("only real notes belong in document counts: got %+v", snapshot.Documents)
+			}
+			for _, document := range snapshot.Documents {
+				if _, ok := want[document.Path]; !ok {
+					t.Fatalf("template leaked into the document list: %s", document.Path)
+				}
+				want[document.Path] = true
+			}
+			for relative, found := range want {
+				if !found {
+					t.Errorf("ordinary note was hidden: %s", relative)
+				}
+			}
+			for _, relative := range []string{"/自定义验收.md", "/分组/嵌套模板.md"} {
+				if content := workbenchRead(t, root, directory+relative); content != templateContent {
+					t.Fatalf("template contents changed: %s", relative)
+				}
+			}
+			if directory == "Templates" {
+				templates := NewTemplateService(nil)
+				content, err := templates.GetTemplateContent(root, "自定义验收")
+				if err != nil || content != templateContent {
+					t.Fatalf("template management must retain access: content=%q err=%v", content, err)
+				}
+				available, err := templates.ListTemplates(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, template := range available {
+					found = found || template.Name == "自定义验收"
+				}
+				if !found {
+					t.Fatal("custom template disappeared from the creation chooser")
+				}
+			}
+		})
+	}
+}
+
 func TestWorkbenchLegacyEmptyTodosSerializeAsArray(t *testing.T) {
 	todos, err := NewTodoService().GetAllTodos(t.TempDir())
 	if err != nil {
