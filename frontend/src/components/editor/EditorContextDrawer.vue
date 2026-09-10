@@ -46,8 +46,11 @@ const backlinkCount = computed(() => props.backlinks.length)
 <template>
   <aside
     v-if="open"
+    id="editor-context-drawer"
     class="ctx-drawer"
     data-testid="ctx-drawer"
+    :aria-label="t('editor.drawer.toggle')"
+    @keydown.esc.stop="emit('close')"
   >
     <div class="ctx-header">
       <nav class="ctx-tabs">

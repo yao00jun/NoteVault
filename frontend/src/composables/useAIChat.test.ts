@@ -140,6 +140,7 @@ describe('useAIChat', () => {
 
   it('buildContext 提供的上下文拼进发给后端的问题，消息列表保持干净', async () => {
     const chat = mountHost(() => '当前文档正文内容')
+    useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
     const ws = useWorkspaceStore()
     ws.setCurrentWorkspace({
       id: 'ws-1',
@@ -180,6 +181,7 @@ describe('useAIChat', () => {
   it('Answer 抛错时推送错误消息且不炸 UI', async () => {
     answerMock.mockRejectedValue(new Error('boom'))
     const chat = mountHost()
+    useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
     const ws = useWorkspaceStore()
     ws.setCurrentWorkspace({
       id: 'ws-1',
@@ -203,6 +205,7 @@ describe('useAIChat', () => {
       new Promise((r) => { resolve = r }) as ReturnType<typeof QnAService.Answer>,
     )
     const chat = mountHost()
+    useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
     const ws = useWorkspaceStore()
     ws.setCurrentWorkspace({
       id: 'ws-1',

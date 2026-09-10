@@ -550,25 +550,45 @@ async function handleNewFileWithName(fileName: string) {
 // ---- 右侧辅助抽屉（Context Drawer）：大纲 + 反向链接 ----
 const drawerOpen = ref(false)
 const drawerTab = ref<'outline' | 'backlinks'>('outline')
-// 大纲：解析当前活动 Tab 的 Markdown 标题树（H1~H6），记录行号供跳转
+const userManuallyToggledDrawer = ref(false)
+// Use the same Markdown parser as preview and count body lines, excluding frontmatter.
 const outline = computed<OutlineItem[]>(() => {
-  const tab = tabs.value[activeTabIndex.value]
-  if (!tab) return []
   const items: OutlineItem[] = []
-  let inCode = false
-  tab.content.split('\n').forEach((line, i) => {
-    if (/^\s*(```|~~~)/.test(line)) inCode = !inCode
-    if (inCode) return
-    const m = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line)
-    if (m) items.push({ level: m[1].length, text: m[2].trim(), line: i })
-  })
+  let line = 0
+  for (const token of marked.lexer(fileContent.value)) {
+    if (token.type === 'heading') items.push({ level: token.depth, text: token.text, line })
+    line += (token.raw.match(/\n/g) || []).length
+  }
   return items
 })
 
+watch([effectiveViewMode, () => outline.value.length], ([mode, count]) => {
+  if (userManuallyToggledDrawer.value) return
+  drawerOpen.value = mode === 'preview' && count > 0
+  if (drawerOpen.value) drawerTab.value = 'outline'
+}, { immediate: true })
+
+function setDrawerOpen(open: boolean) {
+  userManuallyToggledDrawer.value = true
+  drawerOpen.value = open
+}
+
+function selectDrawerTab(tab: 'outline' | 'backlinks') {
+  userManuallyToggledDrawer.value = true
+  drawerTab.value = tab
+}
+
 function jumpToLine(line: number) {
+  if (effectiveViewMode.value !== 'editor') {
+    const index = outline.value.findIndex(item => item.line === line)
+    // Only parsed top-level Markdown headings belong to this document's outline.
+    const headings = mainRef.value?.querySelectorAll<HTMLElement>('.preview-pane .markdown-preview > :is(h1, h2, h3, h4, h5, h6)[data-markdown-heading="true"]')
+    headings?.[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if (effectiveViewMode.value === 'preview') return
+  }
   const view = getActiveEditor()
   if (!view) return
-  const target = Math.min(line, view.state.doc.lines - 1)
+  const target = Math.max(0, Math.min(line, view.state.doc.lines - 1))
   const pos = view.state.doc.line(target + 1).from
   view.dispatch({ selection: { anchor: pos }, scrollIntoView: true })
   view.focus()
@@ -942,6 +962,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       :active-tab="activeTab"
       :view-mode="effectiveViewMode"
       :tree-open="showTree"
+      :drawer-open="drawerOpen"
       :is-exporting="isExporting"
       :is-compiling="isCompiling"
       :is-distilling="preparingDistillation || isApplyingExternalChanges"
@@ -956,7 +977,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       @save="saveCurrentTab"
       @toggle-view="toggleViewMode"
       @toggle-tree="toggleTree"
-      @toggle-drawer="drawerOpen = !drawerOpen"
+      @toggle-drawer="setDrawerOpen(!drawerOpen)"
     />
 
     <!-- 外部修改冲突横幅（蓝图专项 1）：有未保存草稿时禁止自动覆盖 -->
@@ -999,16 +1020,6 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       class="editor-main"
       :class="{ 'overlay-tree': overlayTree }"
     >
-      <!-- 右侧辅助抽屉（大纲 / 反向链接） -->
-      <EditorContextDrawer
-        v-model:tab="drawerTab"
-        :open="drawerOpen"
-        :outline="outline"
-        :backlinks="backlinks"
-        @jump-line="jumpToLine"
-        @open-path="openDrawerPath"
-        @close="drawerOpen = false"
-      />
       <!-- 左侧文件树 -->
       <div
         v-show="showTree"
@@ -1020,6 +1031,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
           :nodes="fileTree"
           :active-file-path="activeTab?.path"
           :focus-folder="focusFolder"
+          :folder-display-names="settingsStore.settings.editor.folderDisplayNames"
           @open-file="openFile"
           @new-file="handleNewFile"
           @new-folder="handleNewFolder"
@@ -1129,6 +1141,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
               </div>
               <div class="pane-body">
                 <MarkdownPreview
+                  :key="activeTab.path"
                   :content="fileContent"
                   :workspace-path="currentWorkspace?.path"
                   :current-file-name="activeTab?.name"
@@ -1146,6 +1159,18 @@ watch(() => workspaceStore.fileTreeVersion, () => {
           />
         </div>
       </div>
+
+      <!-- 右侧辅助抽屉（大纲 / 反向链接） -->
+      <EditorContextDrawer
+        :tab="drawerTab"
+        :open="drawerOpen"
+        :outline="outline"
+        :backlinks="backlinks"
+        @update:tab="selectDrawerTab"
+        @jump-line="jumpToLine"
+        @open-path="openDrawerPath"
+        @close="setDrawerOpen(false)"
+      />
 
       <!-- AI 总结面板 -->
       <EditorSummaryPanel
@@ -1238,6 +1263,14 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   position: absolute;
   inset: 0 auto 0 0;
   z-index: 20;
+  box-shadow: var(--shadow-lg);
+}
+.overlay-tree :deep(.ctx-drawer) {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 19;
+  max-width: calc(100% - 36px);
+  background: var(--surface-panel, var(--bg-card));
   box-shadow: var(--shadow-lg);
 }
 .pane-resizer {

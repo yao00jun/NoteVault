@@ -13,6 +13,7 @@ import { FileService } from '@/api'
 import { confirmDialog } from '@/composables/useConfirm'
 import { useToast } from '@/composables/useToast'
 import ThemePreview from '@/components/settings/ThemePreview.vue'
+import FolderDisplayNamesSettings from '@/components/settings/FolderDisplayNamesSettings.vue'
 
 const { t } = useI18n()
 const toast = useToast()
@@ -327,6 +328,7 @@ async function scrollToSection(id: string) {
           >
           <span class="range-value">{{ settingsStore.settings.autoSaveInterval }}ms</span>
         </div>
+        <FolderDisplayNamesSettings v-model="settingsStore.settings.editor.folderDisplayNames" />
         <div class="setting-item toolbar-config">
           <div class="setting-info">
             <span class="setting-label">{{ t('settings.editor.toolbar.mode') }}</span>

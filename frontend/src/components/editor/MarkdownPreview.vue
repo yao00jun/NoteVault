@@ -61,6 +61,12 @@ marked.setOptions({
   gfm: true,
 })
 
+// Mark parsed Markdown headings so outline navigation skips raw HTML headings.
+const previewRenderer = new marked.Renderer()
+previewRenderer.heading = function ({ tokens, depth }) {
+  return `<h${depth} data-markdown-heading="true">${this.parser.parseInline(tokens)}</h${depth}>\n`
+}
+
 // ===== 链接解析工具 =====
 
 /**
@@ -264,7 +270,7 @@ const html = computed(() => {
     s = preprocessHighlights(s)
     s = preprocessBlockIDs(s)
     // XSS 防线：marked 透传原始 HTML，笔记里的 onerror 等会在此执行
-    return sanitizeHtml(marked.parse(s) as string)
+    return sanitizeHtml(marked.parse(s, { renderer: previewRenderer }) as string)
   } catch (e) {
     return '<p style="color:red">Markdown 解析错误</p>'
   }

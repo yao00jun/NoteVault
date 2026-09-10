@@ -55,10 +55,15 @@ export function useEditorBacklinks(options: {
       const results = await SearchService.Search(wsPath, `[[${currentName}]]`)
       backlinks.value = (Array.isArray(results) ? results : [])
         .filter((r): r is NonNullable<typeof r> => !!r && r.path !== options.activeTabPath.value)
-        .map((r) => ({
-          path: r.path,
-          name: r.title ?? r.path,
-        }))
+        .map((r) => {
+          const rawTitle = r.title ?? ''
+          const isPlaceholder = /^\{\{.*\}\}$/.test(rawTitle.trim()) || !rawTitle.trim()
+          const fallbackName = r.path.split(/[\\/]/).pop() ?? r.path
+          return {
+            path: r.path,
+            name: isPlaceholder ? fallbackName : rawTitle,
+          }
+        })
     } catch (e) {
       console.error('Failed to load backlinks:', e)
       backlinks.value = []

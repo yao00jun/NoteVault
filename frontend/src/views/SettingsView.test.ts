@@ -86,6 +86,43 @@ describe('SettingsView · P1-6 LLM 端点配置', () => {
     expect(btns[1].text()).not.toContain('免 Key')
   })
 
+  it('edits a directory display name and restores its real name when cleared', async () => {
+    const { wrapper, settingsStore } = mountSettings()
+    expect(wrapper.find('[data-testid="folder-display-names"]').exists()).toBe(true)
+    const input = wrapper.get('[data-folder-path="Learning"] input')
+    await input.setValue(' 学习书架 ')
+    expect(settingsStore.settings.editor.folderDisplayNames).toEqual({ Learning: '学习书架' })
+    await input.setValue('')
+    expect(settingsStore.settings.editor.folderDisplayNames).toEqual({})
+  })
+
+  it('adds a nested mapping with Windows separators, keeps it when applying presets, and resets display names', async () => {
+    const { wrapper, settingsStore } = mountSettings()
+    expect(wrapper.find('[data-testid="folder-display-names"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="folder-alias-path"]').setValue('Learning\\Go')
+    await wrapper.get('[data-testid="folder-alias-name"]').setValue('Go 技术')
+    await wrapper.get('[data-testid="folder-alias-form"]').trigger('submit')
+    expect(settingsStore.settings.editor.folderDisplayNames).toEqual({ 'Learning/Go': 'Go 技术' })
+    expect(wrapper.find('[data-folder-path="Learning/Go"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="folder-alias-preset"]').trigger('click')
+    expect(settingsStore.settings.editor.folderDisplayNames).toMatchObject({ Learning: '学习', 'Learning/Go': 'Go 技术', Templates: '模板' })
+    await wrapper.get('[data-testid="folder-alias-reset"]').trigger('click')
+    expect(settingsStore.settings.editor.folderDisplayNames).toEqual({})
+    expect(wrapper.find('[data-folder-path="Learning/Go"]').exists()).toBe(false)
+  })
+
+  it('rejects absolute and parent-relative alias paths without changing preferences', async () => {
+    const { wrapper, settingsStore } = mountSettings()
+    expect(wrapper.find('[data-testid="folder-display-names"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="folder-alias-name"]').setValue('Invalid')
+    for (const path of ['C:\\Notes', '../Notes', '/Notes']) {
+      await wrapper.get('[data-testid="folder-alias-path"]').setValue(path)
+      expect(wrapper.get('[data-testid="folder-alias-add"]').attributes('disabled')).toBeDefined()
+      await wrapper.get('[data-testid="folder-alias-form"]').trigger('submit')
+      expect(settingsStore.settings.editor.folderDisplayNames).toEqual({})
+    }
+  })
+
   it('点选本机预设会填入地址与模型，并清掉旧的云端 Key', async () => {
     const { wrapper, settingsStore } = mountSettings()
     await flushPromises()

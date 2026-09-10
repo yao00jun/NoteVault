@@ -42,6 +42,7 @@ const props = defineProps<{
   isExporting: boolean
   isCompiling: boolean
   treeOpen?: boolean
+  drawerOpen?: boolean
   isDistilling?: boolean
 }>()
 
@@ -90,6 +91,8 @@ const compileTooltip = computed(() => {
       class="tab-back"
       data-testid="editor-drawer-toggle"
       :title="t('editor.drawer.toggle')"
+      :aria-expanded="!!drawerOpen"
+      aria-controls="editor-context-drawer"
       @click="emit('toggle-drawer')"
     >
       <PanelRight :size="15" />
@@ -251,6 +254,23 @@ const compileTooltip = computed(() => {
   flex: 1;
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+.tab-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+.tab-back:hover,
+.tab-back[aria-expanded='true'] {
+  background: var(--accent-alpha);
+  color: var(--text-primary);
 }
 
 .tabs-container::-webkit-scrollbar {

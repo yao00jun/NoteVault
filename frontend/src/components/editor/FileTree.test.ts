@@ -25,7 +25,60 @@ const nodes: FileNode[] = [
   },
 ]
 
+const learningTree: FileNode[] = [{
+  name: 'Learning', path: 'Learning', fullPath: '', isDir: true, children: [{
+    name: 'Go', path: 'Learning/Go', fullPath: '', isDir: true, children: [
+      { name: 'Chapter.md', path: 'Learning/Go/Chapter.md', fullPath: '', isDir: false },
+      { name: 'Next.md', path: 'Learning/Go/Next.md', fullPath: '', isDir: false },
+    ],
+  }],
+}, { name: 'Learning-Archive', path: 'Learning-Archive', fullPath: '', isDir: true, children: [] }]
+
 describe('FileTree', () => {
+  it('uses display aliases only for matching directories and preserves paths for opening and renaming', async () => {
+    const wrapper = mount(FileTree, { props: {
+      nodes: learningTree, activeFilePath: 'Learning/Go/Chapter.md',
+      folderDisplayNames: { Learning: '学习书架', 'Learning/Go': 'Go 技术', 'Learning/Go/Chapter.md': '不应用到文件' },
+    } })
+    expect(wrapper.get('[data-path="Learning"] .node-name').text()).toBe('学习书架')
+    expect(wrapper.get('[data-path="Learning/Go"] .node-name').text()).toBe('Go 技术')
+    expect(wrapper.get('[data-path="Learning/Go/Chapter.md"] .node-name').text()).toBe('Chapter.md')
+    await wrapper.get('[data-path="Learning/Go/Chapter.md"]').trigger('click')
+    expect(wrapper.emitted('open-file')?.[0]?.[0]).toMatchObject({ path: 'Learning/Go/Chapter.md' })
+    await wrapper.get('[data-path="Learning/Go"]').trigger('contextmenu')
+    await wrapper.findAll('.context-menu-item').find(item => item.text() === '重命名')!.trigger('click')
+    expect(wrapper.emitted('rename')?.[0]?.[0]).toMatchObject({ name: 'Go', path: 'Learning/Go' })
+    await wrapper.setProps({ folderDisplayNames: {} })
+    expect(wrapper.get('[data-path="Learning"] .node-name').text()).toBe('Learning')
+  })
+
+  it('reveals all ancestors and highlights an active path with Windows separators', () => {
+    const wrapper = mount(FileTree, { props: { nodes: learningTree, activeFilePath: 'Learning\\Go\\Chapter.md' } })
+    expect(wrapper.find('.tree-node.is-active').exists()).toBe(true)
+    expect(wrapper.get('.tree-node.is-active').attributes('data-path')).toBe('Learning/Go/Chapter.md')
+    expect(wrapper.findAll('.tree-children')).toHaveLength(2)
+  })
+
+  it('reveals a file when its ancestor nodes arrive asynchronously', async () => {
+    const wrapper = mount(FileTree, { props: { nodes: [], activeFilePath: 'Learning/Go/Chapter.md' } })
+    await wrapper.setProps({ nodes: learningTree })
+    expect(wrapper.find('.tree-node.is-active').exists()).toBe(true)
+  })
+
+  it('preserves manual collapse across tree refreshes, then reveals the next selected file', async () => {
+    const wrapper = mount(FileTree, { props: { nodes: learningTree, activeFilePath: 'Learning/Go/Chapter.md' } })
+    expect(wrapper.find('.tree-node.is-active').exists()).toBe(true)
+    await wrapper.get('[data-path="Learning"]').trigger('click')
+    await wrapper.setProps({ nodes: [...learningTree] })
+    expect(wrapper.find('.tree-children').exists()).toBe(false)
+
+    await wrapper.setProps({ activeFilePath: 'root.md' })
+    await wrapper.setProps({ activeFilePath: 'Learning/Go/Chapter.md' })
+    expect(wrapper.find('.tree-node.is-active').exists()).toBe(true)
+    await wrapper.setProps({ activeFilePath: 'Learning/Go/Next.md' })
+    expect(wrapper.get('.tree-node.is-active').attributes('data-path')).toBe('Learning/Go/Next.md')
+  })
+
   it.each([['新建文档', 'new-file'], ['新建文件夹', 'new-folder']])('nested %s keeps its workspace-relative parent path', async (label, event) => {
     const nested: FileNode = {
       name: 'Chapter', path: 'Learning/Go/Chapter', fullPath: '', isDir: true, children: [],

@@ -15,7 +15,7 @@ import DocumentPropertiesPanel from '@/components/editor/DocumentPropertiesPanel
 const mocks = vi.hoisted(() => ({ prompt: vi.fn() }))
 vi.mock('@/composables/usePrompt', () => ({ promptDialog: mocks.prompt }))
 vi.mock('@/stores/workbench', () => ({ useWorkbenchStore: () => ({}) }))
-vi.mock('@/stores/settings', () => ({ useSettingsStore: () => ({ settings: { autoSaveInterval: 250, ai: {} } }) }))
+vi.mock('@/stores/settings', () => ({ useSettingsStore: () => ({ settings: { autoSaveInterval: 250, ai: {}, editor: { folderDisplayNames: {} } } }) }))
 vi.mock('@wailsio/runtime', () => ({ Events: { On: vi.fn(() => () => {}) } }))
 vi.mock('@/api', () => ({
   FileService: { ReadFile: vi.fn(), SaveFile: vi.fn(), GetFileTree: vi.fn(), RenameFile: vi.fn(), CreateFolder: vi.fn() },

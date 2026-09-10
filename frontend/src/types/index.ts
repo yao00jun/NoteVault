@@ -91,6 +91,8 @@ export interface EditorSettings {
   lineHeight: number
   /** 预览区字体大小 */
   previewFontSize: number
+  /** 文件树的目录显示名映射，键为工作区相对路径，不改动文件系统 */
+  folderDisplayNames: Record<string, string>
 }
 
 export type ToolbarMode = 'top' | 'floating' | 'fixed'

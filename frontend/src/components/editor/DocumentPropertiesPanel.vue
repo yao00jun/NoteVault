@@ -18,7 +18,9 @@ const { t } = useI18n()
 const input = ref('')
 const inputVisible = ref(false)
 
-const normalizedTags = computed(() => props.tags)
+const normalizedTags = computed(() => [
+  ...new Set(props.tags.map((tag) => tag.trim()).filter((tag) => tag && !/^\{\{.*\}\}$/.test(tag))),
+])
 
 function removeTag(tag: string) {
   emit('update:tags', normalizedTags.value.filter((item) => item !== tag))
@@ -58,10 +60,14 @@ function showInput() {
     data-testid="doc-properties"
   >
     <Tag
+      v-if="normalizedTags.length > 0 || inputVisible"
       :size="13"
       class="properties-icon"
     />
-    <span class="properties-label">{{ t('editor.properties.tags') }}</span>
+    <span
+      v-if="normalizedTags.length > 0 || inputVisible"
+      class="properties-label"
+    >{{ t('editor.properties.tags') }}</span>
 
     <div class="tags-chips">
       <span
@@ -111,10 +117,11 @@ function showInput() {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
+  padding: 2px var(--space-3);
   border-bottom: 1px solid var(--border-light);
   background: var(--bg-sidebar);
-  min-height: 30px;
+  min-height: 24px;
+  flex-shrink: 0;
 }
 
 .properties-icon {
@@ -140,7 +147,7 @@ function showInput() {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 1px 4px 1px 8px;
+  padding: 0 4px 0 8px;
   border-radius: 10px;
   background: var(--bg-active);
   color: var(--accent);

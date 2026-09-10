@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ChevronRight, ChevronDown, FileText, Folder, FolderOpen, MoreVertical, Archive, Trash2 } from '@lucide/vue'
+import { normalizeNotePath } from '@/utils/navigation'
+import { normalizeFolderDisplayPath } from '@/utils/folderDisplayNames'
 
 export interface FileNode {
   name: string
@@ -17,6 +19,7 @@ const props = defineProps<{
   activeFilePath?: string | null
   /** 工作台空间卡直达：展开并高亮指定目录（相对路径，如 "Learning/Java"） */
   focusFolder?: string | null
+  folderDisplayNames?: Record<string, string>
 }>()
 
 const emit = defineEmits<{
@@ -33,6 +36,22 @@ const expandedDirs = ref<Set<string>>(new Set())
 const contextMenu = ref<{ x: number; y: number; node: FileNode | null; parentPath: string } | null>(null)
 /** 被聚焦高亮的目录路径（空间卡直达时短暂高亮，点击别处后清除） */
 const focusedDir = ref<string | null>(null)
+const activePath = computed(() => normalizeNotePath(props.activeFilePath || ''))
+
+// Reveal each ancestor once per selection. Tree refreshes must not undo a manual collapse.
+let revealedPath: string | null = null
+watch(
+  () => [activePath.value, props.nodes.filter(node => node.isDir).map(node => node.path)] as const,
+  ([path], previous) => {
+    if (path !== previous?.[0]) revealedPath = null
+    if (!path || revealedPath === path) return
+    const ancestor = props.nodes.find(node => node.isDir && path.startsWith(`${normalizeNotePath(node.path)}/`))
+    if (!ancestor) return
+    expandedDirs.value.add(ancestor.path)
+    revealedPath = path
+  },
+  { immediate: true },
+)
 
 function toggleDir(node: FileNode) {
   if (expandedDirs.value.has(node.path)) {
@@ -44,6 +63,11 @@ function toggleDir(node: FileNode) {
 
 function isExpanded(node: FileNode) {
   return expandedDirs.value.has(node.path)
+}
+
+function displayName(node: FileNode) {
+  const alias = node.isDir ? props.folderDisplayNames?.[normalizeFolderDisplayPath(node.path)] : undefined
+  return typeof alias === 'string' && alias.trim() ? alias.trim() : node.name
 }
 
 /**
@@ -142,7 +166,7 @@ function handleTrash(node: FileNode) {
           :data-path="node.path"
           :class="{
             'is-dir': node.isDir,
-            'is-active': !node.isDir && activeFilePath === node.path,
+            'is-active': !node.isDir && activePath === normalizeNotePath(node.path),
             'is-focused': node.isDir && focusedDir === node.path,
           }"
           @click="handleFileClick(node)"
@@ -179,7 +203,10 @@ function handleTrash(node: FileNode) {
               :size="16"
             />
           </span>
-          <span class="node-name">{{ node.name }}</span>
+          <span
+            class="node-name"
+            :title="node.path"
+          >{{ displayName(node) }}</span>
         </div>
 
         <!-- 子节点 -->
@@ -191,6 +218,7 @@ function handleTrash(node: FileNode) {
             :nodes="node.children"
             :active-file-path="activeFilePath"
             :focus-folder="childFocusFolder"
+            :folder-display-names="folderDisplayNames"
             @open-file="(n) => emit('open-file', n)"
             @new-file="(p) => emit('new-file', p)"
             @new-folder="(p) => emit('new-folder', p)"
@@ -286,6 +314,7 @@ export default { name: 'FileTree' }
   align-items: center;
   gap: 4px;
   padding: var(--space-1) var(--space-2);
+  border-left: 2px solid transparent;
   border-radius: var(--radius-sm);
   cursor: pointer;
   color: var(--text-secondary);
@@ -301,8 +330,9 @@ export default { name: 'FileTree' }
 }
 
 .tree-node.is-active {
-  background: var(--bg-active);
-  color: var(--accent);
+  background: var(--accent-alpha);
+  color: var(--text-primary);
+  border-left-color: var(--accent);
 }
 
 /* 空间卡直达的高亮（短暂）：用 accent 描边吸睛，2.4s 后自动消退 */

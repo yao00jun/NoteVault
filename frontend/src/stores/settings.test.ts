@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { nextTick } from 'vue'
+import { flushPromises } from '@vue/test-utils'
 import { useSettingsStore } from './settings'
 
 // P2-5：settings store 会把 apiKey 同步进系统凭据库（经 Wails 服务），
@@ -67,6 +68,56 @@ beforeEach(() => {
 })
 
 describe('useSettingsStore', () => {
+  it('saves a user-entered key while credential restoration is pending', async () => {
+    let finish!: (value: string) => void
+    getCredential.mockImplementation(async (name) => name === 'ai.apiKey'
+      ? new Promise<string>(resolve => { finish = resolve })
+      : '')
+    const store = useSettingsStore()
+    store.settings.ai.apiKey = 'user-entered-key'
+    await nextTick()
+    expect(saveCredential).toHaveBeenCalledWith('ai.apiKey', 'user-entered-key')
+    finish('previously-saved-key')
+    await flushPromises()
+    expect(store.settings.ai.apiKey).toBe('user-entered-key')
+  })
+
+  it('restores stored credentials without writing the restored values back to the credential service', async () => {
+    getCredential.mockImplementation(async (name) => `${String(name)}-stored`)
+    const store = useSettingsStore()
+    await flushPromises()
+    expect(store.settings.ai.apiKey).toBe('ai.apiKey-stored')
+    expect(store.settings.embedding.apiKey).toBe('embedding.apiKey-stored')
+    expect(store.settings.rerank.apiKey).toBe('rerank.apiKey-stored')
+    expect(saveCredential).not.toHaveBeenCalled()
+  })
+
+  it('persists folder display names and restores the original defaults for a fresh settings profile', async () => {
+    const store = useSettingsStore()
+    expect(store.settings.editor.folderDisplayNames).toEqual({})
+    store.settings.editor.folderDisplayNames = { Learning: '学习书架', 'Learning/Go': 'Go 技术' }
+    await nextTick()
+    store.$dispose()
+    setActivePinia(createPinia())
+    const restored = useSettingsStore()
+    expect(restored.settings.editor.folderDisplayNames).toEqual({ Learning: '学习书架', 'Learning/Go': 'Go 技术' })
+    restored.$dispose()
+
+    localStorage.clear()
+    setActivePinia(createPinia())
+    expect(useSettingsStore().settings.editor.folderDisplayNames).toEqual({})
+  })
+
+  it('normalizes saved display paths and ignores invalid mappings without discarding editor settings', () => {
+    localStorage.setItem('notevault-settings', JSON.stringify({ editor: {
+      lineHeight: 1.8,
+      folderDisplayNames: { 'Learning\\Go': ' Go 技术 ', Inbox: '', Projects: 42, '../bad': 'Invalid', '/root': 'Invalid' },
+    } }))
+    const store = useSettingsStore()
+    expect(store.settings.editor.lineHeight).toBe(1.8)
+    expect(store.settings.editor.folderDisplayNames).toEqual({ 'Learning/Go': 'Go 技术' })
+  })
+
   it('默认值应包含 AI 与编辑器配置', () => {
     const store = useSettingsStore()
     expect(store.settings.ai).toBeDefined()

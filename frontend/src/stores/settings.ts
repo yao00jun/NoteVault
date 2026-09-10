@@ -4,6 +4,7 @@ import { CredentialService, ClipperService } from '@/api'
 import type { AppSettings, ThemeType } from '@/types'
 import { VISIBLE_DEFAULT, TOOLBAR_ORDER_DEFAULT } from '@/components/editor/toolbarButtons'
 import { setLocale, type Locale } from '@/i18n'
+import { normalizeFolderDisplayNames } from '@/utils/folderDisplayNames'
 
 const STORAGE_KEY = 'notevault-settings'
 
@@ -48,6 +49,7 @@ const defaultSettings: AppSettings = {
   editor: {
     lineHeight: 1.6,
     previewFontSize: 14,
+    folderDisplayNames: {},
   },
   toolbar: {
     mode: 'top',
@@ -95,7 +97,11 @@ function loadSettings(): AppSettings {
         },
         embedding: { ...defaultSettings.embedding, ...(stored.embedding ?? {}) },
         rerank: { ...defaultSettings.rerank, ...(stored.rerank ?? {}) },
-        editor: { ...defaultSettings.editor, ...(stored.editor ?? {}) },
+        editor: {
+          ...defaultSettings.editor,
+          ...(stored.editor ?? {}),
+          folderDisplayNames: normalizeFolderDisplayNames(stored.editor?.folderDisplayNames),
+        },
         reminder: {
           ...defaultSettings.reminder,
           ...(stored.reminder ?? {}),
@@ -118,7 +124,7 @@ function loadSettings(): AppSettings {
   } catch (e) {
     console.warn('Failed to load settings:', e)
   }
-  return defaultSettings
+  return structuredClone(defaultSettings)
 }
 
 /**
@@ -166,20 +172,23 @@ const MONO_FONT_PRESETS: Record<string, string> = {
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>(loadSettings())
 
-  // 恢复门闩：restoreApiKey 把同一个 Key 写回 settings 会触发下方三个
-  // apiKey watch，把恢复值再 SaveCredential 一遍（幂等但多余的往返）。
-  // 恢复期间挂上门闩，watch 直接跳过。
-  let restoringKeys = false
+  // Skip only values restored by us, so user edits during asynchronous restoration still save.
+  const restoredKeys = new Map<string, string>()
+  function isRestoredKey(name: string, key: string) {
+    const restored = restoredKeys.get(name)
+    restoredKeys.delete(name)
+    return restored === key
+  }
 
   /**
    * P2-5：从系统凭据库恢复 apiKey / embedding apiKey（应用启动路径，异步不阻塞首屏）。
    * 凭据库不可用（如未授权访问）时不阻塞：用户在设置页重填一次即可。
    */
   async function restoreApiKey(): Promise<void> {
-    restoringKeys = true
     try {
       const key = await CredentialService.GetCredential(API_KEY_CREDENTIAL)
       if (typeof key === 'string' && key !== '' && settings.value.ai.apiKey === '') {
+        restoredKeys.set(API_KEY_CREDENTIAL, key)
         settings.value.ai.apiKey = key
       }
     } catch (e) {
@@ -188,6 +197,7 @@ export const useSettingsStore = defineStore('settings', () => {
     try {
       const embKey = await CredentialService.GetCredential(EMBEDDING_API_KEY_CREDENTIAL)
       if (typeof embKey === 'string' && embKey !== '' && settings.value.embedding.apiKey === '') {
+        restoredKeys.set(EMBEDDING_API_KEY_CREDENTIAL, embKey)
         settings.value.embedding.apiKey = embKey
       }
     } catch (e) {
@@ -196,12 +206,11 @@ export const useSettingsStore = defineStore('settings', () => {
     try {
       const rerankKey = await CredentialService.GetCredential(RERANK_API_KEY_CREDENTIAL)
       if (typeof rerankKey === 'string' && rerankKey !== '' && settings.value.rerank.apiKey === '') {
+        restoredKeys.set(RERANK_API_KEY_CREDENTIAL, rerankKey)
         settings.value.rerank.apiKey = rerankKey
       }
     } catch (e) {
       console.warn('[settings] 从系统凭据库恢复 Rerank Key 失败:', e)
-    } finally {
-      restoringKeys = false
     }
   }
 
@@ -231,7 +240,7 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(
     () => settings.value.ai.apiKey,
     (key) => {
-      if (restoringKeys) return
+      if (isRestoredKey(API_KEY_CREDENTIAL, key)) return
       void CredentialService.SaveCredential(API_KEY_CREDENTIAL, key ?? '').catch((e) => {
         console.warn('[settings] 保存 API Key 到系统凭据库失败:', e)
       })
@@ -242,7 +251,7 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(
     () => settings.value.embedding.apiKey,
     (key) => {
-      if (restoringKeys) return
+      if (isRestoredKey(EMBEDDING_API_KEY_CREDENTIAL, key)) return
       void CredentialService.SaveCredential(EMBEDDING_API_KEY_CREDENTIAL, key ?? '').catch((e) => {
         console.warn('[settings] 保存 Embedding Key 到系统凭据库失败:', e)
       })
@@ -253,7 +262,7 @@ export const useSettingsStore = defineStore('settings', () => {
   watch(
     () => settings.value.rerank.apiKey,
     (key) => {
-      if (restoringKeys) return
+      if (isRestoredKey(RERANK_API_KEY_CREDENTIAL, key)) return
       void CredentialService.SaveCredential(RERANK_API_KEY_CREDENTIAL, key ?? '').catch((e) => {
         console.warn('[settings] 保存 Rerank Key 到系统凭据库失败:', e)
       })
