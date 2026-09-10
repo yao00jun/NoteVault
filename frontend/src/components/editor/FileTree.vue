@@ -45,14 +45,18 @@ const activePath = computed(() => normalizeNotePath(props.activeFilePath || ''))
 // Resynchronize available ancestors whenever the active path or directory nodes change.
 watch(
   () => [activePath.value, props.nodes.filter(node => node.isDir).map(node => node.path)] as const,
-  ([path]) => {
+  ([path], previous) => {
     if (!path) return
     const segments = path.split('/').filter(Boolean)
     const ancestors = new Set(segments.slice(0, -1).map((_, index) => segments.slice(0, index + 1).join('/')))
+    // Remounted child trees keep manual choices until the selected file changes.
+    if (previous && path !== previous[0]) {
+      for (const ancestor of ancestors) manuallyCollapsedDirs.delete(ancestor)
+    }
     for (const node of props.nodes) {
       const dirPath = normalizeNotePath(node.path)
       if (node.isDir && ancestors.has(dirPath) && !manuallyCollapsedDirs.has(dirPath)) {
-        expandedDirs.value.add(node.path)
+        expandedDirs.value.add(dirPath)
       }
     }
   },
@@ -61,17 +65,17 @@ watch(
 
 function toggleDir(node: FileNode) {
   const path = normalizeNotePath(node.path)
-  if (expandedDirs.value.has(node.path)) {
-    expandedDirs.value.delete(node.path)
+  if (expandedDirs.value.has(path)) {
+    expandedDirs.value.delete(path)
     manuallyCollapsedDirs.add(path)
   } else {
-    expandedDirs.value.add(node.path)
+    expandedDirs.value.add(path)
     manuallyCollapsedDirs.delete(path)
   }
 }
 
 function isExpanded(node: FileNode) {
-  return expandedDirs.value.has(node.path)
+  return expandedDirs.value.has(normalizeNotePath(node.path))
 }
 
 function displayName(node: FileNode) {
@@ -97,7 +101,7 @@ watch(
       (n) => n.isDir && (n.path === segments.join('/') || n.name === head),
     )
     if (!dir) return
-    expandedDirs.value.add(dir.path)
+    expandedDirs.value.add(normalizeNotePath(dir.path))
     if (segments.length > 1) {
       childFocusFolder.value = segments.slice(1).join('/')
     } else {

@@ -98,36 +98,58 @@ describe('FileTree', () => {
     expect(wrapper.findAll('.tree-children')).toHaveLength(2)
   })
 
-  it('preserves manual collapse across tree refreshes and file selection changes', async () => {
+  it('reveals a newly selected file inside a manually collapsed directory', async () => {
     const wrapper = mount(FileTree, { props: { nodes: learningTree, activeFilePath: 'Learning/Go/Chapter.md' } })
     expect(wrapper.find('.tree-node.is-active').exists()).toBe(true)
     await wrapper.get('[data-path="Learning"]').trigger('click')
-    await wrapper.setProps({ nodes: [...learningTree] })
+    await wrapper.setProps({ nodes: structuredClone(learningTree) })
     expect(wrapper.find('.tree-children').exists()).toBe(false)
 
-    await wrapper.setProps({ activeFilePath: 'root.md' })
-    await wrapper.setProps({ activeFilePath: 'Learning/Go/Chapter.md' })
-    expect(wrapper.find('.tree-children').exists()).toBe(false)
     await wrapper.setProps({ activeFilePath: 'Learning/Go/Next.md' })
-    expect(wrapper.find('.tree-children').exists()).toBe(false)
-
-    await wrapper.get('[data-path="Learning"]').trigger('click')
+    expect(wrapper.find('.tree-node.is-active').exists()).toBe(true)
     expect(wrapper.get('.tree-node.is-active').attributes('data-path')).toBe('Learning/Go/Next.md')
+    expect(wrapper.findAll('.tree-children')).toHaveLength(2)
   })
 
-  it('preserves a nested manual collapse when its parent is closed and reopened', async () => {
+  it.each(['Learning/Go/Next.md', 'Learning\\Go\\Next.md'])('reveals every collapsed ancestor when switching to %s', async (activeFilePath) => {
     const wrapper = mount(FileTree, { props: { nodes: learningTree, activeFilePath: 'Learning/Go/Chapter.md' } })
     await wrapper.get('[data-path="Learning/Go"]').trigger('click')
     await wrapper.get('[data-path="Learning"]').trigger('click')
-    await wrapper.setProps({ activeFilePath: 'root.md' })
-    await wrapper.setProps({ activeFilePath: 'Learning/Go/Next.md' })
+
+    await wrapper.setProps({ activeFilePath })
+    expect(wrapper.find('.tree-node.is-active').exists()).toBe(true)
+    expect(wrapper.get('.tree-node.is-active').attributes('data-path')).toBe('Learning/Go/Next.md')
+    expect(wrapper.findAll('.tree-children')).toHaveLength(2)
+  })
+
+  it('preserves a nested manual collapse when its parent is rebuilt for the same file', async () => {
+    const wrapper = mount(FileTree, { props: { nodes: learningTree, activeFilePath: 'Learning/Go/Chapter.md' } })
+    await wrapper.get('[data-path="Learning/Go"]').trigger('click')
+    await wrapper.get('[data-path="Learning"]').trigger('click')
+    await wrapper.setProps({ nodes: structuredClone(learningTree) })
     await wrapper.get('[data-path="Learning"]').trigger('click')
 
     expect(wrapper.find('[data-path="Learning/Go"]').exists()).toBe(true)
     expect(wrapper.find('.tree-node.is-active').exists()).toBe(false)
     await wrapper.get('[data-path="Learning/Go"]').trigger('click')
     await wrapper.setProps({ nodes: structuredClone(learningTree) })
-    expect(wrapper.get('.tree-node.is-active').attributes('data-path')).toBe('Learning/Go/Next.md')
+    expect(wrapper.get('.tree-node.is-active').attributes('data-path')).toBe('Learning/Go/Chapter.md')
+  })
+
+  it('preserves manual collapse when refreshed directory separators change back', async () => {
+    const wrapper = mount(FileTree, { props: { nodes: learningTree, activeFilePath: 'Learning/Go/Chapter.md' } })
+    const refreshedTree = structuredClone(learningTree)
+    refreshedTree[0]!.children![0]!.path = 'Learning\\Go'
+    for (const child of refreshedTree[0]!.children![0]!.children!) child.path = child.path.replace(/\//g, '\\')
+
+    await wrapper.setProps({ nodes: refreshedTree })
+    const directory = wrapper.findAll('.tree-node').find(node => node.attributes('data-path') === 'Learning\\Go')!
+    await directory.trigger('click')
+    expect(wrapper.find('.tree-node.is-active').exists()).toBe(false)
+
+    await wrapper.setProps({ nodes: structuredClone(learningTree) })
+    expect(wrapper.find('.tree-node.is-active').exists()).toBe(false)
+    expect(wrapper.findAll('.tree-children')).toHaveLength(1)
   })
 
   it('keeps manual collapse choices local to each root tree', async () => {
