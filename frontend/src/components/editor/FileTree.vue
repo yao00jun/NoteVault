@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, inject, provide, ref, watch } from 'vue'
 import { ChevronRight, ChevronDown, FileText, Folder, FolderOpen, MoreVertical, Archive, Trash2 } from '@lucide/vue'
 import { normalizeNotePath } from '@/utils/navigation'
 import { normalizeFolderDisplayPath } from '@/utils/folderDisplayNames'
@@ -33,31 +33,40 @@ const emit = defineEmits<{
 }>()
 
 const expandedDirs = ref<Set<string>>(new Set())
+// Keep manual choices with the root tree when collapsed parents unmount their children.
+const manualCollapseKey = 'notevault:file-tree-manual-collapse'
+const manuallyCollapsedDirs = inject<Set<string>>(manualCollapseKey, () => new Set<string>(), true)
+provide(manualCollapseKey, manuallyCollapsedDirs)
 const contextMenu = ref<{ x: number; y: number; node: FileNode | null; parentPath: string } | null>(null)
 /** 被聚焦高亮的目录路径（空间卡直达时短暂高亮，点击别处后清除） */
 const focusedDir = ref<string | null>(null)
 const activePath = computed(() => normalizeNotePath(props.activeFilePath || ''))
 
-// Reveal each ancestor once per selection. Tree refreshes must not undo a manual collapse.
-let revealedPath: string | null = null
+// Resynchronize available ancestors whenever the active path or directory nodes change.
 watch(
   () => [activePath.value, props.nodes.filter(node => node.isDir).map(node => node.path)] as const,
-  ([path], previous) => {
-    if (path !== previous?.[0]) revealedPath = null
-    if (!path || revealedPath === path) return
-    const ancestor = props.nodes.find(node => node.isDir && path.startsWith(`${normalizeNotePath(node.path)}/`))
-    if (!ancestor) return
-    expandedDirs.value.add(ancestor.path)
-    revealedPath = path
+  ([path]) => {
+    if (!path) return
+    const segments = path.split('/').filter(Boolean)
+    const ancestors = new Set(segments.slice(0, -1).map((_, index) => segments.slice(0, index + 1).join('/')))
+    for (const node of props.nodes) {
+      const dirPath = normalizeNotePath(node.path)
+      if (node.isDir && ancestors.has(dirPath) && !manuallyCollapsedDirs.has(dirPath)) {
+        expandedDirs.value.add(node.path)
+      }
+    }
   },
   { immediate: true },
 )
 
 function toggleDir(node: FileNode) {
+  const path = normalizeNotePath(node.path)
   if (expandedDirs.value.has(node.path)) {
     expandedDirs.value.delete(node.path)
+    manuallyCollapsedDirs.add(path)
   } else {
     expandedDirs.value.add(node.path)
+    manuallyCollapsedDirs.delete(path)
   }
 }
 

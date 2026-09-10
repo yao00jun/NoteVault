@@ -65,7 +65,40 @@ describe('FileTree', () => {
     expect(wrapper.find('.tree-node.is-active').exists()).toBe(true)
   })
 
-  it('preserves manual collapse across tree refreshes, then reveals the next selected file', async () => {
+  it.each(['Learning/Go/Chapter.md', 'Learning\\Go\\Chapter.md'])('reveals %s when the file opens after the tree loads', async (activeFilePath) => {
+    const wrapper = mount(FileTree, { props: { nodes: [] } })
+    await wrapper.setProps({ nodes: structuredClone(learningTree) })
+    expect(wrapper.find('.tree-children').exists()).toBe(false)
+
+    await wrapper.setProps({ activeFilePath })
+    await wrapper.setProps({ nodes: structuredClone(learningTree) })
+    expect(wrapper.get('.tree-node.is-active').attributes('data-path')).toBe('Learning/Go/Chapter.md')
+    expect(wrapper.findAll('.tree-children')).toHaveLength(2)
+  })
+
+  it('reveals the active file as nested directory levels finish loading', async () => {
+    const wrapper = mount(FileTree, { props: { nodes: [] } })
+    await wrapper.setProps({ nodes: [{ ...learningTree[0]!, children: [] }] })
+    await wrapper.setProps({ activeFilePath: 'Learning/Go/Chapter.md' })
+    await wrapper.setProps({ nodes: [{ ...learningTree[0]!, children: [{ ...learningTree[0]!.children![0]!, children: [] }] }] })
+    await wrapper.setProps({ nodes: structuredClone(learningTree) })
+    expect(wrapper.get('.tree-node.is-active').attributes('data-path')).toBe('Learning/Go/Chapter.md')
+    expect(wrapper.findAll('.tree-children')).toHaveLength(2)
+  })
+
+  it('resynchronizes ancestors when refreshed tree paths use Windows separators', async () => {
+    const wrapper = mount(FileTree, { props: { nodes: learningTree, activeFilePath: 'Learning/Go/Chapter.md' } })
+    const refreshedTree = structuredClone(learningTree)
+    refreshedTree[0]!.children![0]!.path = 'Learning\\Go'
+    for (const child of refreshedTree[0]!.children![0]!.children!) child.path = child.path.replace(/\//g, '\\')
+
+    await wrapper.setProps({ nodes: refreshedTree })
+    expect(wrapper.find('.tree-node.is-active').exists()).toBe(true)
+    expect(wrapper.get('.tree-node.is-active').attributes('data-path')).toBe('Learning\\Go\\Chapter.md')
+    expect(wrapper.findAll('.tree-children')).toHaveLength(2)
+  })
+
+  it('preserves manual collapse across tree refreshes and file selection changes', async () => {
     const wrapper = mount(FileTree, { props: { nodes: learningTree, activeFilePath: 'Learning/Go/Chapter.md' } })
     expect(wrapper.find('.tree-node.is-active').exists()).toBe(true)
     await wrapper.get('[data-path="Learning"]').trigger('click')
@@ -74,9 +107,37 @@ describe('FileTree', () => {
 
     await wrapper.setProps({ activeFilePath: 'root.md' })
     await wrapper.setProps({ activeFilePath: 'Learning/Go/Chapter.md' })
-    expect(wrapper.find('.tree-node.is-active').exists()).toBe(true)
+    expect(wrapper.find('.tree-children').exists()).toBe(false)
     await wrapper.setProps({ activeFilePath: 'Learning/Go/Next.md' })
+    expect(wrapper.find('.tree-children').exists()).toBe(false)
+
+    await wrapper.get('[data-path="Learning"]').trigger('click')
     expect(wrapper.get('.tree-node.is-active').attributes('data-path')).toBe('Learning/Go/Next.md')
+  })
+
+  it('preserves a nested manual collapse when its parent is closed and reopened', async () => {
+    const wrapper = mount(FileTree, { props: { nodes: learningTree, activeFilePath: 'Learning/Go/Chapter.md' } })
+    await wrapper.get('[data-path="Learning/Go"]').trigger('click')
+    await wrapper.get('[data-path="Learning"]').trigger('click')
+    await wrapper.setProps({ activeFilePath: 'root.md' })
+    await wrapper.setProps({ activeFilePath: 'Learning/Go/Next.md' })
+    await wrapper.get('[data-path="Learning"]').trigger('click')
+
+    expect(wrapper.find('[data-path="Learning/Go"]').exists()).toBe(true)
+    expect(wrapper.find('.tree-node.is-active').exists()).toBe(false)
+    await wrapper.get('[data-path="Learning/Go"]').trigger('click')
+    await wrapper.setProps({ nodes: structuredClone(learningTree) })
+    expect(wrapper.get('.tree-node.is-active').attributes('data-path')).toBe('Learning/Go/Next.md')
+  })
+
+  it('keeps manual collapse choices local to each root tree', async () => {
+    const props = { nodes: learningTree, activeFilePath: 'Learning/Go/Chapter.md' }
+    const first = mount(FileTree, { props })
+    await first.get('[data-path="Learning/Go"]').trigger('click')
+    const second = mount(FileTree, { props })
+
+    expect(first.find('.tree-node.is-active').exists()).toBe(false)
+    expect(second.get('.tree-node.is-active').attributes('data-path')).toBe('Learning/Go/Chapter.md')
   })
 
   it.each([['新建文档', 'new-file'], ['新建文件夹', 'new-folder']])('nested %s keeps its workspace-relative parent path', async (label, event) => {
