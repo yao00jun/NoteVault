@@ -352,4 +352,18 @@ describe('SideBar', () => {
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/' + destination)
   })
+
+  it('collapses recent files by default and toggles on click', async () => {
+    const { wrapper, workspaceStore } = mountSideBar()
+    workspaceStore.setCurrentWorkspace({ ...workspace })
+    workspaceStore.openFile('recent-1.md')
+    await flushPromises()
+    const toggle = wrapper.get('[data-testid="sidebar-recent-toggle"]')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.get('.recent-items-container').attributes('style')).toContain('display: none')
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('.recent-items-container').attributes('style')).not.toContain('display: none')
+    expect(localStorage.getItem('notevault:sidebar-recent-expanded')).toBe('true')
+  })
 })

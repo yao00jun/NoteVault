@@ -270,6 +270,11 @@ function openReport() {
 interface PinnedItem { path: string; title: string }
 const pins = computed(() => workspaceStore.pinnedItems.slice(0, 8))
 const recentFiles = computed(() => workspaceStore.recentFiles.slice(0, 4))
+const recentExpanded = ref(localStorage.getItem('notevault:sidebar-recent-expanded') === 'true')
+function toggleRecentExpanded() {
+  recentExpanded.value = !recentExpanded.value
+  localStorage.setItem('notevault:sidebar-recent-expanded', String(recentExpanded.value))
+}
 const draggedPin = ref<string | null>(null)
 const dragOverIndex = ref<number | null>(null)
 const pinAnnouncement = ref('')
@@ -778,12 +783,6 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-wi
             <Pin :size="13" />
           </button>
         </div>
-        <p
-          v-if="!pins.length && !collapsed"
-          class="zone-empty"
-        >
-          为文档、项目或书籍加星，随时直达。
-        </p>
         <button
           v-for="(item, index) in pins"
           :key="item.path"
@@ -920,33 +919,55 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-wi
       >
         <div
           v-if="!collapsed"
-          class="section-heading"
+          class="section-heading section-heading-clickable"
+          data-testid="sidebar-recent-toggle"
+          :title="recentExpanded ? '收起最近文档' : '展开最近文档'"
+          :aria-expanded="recentExpanded"
+          role="button"
+          tabindex="0"
+          @click="toggleRecentExpanded"
+          @keydown.enter.prevent="toggleRecentExpanded"
+          @keydown.space.prevent="toggleRecentExpanded"
         >
+          <ChevronRight
+            :size="12"
+            class="section-chevron"
+            :class="{ expanded: recentExpanded }"
+          />
           <Clock :size="12" />
           <span>最近</span>
-        </div>
-        <p
-          v-if="!recentFiles.length && !collapsed"
-          class="zone-empty"
-        >
-          打开过的文档会出现在这里。
-        </p>
-        <button
-          v-for="file in recentFiles"
-          :key="file.path"
-          class="file-shortcut"
-          data-testid="sidebar-recent-file"
-          :class="{ active: route.path === '/editor' && workspaceStore.activeFile === file.path }"
-          :title="file.path"
-          :aria-label="file.title"
-          @click="openFile(file.path)"
-        >
-          <FileText :size="14" />
           <span
-            v-if="!collapsed"
-            class="file-shortcut-label"
-          >{{ file.title }}</span>
-        </button>
+            v-if="recentFiles.length"
+            class="zone-count"
+          >{{ recentFiles.length }}</span>
+        </div>
+        <div
+          v-show="recentExpanded"
+          class="recent-items-container"
+        >
+          <p
+            v-if="!recentFiles.length && !collapsed"
+            class="zone-empty"
+          >
+            打开过的文档会出现在这里。
+          </p>
+          <button
+            v-for="file in recentFiles"
+            :key="file.path"
+            class="file-shortcut"
+            data-testid="sidebar-recent-file"
+            :class="{ active: route.path === '/editor' && workspaceStore.activeFile === file.path }"
+            :title="file.path"
+            :aria-label="file.title"
+            @click="openFile(file.path)"
+          >
+            <FileText :size="14" />
+            <span
+              v-if="!collapsed"
+              class="file-shortcut-label"
+            >{{ file.title }}</span>
+          </button>
+        </div>
       </section>
     </div>
 
@@ -1247,26 +1268,33 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-wi
 }
 
 /* Four navigation zones share a compact rhythm and a single scrolling region. */
-.sidebar-zone { padding: 8px; }
-.action-zone { flex-shrink: 0; border-bottom: 1px solid var(--border); }
+.sidebar-zone { padding: 6px 8px; }
+.action-zone { flex-shrink: 0; border-bottom: 1px solid var(--border); padding: 6px 8px; }
 .section-heading {
-  display: flex; align-items: center; gap: 6px; min-height: 24px;
-  padding: 0 6px 5px; color: var(--text-muted); font-size: 11px; font-weight: 600;
+  display: flex; align-items: center; gap: 6px; min-height: 22px;
+  padding: 0 4px 4px; color: var(--text-muted); font-size: 11px; font-weight: 600;
 }
+.section-heading-clickable {
+  cursor: pointer; user-select: none; border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.section-heading-clickable:hover { background: var(--bg-hover); color: var(--text-primary); }
+.section-chevron { color: var(--text-muted); transition: transform var(--transition-fast); flex-shrink: 0; }
+.section-chevron.expanded { transform: rotate(90deg); }
 .zone-count { margin-left: auto; font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 400; }
-.action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
 .action-btn {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: 34px; padding: 7px 5px; border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  min-height: 28px; padding: 4px 6px; border: 1px solid var(--border);
   border-radius: var(--radius-sm); background: var(--bg-card);
-  color: var(--text-secondary); font-size: 12px; white-space: nowrap;
+  color: var(--text-secondary); font-size: 11px; white-space: nowrap;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 .action-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .new-btn { background: var(--accent); border-color: var(--accent); color: var(--text-inverse); }
 .new-btn:hover { background: var(--accent-hover); color: var(--text-inverse); }
-.report-btn { grid-column: 1 / -1; color: var(--accent); background: var(--accent-alpha, rgba(0, 122, 255, 0.06)); }
-.report-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 10px; background: var(--bg-card); font-size: 10px; font-variant-numeric: tabular-nums; }
+.report-btn { grid-column: 1 / -1; color: var(--accent); background: var(--accent-alpha, rgba(0, 122, 255, 0.06)); min-height: 28px; }
+.report-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--bg-card); font-size: 10px; font-variant-numeric: tabular-nums; }
 .sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .sidebar-scroll .sidebar-zone + .sidebar-zone { border-top: 1px solid var(--border); }
 .zone-empty { margin: 2px 6px 4px; color: var(--text-muted); font-size: 11px; line-height: 1.7; }
