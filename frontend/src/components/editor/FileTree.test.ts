@@ -211,7 +211,7 @@ describe('FileTree', () => {
     ]
     const wrapper = mount(FileTree, { props: { nodes: mixedNodes, activeFilePath: null } })
     // Main tree contains Learning, but not assets or Templates directly in primary list
-    const primaryNodes = wrapper.findAll('.tree-nodes > .tree-node')
+    const primaryNodes = wrapper.findAll('.tree-nodes > .workflow-tree-node > .tree-node')
     expect(primaryNodes).toHaveLength(1)
     expect(primaryNodes[0]!.attributes('data-path')).toBe('Learning')
 

@@ -12,12 +12,18 @@ import { FileService } from '@/api'
 import EditorView from './EditorView.vue'
 import EditorContextDrawer from '@/components/editor/EditorContextDrawer.vue'
 
-const mocks = vi.hoisted(() => ({ activeEditor: vi.fn() }))
+const mocks = vi.hoisted(() => ({ activeEditor: vi.fn(), toggleSidebar: vi.fn() }))
 vi.mock('@/plugins/editorBridge', () => ({ getActiveEditor: mocks.activeEditor }))
 vi.mock('@/stores/workbench', () => ({ useWorkbenchStore: () => ({}) }))
-vi.mock('@/stores/settings', () => ({ useSettingsStore: () => ({ settings: {
-  autoSaveInterval: 250, ai: {}, editor: { lineHeight: 1.6, previewFontSize: 14 },
-} }) }))
+vi.mock('@/stores/settings', () => ({ useSettingsStore: () => ({
+  settings: {
+    sidebarCollapsed: false,
+    autoSaveInterval: 250,
+    ai: {},
+    editor: { lineHeight: 1.6, previewFontSize: 14 },
+  },
+  toggleSidebar: mocks.toggleSidebar,
+}) }))
 vi.mock('@wailsio/runtime', () => ({ Events: { On: vi.fn(() => () => {}) } }))
 vi.mock('@/api', () => ({
   FileService: { ReadFile: vi.fn(), SaveFile: vi.fn(), GetFileTree: vi.fn() },
@@ -140,21 +146,18 @@ describe('EditorView outline navigation', () => {
     expect(editor.state.selection.main.head).toBe(body.indexOf('## End'))
   })
 
-  it('toggles the file tree when Ctrl+B is pressed', async () => {
-    const { wrapper } = await renderEditor('split')
-    const editor = wrapper.findComponent(EditorView)
-    expect((editor.vm as any).showTree).toBe(true)
+  it('toggles the sidebar when Ctrl+B is pressed', async () => {
+    await renderEditor('split')
+    mocks.toggleSidebar.mockClear()
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true }))
     await nextTick()
     await flushPromises()
-    expect((editor.vm as any).showTree).toBe(false)
-    expect(wrapper.find('.file-tree-pane').attributes('style')).toContain('display: none')
+    expect(mocks.toggleSidebar).toHaveBeenCalledTimes(1)
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true }))
     await nextTick()
     await flushPromises()
-    expect((editor.vm as any).showTree).toBe(true)
-    expect(wrapper.find('.file-tree-pane').attributes('style')).not.toContain('display: none')
+    expect(mocks.toggleSidebar).toHaveBeenCalledTimes(2)
   })
 })

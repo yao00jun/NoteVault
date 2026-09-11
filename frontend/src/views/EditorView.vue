@@ -866,12 +866,17 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
 }
 
-// 初始化
+function toggleSidebar() {
+  if (typeof settingsStore.toggleSidebar === 'function') {
+    settingsStore.toggleSidebar()
+  }
+}
+
 function handleEditorKeydown(e: KeyboardEvent) {
   if (isImeComposing(e)) return
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b') {
     e.preventDefault()
-    toggleTree()
+    toggleSidebar()
   }
 }
 
@@ -976,7 +981,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       :is-saving="isSaving"
       :active-tab="activeTab"
       :view-mode="effectiveViewMode"
-      :tree-open="showTree"
+      :tree-open="!settingsStore.settings.sidebarCollapsed"
       :drawer-open="drawerOpen"
       :is-exporting="isExporting"
       :is-compiling="isCompiling"
@@ -991,7 +996,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       @export-html="exportSingleHTML"
       @save="saveCurrentTab"
       @toggle-view="toggleViewMode"
-      @toggle-tree="toggleTree"
+      @toggle-tree="toggleSidebar"
       @toggle-drawer="setDrawerOpen(!drawerOpen)"
     />
 
@@ -1029,17 +1034,17 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       </div>
     </div>
 
-    <!-- 编辑器主区域 -->
+    <!-- 编辑器主区域（方案 A：独享屏幕剩余宽幅） -->
     <div
       ref="mainRef"
       class="editor-main"
       :class="{ 'overlay-tree': overlayTree }"
     >
-      <!-- 左侧文件树 -->
+      <!-- 左侧文件树（方案 A：已统一收拢至全局 SideBar 工作流中，此处保持后台挂载但不占位） -->
       <div
-        v-show="showTree"
+        v-show="false"
         class="file-tree-pane"
-        :style="{ width: `${treeWidth}px` }"
+        style="display: none;"
         :inert="fileOperationsBusy || isApplyingExternalChanges ? true : undefined"
       >
         <FileTree
@@ -1056,20 +1061,6 @@ watch(() => workspaceStore.fileTreeVersion, () => {
           @trash="handleTrashFile"
         />
       </div>
-      <div
-        v-if="showTree && !overlayTree"
-        class="pane-resizer"
-        role="separator"
-        aria-label="调整文件目录宽度"
-        aria-orientation="vertical"
-        :aria-valuenow="treeWidth"
-        aria-valuemin="180"
-        aria-valuemax="360"
-        tabindex="0"
-        @pointerdown="beginResize($event, 'tree')"
-        @keydown.left.prevent="adjust('tree', -1)"
-        @keydown.right.prevent="adjust('tree', 1)"
-      />
 
       <!-- 编辑/预览区域 -->
       <div
