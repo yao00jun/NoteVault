@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, shallowMount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { EditorState, type TransactionSpec } from '@codemirror/state'
@@ -137,5 +138,23 @@ describe('EditorView outline navigation', () => {
     await wrapper.get('[data-testid="editor-drawer-toggle"]').trigger('click')
     await wrapper.findAll('.ctx-outline-item').at(-1)!.trigger('click')
     expect(editor.state.selection.main.head).toBe(body.indexOf('## End'))
+  })
+
+  it('toggles the file tree when Ctrl+B is pressed', async () => {
+    const { wrapper } = await renderEditor('split')
+    const editor = wrapper.findComponent(EditorView)
+    expect((editor.vm as any).showTree).toBe(true)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true }))
+    await nextTick()
+    await flushPromises()
+    expect((editor.vm as any).showTree).toBe(false)
+    expect(wrapper.find('.file-tree-pane').attributes('style')).toContain('display: none')
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true }))
+    await nextTick()
+    await flushPromises()
+    expect((editor.vm as any).showTree).toBe(true)
+    expect(wrapper.find('.file-tree-pane').attributes('style')).not.toContain('display: none')
   })
 })

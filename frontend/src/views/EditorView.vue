@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, nextTick } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import EditorTabBar from '@/components/editor/EditorTabBar.vue'
-import EditorBacklinks from '@/components/editor/EditorBacklinks.vue'
+import { isImeComposing } from '@/utils/ime'
 import EditorContextDrawer from '@/components/editor/EditorContextDrawer.vue'
 import type { OutlineItem } from '@/components/editor/EditorContextDrawer.vue'
 import { getActiveEditor } from '@/plugins/editorBridge'
@@ -867,13 +867,26 @@ function escapeHtml(s: string): string {
 }
 
 // 初始化
+function handleEditorKeydown(e: KeyboardEvent) {
+  if (isImeComposing(e)) return
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b') {
+    e.preventDefault()
+    toggleTree()
+  }
+}
+
 // flushDirtyTab / conflictWatcher / dispose 均由 useEditorDraft 提供：
 // keep-alive 下路由切换触发的是 deactivated 而非 unmount，flush 必须挂在
 // onDeactivated 才能覆盖"切页面前最后 1 秒（一个 debounce 窗口）的编辑"；
 // dispose 保留作真卸载时的兜底。注意 deactivated 时不能清 saveTimer：
 // 组件仍保活，用户可能切回来继续编辑，定时器要照常工作。
-onDeactivated(() => { distillSource.value = null; flushDirtyTab() })
+onDeactivated(() => {
+  window.removeEventListener('keydown', handleEditorKeydown)
+  distillSource.value = null
+  flushDirtyTab()
+})
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleEditorKeydown)
   unregisterFlush()
   disposeDraft()
 })
@@ -893,6 +906,7 @@ async function openRequestedFile() {
 // 同一个 query 值连续两次跳转（如重复打开同一文件）不会再触发 watch，
 // 用 activated 钩子兜底：每次回到编辑器页都检查一次
 onActivated(() => {
+  window.addEventListener('keydown', handleEditorKeydown)
   void openRequestedFile()
 })
 
@@ -903,6 +917,7 @@ watch(() => route.query.file, (val) => {
 })
 
 onMounted(async () => {
+  window.addEventListener('keydown', handleEditorKeydown)
   // 外部修改冲突保护：订阅后端 fsnotify 推送（蓝图专项 1，订阅在 useEditorDraft 内）
   startConflictWatcher()
   if (!currentWorkspace.value) {
@@ -1151,12 +1166,6 @@ watch(() => workspaceStore.fileTreeVersion, () => {
               </div>
             </div>
           </div>
-
-          <!-- 反向链接面板 -->
-          <EditorBacklinks
-            :backlinks="backlinks"
-            @open="openBacklink"
-          />
         </div>
       </div>
 

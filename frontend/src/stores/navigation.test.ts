@@ -5,7 +5,7 @@ import { nextTick } from 'vue'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import { useNavigationStore } from './navigation'
 import { useWorkspaceStore } from './workspace'
-import { pageContext, sectionFallback } from '@/utils/navigation'
+import { contextBreadcrumbs, pageContext, sectionFallback } from '@/utils/navigation'
 
 const routes = ['/', '/today', '/vault', '/projects', '/learning', '/editor', '/insights', '/settings', '/discover', '/review']
 const ws = (name: string) => ({ id: name, name, path: 'C:/' + name, createdAt: '', lastOpenedAt: '' })
@@ -144,5 +144,26 @@ describe('page context', () => {
     expect(sectionFallback({ path: '/insights', query: { tab: 'graph' } }, true)).toBe('/vault')
     expect(sectionFallback({ path: '/settings', query: {} }, true)).toBe('/today')
     expect(sectionFallback({ path: '/today', query: {} }, false)).toBe('/')
+  })
+  it('resolves semantic breadcrumbs for documents in knowledge spaces', () => {
+    const learningCtx = pageContext({ path: '/editor', query: { file: 'Learning/Java/并发编程.md' } }, 'today')
+    const learningCrumbs = contextBreadcrumbs(learningCtx, { path: '/editor', query: { file: 'Learning/Java/并发编程.md' } })
+    expect(learningCrumbs.map(c => c.label)).toEqual(['学习', 'Java', '并发编程.md'])
+    expect(learningCrumbs[0]!.to).toBe('/learning')
+    expect(learningCrumbs[1]!.to).toEqual({ path: '/learning', query: { book: 'Learning/Java' } })
+    expect(learningCrumbs[2]!.to).toBeUndefined()
+
+    const projectCtx = pageContext({ path: '/editor', query: { file: 'Projects/shop/architecture.md' } })
+    const projectCrumbs = contextBreadcrumbs(projectCtx, { path: '/editor', query: { file: 'Projects/shop/architecture.md' } })
+    expect(projectCrumbs.map(c => c.label)).toEqual(['项目', 'shop', 'architecture.md'])
+    expect(projectCrumbs[0]!.to).toBe('/projects')
+
+    const dailyCtx = pageContext({ path: '/editor', query: { file: 'Daily/2026-09-11.md' } })
+    const dailyCrumbs = contextBreadcrumbs(dailyCtx, { path: '/editor', query: { file: 'Daily/2026-09-11.md' } })
+    expect(dailyCrumbs.map(c => c.label)).toEqual(['今日', '2026-09-11.md'])
+
+    const rootCtx = pageContext({ path: '/editor', query: { file: '开始使用.md' } })
+    const rootCrumbs = contextBreadcrumbs(rootCtx, { path: '/editor', query: { file: '开始使用.md' } })
+    expect(rootCrumbs.map(c => c.label)).toEqual(['知识库', '开始使用.md'])
   })
 })

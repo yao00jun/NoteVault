@@ -200,4 +200,59 @@ describe('FileTree', () => {
     await nextTick()
     expect(wrapper.findAll('.root-action-btn')).toHaveLength(0)
   })
+
+  it('sinks system directories like assets and templates into the system section and auto-expands when active', async () => {
+    const mixedNodes: FileNode[] = [
+      { name: 'Learning', path: 'Learning', fullPath: '', isDir: true, children: [] },
+      { name: 'assets', path: 'assets', fullPath: '', isDir: true, children: [
+        { name: 'logo.png', path: 'assets/logo.png', fullPath: '', isDir: false },
+      ] },
+      { name: 'Templates', path: 'Templates', fullPath: '', isDir: true, children: [] },
+    ]
+    const wrapper = mount(FileTree, { props: { nodes: mixedNodes, activeFilePath: null } })
+    // Main tree contains Learning, but not assets or Templates directly in primary list
+    const primaryNodes = wrapper.findAll('.tree-nodes > .tree-node')
+    expect(primaryNodes).toHaveLength(1)
+    expect(primaryNodes[0]!.attributes('data-path')).toBe('Learning')
+
+    // System section exists and shows count
+    const systemHeader = wrapper.get('.system-header-node')
+    expect(systemHeader.text()).toContain('系统与模板')
+    expect(systemHeader.text()).toContain('2')
+    expect(wrapper.find('.system-children').exists()).toBe(false)
+
+    // Expand system section
+    await systemHeader.trigger('click')
+    expect(wrapper.find('.system-children').exists()).toBe(true)
+
+    // Auto-expands when active file is inside assets
+    const activeWrapper = mount(FileTree, { props: { nodes: mixedNodes, activeFilePath: 'assets/logo.png' } })
+    expect(activeWrapper.find('.system-children').exists()).toBe(true)
+  })
+
+  it('filters file tree nodes based on search query', async () => {
+    const wrapper = mount(FileTree, { props: { nodes: learningTree } })
+    const searchInput = wrapper.get('.tree-search-input')
+    await searchInput.setValue('Chapter')
+    await nextTick()
+
+    // Chapter is shown, Next is not in filtered tree
+    expect(wrapper.find('[data-path="Learning/Go/Chapter.md"]').exists()).toBe(true)
+    expect(wrapper.find('[data-path="Learning/Go/Next.md"]').exists()).toBe(false)
+
+    // Clearing search restores all
+    await wrapper.get('.search-clear-btn').trigger('click')
+    await nextTick()
+    expect(wrapper.find('[data-path="Learning-Archive"]').exists()).toBe(true)
+  })
+
+  it('collapses all directories on collapse-all click', async () => {
+    const wrapper = mount(FileTree, { props: { nodes: learningTree, activeFilePath: 'Learning/Go/Chapter.md' } })
+    expect(wrapper.findAll('.tree-children').length).toBeGreaterThan(0)
+
+    await wrapper.get('.tree-action-btn[title="全部折叠"]').trigger('click')
+    await nextTick()
+    expect(wrapper.findAll('.tree-children')).toHaveLength(0)
+  })
 })
+

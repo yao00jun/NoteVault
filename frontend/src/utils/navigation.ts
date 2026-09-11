@@ -75,6 +75,39 @@ export function openDocument(router: Router, workspace: { openFile(path: string)
 
 export interface Breadcrumb { label: string; to?: RouteLocationRaw }
 export function contextBreadcrumbs(context: PageContext, route: RouteContextInput): Breadcrumb[] {
+  const isResourcePage = ['/editor', '/canvas'].includes(route.path)
+  if (isResourcePage && context.file) {
+    const parts = context.file.split('/')
+    const fileName = parts.pop() || context.title
+    const crumbs: Breadcrumb[] = []
+
+    if (parts[0] === 'Learning' && parts.length >= 2) {
+      crumbs.push({ label: sectionLabels.learning, to: '/learning' })
+      crumbs.push({ label: parts[1]!, to: { path: '/learning', query: { book: parts.slice(0, 2).join('/') } } })
+      for (let i = 2; i < parts.length; i++) {
+        crumbs.push({ label: parts[i]! })
+      }
+    } else if (parts[0] === 'Projects' && parts.length >= 2) {
+      crumbs.push({ label: sectionLabels.projects, to: '/projects' })
+      crumbs.push({ label: parts[1]!, to: { path: '/projects', query: { project: parts.slice(0, 2).join('/') } } })
+      for (let i = 2; i < parts.length; i++) {
+        crumbs.push({ label: parts[i]! })
+      }
+    } else if (parts[0] === 'Daily') {
+      crumbs.push({ label: sectionLabels.today, to: '/today' })
+    } else {
+      crumbs.push({ label: sectionLabels.vault, to: '/vault' })
+      let cumulative = ''
+      for (let i = 0; i < parts.length; i++) {
+        cumulative = cumulative ? `${cumulative}/${parts[i]}` : parts[i]!
+        crumbs.push({ label: parts[i]!, to: { path: '/vault', query: { folder: cumulative } } })
+      }
+    }
+
+    crumbs.push({ label: fileName })
+    return crumbs
+  }
+
   const crumbs: Breadcrumb[] = [{ label: sectionLabels[context.section], to: '/' + context.section }]
   if (context.entityFolder) {
     crumbs.push({ label: context.entityFolder.split('/').pop()!, to: { path: '/' + context.section, query: { [context.entityKind === 'project' ? 'project' : 'book']: context.entityFolder } } })
@@ -85,3 +118,4 @@ export function contextBreadcrumbs(context: PageContext, route: RouteContextInpu
   if (crumbs.length === 1 || (!context.file && context.entityFolder)) delete crumbs[crumbs.length - 1]!.to
   return crumbs
 }
+

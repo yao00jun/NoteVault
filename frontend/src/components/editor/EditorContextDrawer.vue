@@ -126,8 +126,11 @@ const backlinkCount = computed(() => props.backlinks.length)
           :title="link.path"
           @click="emit('open-path', link.path)"
         >
-          <FileText :size="13" />
-          <span>{{ link.name }}</span>
+          <FileText :size="14" class="ctx-backlink-icon" />
+          <div class="ctx-backlink-meta">
+            <span class="ctx-backlink-title">{{ link.name }}</span>
+            <span v-if="link.path" class="ctx-backlink-path">{{ link.path }}</span>
+          </div>
         </button>
       </div>
     </div>
@@ -246,23 +249,45 @@ const backlinkCount = computed(() => props.backlinks.length)
 }
 .ctx-backlink-item {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 8px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
   font-size: var(--text-xs);
   cursor: pointer;
-  padding: 4px 6px;
+  padding: 6px 8px;
   border-radius: var(--radius-sm);
   text-align: left;
   transition: background var(--transition-fast), color var(--transition-fast);
+  width: 100%;
 }
 .ctx-backlink-item:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
-.ctx-backlink-item span {
+.ctx-backlink-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+.ctx-backlink-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ctx-backlink-title {
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ctx-backlink-path {
+  font-size: 11px;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

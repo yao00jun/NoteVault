@@ -81,7 +81,7 @@ const compileTooltip = computed(() => {
     <button
       class="tab-back"
       data-testid="editor-tree-toggle"
-      :title="treeOpen ? '收起文件目录' : '展开文件目录'"
+      :title="treeOpen ? '收起文件目录 (Ctrl+B)' : '展开文件目录 (Ctrl+B)'"
       :aria-pressed="treeOpen"
       @click="emit('toggle-tree')"
     >

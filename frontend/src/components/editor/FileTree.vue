@@ -1,6 +1,19 @@
 <script setup lang="ts">
-import { computed, inject, provide, ref, watch } from 'vue'
-import { ChevronRight, ChevronDown, FileText, Folder, FolderOpen, MoreVertical, Archive, Trash2 } from '@lucide/vue'
+import { computed, inject, provide, ref, watch, type Ref } from 'vue'
+import {
+  ChevronRight,
+  ChevronDown,
+  FileText,
+  Folder,
+  FolderOpen,
+  MoreVertical,
+  Archive,
+  Trash2,
+  Search,
+  X,
+  FolderCog,
+  ChevronsDownUp,
+} from '@lucide/vue'
 import { normalizeNotePath } from '@/utils/navigation'
 import { normalizeFolderDisplayPath } from '@/utils/folderDisplayNames'
 
@@ -14,13 +27,19 @@ export interface FileNode {
   modTime?: string
 }
 
-const props = defineProps<{
-  nodes: FileNode[]
-  activeFilePath?: string | null
-  /** 工作台空间卡直达：展开并高亮指定目录（相对路径，如 "Learning/Java"） */
-  focusFolder?: string | null
-  folderDisplayNames?: Record<string, string>
-}>()
+const props = withDefaults(
+  defineProps<{
+    nodes: FileNode[]
+    activeFilePath?: string | null
+    /** 工作台空间卡直达：展开并高亮指定目录（相对路径，如 "Learning/Java"） */
+    focusFolder?: string | null
+    folderDisplayNames?: Record<string, string>
+    isRoot?: boolean
+  }>(),
+  {
+    isRoot: true,
+  },
+)
 
 const emit = defineEmits<{
   'open-file': [node: FileNode]
@@ -74,7 +93,15 @@ function toggleDir(node: FileNode) {
   }
 }
 
+const searchKey = 'notevault:file-tree-search'
+const injectedSearch = inject<Ref<string>>(searchKey, () => ref(''), true)
+const searchQuery = props.isRoot ? ref('') : injectedSearch
+if (props.isRoot) {
+  provide(searchKey, searchQuery)
+}
+
 function isExpanded(node: FileNode) {
+  if (searchQuery.value.trim()) return true
   return expandedDirs.value.has(normalizeNotePath(node.path))
 }
 
@@ -114,6 +141,89 @@ watch(
   },
   { immediate: true },
 )
+
+const SYSTEM_DIR_NAMES = new Set(['assets', 'templates', '.templates', '.trash', '.notevault'])
+
+function isSystemNode(node: FileNode): boolean {
+  return node.isDir && SYSTEM_DIR_NAMES.has(node.name.toLowerCase())
+}
+
+const primaryNodes = computed(() => {
+  if (!props.isRoot) return props.nodes
+  return props.nodes.filter(n => !isSystemNode(n))
+})
+
+const systemNodes = computed(() => {
+  if (!props.isRoot) return []
+  return props.nodes.filter(n => isSystemNode(n))
+})
+
+const systemExpanded = ref(false)
+
+function filterNodeList(list: FileNode[], query: string): FileNode[] {
+  const q = query.toLowerCase()
+  const result: FileNode[] = []
+  for (const node of list) {
+    if (node.isDir) {
+      const filteredChildren = node.children ? filterNodeList(node.children, query) : []
+      const nameMatches = node.name.toLowerCase().includes(q) || displayName(node).toLowerCase().includes(q)
+      if (nameMatches || filteredChildren.length > 0) {
+        result.push({
+          ...node,
+          children: filteredChildren.length > 0 ? filteredChildren : node.children,
+        })
+      }
+    } else {
+      if (node.name.toLowerCase().includes(q)) {
+        result.push(node)
+      }
+    }
+  }
+  return result
+}
+
+const displayPrimaryNodes = computed(() => {
+  if (!props.isRoot || !searchQuery.value.trim()) return primaryNodes.value
+  return filterNodeList(primaryNodes.value, searchQuery.value.trim())
+})
+
+const displaySystemNodes = computed(() => {
+  if (!props.isRoot || !searchQuery.value.trim()) return systemNodes.value
+  return filterNodeList(systemNodes.value, searchQuery.value.trim())
+})
+
+function collapseAll() {
+  expandedDirs.value.clear()
+}
+
+watch(
+  activePath,
+  (path) => {
+    if (!path || !props.isRoot) return
+    const segments = path.toLowerCase().split('/')
+    if (segments.length > 0 && SYSTEM_DIR_NAMES.has(segments[0]!)) {
+      systemExpanded.value = true
+    }
+  },
+  { immediate: true },
+)
+
+watch(searchQuery, (q) => {
+  if (!q.trim()) return
+  function expandAllDirs(list: FileNode[]) {
+    for (const n of list) {
+      if (n.isDir) {
+        expandedDirs.value.add(normalizeNotePath(n.path))
+        if (n.children) expandAllDirs(n.children)
+      }
+    }
+  }
+  expandAllDirs(displayPrimaryNodes.value)
+  if (displaySystemNodes.value.length > 0) {
+    systemExpanded.value = true
+    expandAllDirs(displaySystemNodes.value)
+  }
+})
 
 function handleFileClick(node: FileNode) {
   if (node.isDir) {
@@ -166,12 +276,50 @@ function handleTrash(node: FileNode) {
 <template>
   <div
     class="file-tree"
+    :class="{ 'is-root': isRoot }"
     @click="closeContextMenu"
   >
+    <!-- 顶部过滤与操作条（仅根树展示） -->
+    <div
+      v-if="isRoot"
+      class="tree-toolbar"
+    >
+      <div class="tree-search-wrapper">
+        <Search
+          :size="13"
+          class="search-icon"
+        />
+        <input
+          v-model="searchQuery"
+          type="text"
+          class="tree-search-input"
+          placeholder="过滤文档..."
+          aria-label="过滤文档"
+        >
+        <button
+          v-if="searchQuery"
+          class="search-clear-btn"
+          title="清空"
+          @click="searchQuery = ''"
+        >
+          <X :size="12" />
+        </button>
+      </div>
+      <div class="tree-actions">
+        <button
+          class="tree-action-btn"
+          title="全部折叠"
+          @click="collapseAll"
+        >
+          <ChevronsDownUp :size="14" />
+        </button>
+      </div>
+    </div>
+
     <!-- 文件树 -->
     <div class="tree-nodes">
       <template
-        v-for="node in nodes"
+        v-for="node in (isRoot ? displayPrimaryNodes : nodes)"
         :key="node.path"
       >
         <div
@@ -232,6 +380,7 @@ function handleTrash(node: FileNode) {
             :active-file-path="activeFilePath"
             :focus-folder="childFocusFolder"
             :folder-display-names="folderDisplayNames"
+            :is-root="false"
             @open-file="(n) => emit('open-file', n)"
             @new-file="(p) => emit('new-file', p)"
             @new-folder="(p) => emit('new-folder', p)"
@@ -242,6 +391,113 @@ function handleTrash(node: FileNode) {
           />
         </div>
       </template>
+
+      <!-- 底部系统与模板折叠区（仅根树展示） -->
+      <div
+        v-if="isRoot && systemNodes.length > 0"
+        class="system-section"
+      >
+        <div
+          class="tree-node system-header-node"
+          :class="{ 'is-open': systemExpanded }"
+          @click="systemExpanded = !systemExpanded"
+        >
+          <span class="node-toggle">
+            <ChevronRight
+              v-if="!systemExpanded"
+              :size="14"
+            />
+            <ChevronDown
+              v-else
+              :size="14"
+            />
+          </span>
+          <span class="node-icon">
+            <FolderCog :size="15" />
+          </span>
+          <span class="node-name system-name">系统与模板</span>
+          <span class="system-badge">{{ systemNodes.length }}</span>
+        </div>
+
+        <div
+          v-if="systemExpanded"
+          class="system-children"
+        >
+          <template
+            v-for="node in (searchQuery.trim() ? displaySystemNodes : systemNodes)"
+            :key="node.path"
+          >
+            <div
+              class="tree-node"
+              :data-path="node.path"
+              :class="{
+                'is-dir': node.isDir,
+                'is-active': !node.isDir && activePath === normalizeNotePath(node.path),
+                'is-focused': node.isDir && focusedDir === node.path,
+              }"
+              @click="handleFileClick(node)"
+              @contextmenu="handleContextMenu($event, node, node.isDir ? node.path : node.path.substring(0, node.path.lastIndexOf('/')))"
+            >
+              <span
+                v-if="!node.isDir"
+                class="node-indent"
+              />
+              <span
+                v-if="node.isDir"
+                class="node-toggle"
+              >
+                <ChevronRight
+                  v-if="!isExpanded(node)"
+                  :size="14"
+                />
+                <ChevronDown
+                  v-else
+                  :size="14"
+                />
+              </span>
+              <span class="node-icon">
+                <Folder
+                  v-if="node.isDir && !isExpanded(node)"
+                  :size="16"
+                />
+                <FolderOpen
+                  v-else-if="node.isDir"
+                  :size="16"
+                />
+                <FileText
+                  v-else
+                  :size="16"
+                />
+              </span>
+              <span
+                class="node-name"
+                :title="node.path"
+              >{{ displayName(node) }}</span>
+            </div>
+
+            <!-- 子节点 -->
+            <div
+              v-if="node.isDir && isExpanded(node) && node.children"
+              class="tree-children"
+            >
+              <FileTree
+                :nodes="node.children"
+                :active-file-path="activeFilePath"
+                :focus-folder="childFocusFolder"
+                :folder-display-names="folderDisplayNames"
+                :is-root="false"
+                @open-file="(n) => emit('open-file', n)"
+                @new-file="(p) => emit('new-file', p)"
+                @new-folder="(p) => emit('new-folder', p)"
+                @rename="(n) => emit('rename', n)"
+                @delete="(n) => emit('delete', n)"
+                @archive="(n) => emit('archive', n)"
+                @trash="(n) => emit('trash', n)"
+              />
+            </div>
+          </template>
+        </div>
+      </div>
     </div>
 
     <!-- 右键菜单 -->
@@ -312,14 +568,150 @@ export default { name: 'FileTree' }
 <style scoped>
 .file-tree {
   width: 100%;
-  height: 100%;
-  overflow-y: auto;
   font-size: var(--text-sm);
   position: relative;
 }
 
+.file-tree.is-root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tree-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  flex-shrink: 0;
+}
+
+.tree-search-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 7px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.tree-search-input {
+  width: 100%;
+  height: 24px;
+  padding: 0 20px 0 24px;
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.tree-search-input:focus {
+  border-color: var(--accent);
+}
+
+.tree-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.search-clear-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.tree-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.tree-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.tree-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 .tree-nodes {
-  padding: 0 var(--space-1);
+  padding: var(--space-1) var(--space-1);
+}
+
+.is-root > .tree-nodes {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* 系统与模板折叠区 */
+.system-section {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border);
+}
+
+.system-header-node {
+  opacity: 0.75;
+  font-size: var(--text-xs);
+}
+
+.system-header-node:hover {
+  opacity: 1;
+}
+
+.system-name {
+  color: var(--text-muted);
+  font-style: normal;
+}
+
+.system-badge {
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.system-children {
+  margin-top: 2px;
 }
 
 .tree-node {
