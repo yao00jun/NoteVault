@@ -244,7 +244,8 @@ const navItems = computed<NavItem[]>(() => [
     label: '知识库',
     description: '知识沉淀',
     icon: Library,
-    route: '/vault',
+    // Mybase 式左树右文：直达编辑器空态（知识库浏览模式），仪表盘保留在 /vault
+    route: '/editor',
     activeOn: ['/vault', '/library', '/editor', '/insights', '/discover', '/review', '/canvas', '/archive', '/import', '/plugins'],
     badge: 'PARA',
   },

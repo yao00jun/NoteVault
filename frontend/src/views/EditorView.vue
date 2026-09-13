@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, nextTick } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
+import {
+  BookOpen,
+  CalendarDays,
+  FileText,
+  Inbox as InboxIcon,
+  Library,
+  Plus,
+  Rocket,
+} from '@lucide/vue'
 import EditorTabBar from '@/components/editor/EditorTabBar.vue'
 import { isImeComposing } from '@/utils/ime'
 import EditorContextDrawer from '@/components/editor/EditorContextDrawer.vue'
@@ -27,6 +36,7 @@ import { isLocalBaseURL } from '@/utils/localEndpoint'
 import { toSplitPairs } from '@/utils/textDiff'
 import { useToast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirm'
+import { promptDialog } from '@/composables/usePrompt'
 import { useEditorDraft, type EditorTab } from '@/composables/useEditorDraft'
 import { useEditorFileOperations } from '@/composables/useEditorFileOperations'
 import { useEditorBacklinks } from '@/composables/useEditorBacklinks'
@@ -60,6 +70,47 @@ const { mainRef, panesRef, treeWidth, showTree, overlayTree, splitPercent, effec
 let openFileVersion = 0
 let fileTreeRequest = 0
 let deferredOpen: string | null = null
+
+// ---- Mybase 式知识库浏览模式：/editor 无 file 参数时，左侧文件树固定展开，右侧显示知识库概览 ----
+const vaultBrowseMode = computed(() => route.path === '/editor' && typeof route.query.file !== 'string')
+// 浏览模式强制显示左树（非 overlay）；编辑模式沿用用户偏好（可折叠、窄窗自动收起）
+const effectiveShowTree = computed(() => vaultBrowseMode.value ? true : (showTree.value && !overlayTree.value))
+
+// PARA 空间快捷卡片：目录名 → 递归文档数（从已加载的文件树统计）
+interface VaultSpace { key: string; label: string; dir: string; icon: typeof BookOpen }
+const vaultSpaces: VaultSpace[] = [
+  { key: 'learning', label: '学习', dir: 'Learning', icon: BookOpen },
+  { key: 'projects', label: '项目', dir: 'Projects', icon: Rocket },
+  { key: 'resources', label: '资料收藏', dir: 'Resources', icon: Library },
+  { key: 'inbox', label: '收集箱', dir: 'Inbox', icon: InboxIcon },
+  { key: 'daily', label: '工作日志', dir: 'Daily', icon: CalendarDays },
+]
+
+function countMarkdownNotes(children?: FileNode[]): number {
+  if (!children) return 0
+  let notes = 0
+  for (const child of children) {
+    if (child.isDir) notes += countMarkdownNotes(child.children)
+    else if (/\.md$/i.test(child.name)) notes++
+  }
+  return notes
+}
+
+const spaceCounts = computed<Record<string, number>>(() => {
+  const counts: Record<string, number> = {}
+  for (const node of fileTree.value) {
+    if (node.isDir) counts[node.name.toLowerCase()] = countMarkdownNotes(node.children)
+  }
+  return counts
+})
+
+// 点击空间卡片：在左树中展开并高亮该目录（重复点击同一目录可重新触发）
+function focusSpace(dir: string) {
+  focusFolder.value = null
+  void nextTick(() => { focusFolder.value = dir })
+}
+
+const recentFiles = computed(() => workspaceStore.recentFiles.slice(0, 6))
 
 // 计算属性
 const activeTab = computed(() => {
@@ -827,9 +878,67 @@ async function exportSingleHTML() {
   }
 }
 
+// ---- 文件树右键导出/复制（Mybase 式：对任意节点操作，不要求先打开） ----
+async function exportFileMarkdown(node: FileNode) {
+  if (node.isDir || !currentWorkspace.value) return
+  const dest = await pickSavePath(node.name, '.md')
+  if (!dest) return
+  isExporting.value = true
+  try {
+    await ExportService.ExportNoteMarkdown(currentWorkspace.value.path, node.path, dest)
+    toast.success(t('editor.exportedMd', { path: dest }))
+  } catch (e) {
+    toast.error(t('editor.exportFailed', { msg: (e as Error).message }))
+  } finally {
+    isExporting.value = false
+  }
+}
+
+async function exportFileHTML(node: FileNode) {
+  if (node.isDir || !currentWorkspace.value) return
+  const workspacePath = currentWorkspace.value.path
+  let content: string
+  try {
+    content = await FileService.ReadFile(workspacePath, node.path)
+  } catch (e) {
+    toast.error(`读取文件失败：${e instanceof Error ? e.message : String(e)}`)
+    return
+  }
+  const name = node.name.replace(/\.md$/i, '')
+  const dest = await pickSavePath(name + '.html', '.html')
+  if (!dest) return
+  isExporting.value = true
+  try {
+    await ExportService.SaveText(dest, buildStandaloneHTML(name, content))
+    toast.success(t('editor.exportedHtml', { path: dest }))
+  } catch (e) {
+    toast.error(t('editor.exportFailed', { msg: (e as Error).message }))
+  } finally {
+    isExporting.value = false
+  }
+}
+
+async function handleCopyFile(node: FileNode) {
+  if (node.isDir || !currentWorkspace.value) return
+  const workspacePath = currentWorkspace.value.path
+  const defaultName = node.name.replace(/\.md$/i, '') + ' 副本.md'
+  const name = await promptDialog({ message: `复制「${node.name}」为：`, defaultValue: defaultName })
+  if (!name?.trim()) return
+  const fileName = name.trim().endsWith('.md') ? name.trim() : `${name.trim()}.md`
+  const parent = node.path.includes('/') ? node.path.slice(0, node.path.lastIndexOf('/')) : ''
+  const target = parent ? `${parent}/${fileName}` : fileName
+  try {
+    const content = await FileService.ReadFile(workspacePath, node.path)
+    await FileService.CreateFile(workspacePath, target, content)
+    workspaceStore.incrementFileTreeVersion()
+    toast.success(`已复制为「${target}」`)
+  } catch (e) {
+    toast.error(`复制失败：${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
 // 把 Markdown 渲染为内联样式的独立 HTML 文件
-function buildStandaloneHTML(title: string, markdown: string): string {
-  const body = sanitizeHtml(marked.parse(markdown) as string)
+function buildStandaloneHTML(title: string, markdown: string): string {  const body = sanitizeHtml(marked.parse(markdown) as string)
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1040,11 +1149,11 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       class="editor-main"
       :class="{ 'overlay-tree': overlayTree }"
     >
-      <!-- 左侧文件树（方案 A：已统一收拢至全局 SideBar 工作流中，此处保持后台挂载但不占位） -->
+      <!-- 左侧文件树（Mybase 式左树右文：知识库浏览模式固定展开，编辑模式可折叠/拖宽） -->
       <div
-        v-show="false"
+        v-show="effectiveShowTree"
         class="file-tree-pane"
-        style="display: none;"
+        :style="{ width: `${treeWidth}px` }"
         :inert="fileOperationsBusy || isApplyingExternalChanges ? true : undefined"
       >
         <FileTree
@@ -1059,16 +1168,110 @@ watch(() => workspaceStore.fileTreeVersion, () => {
           @delete="handleDeleteFile"
           @archive="handleArchiveFile"
           @trash="handleTrashFile"
+          @copy="handleCopyFile"
+          @export-md="exportFileMarkdown"
+          @export-html="exportFileHTML"
         />
       </div>
+      <!-- 树宽拖拽手柄 -->
+      <span
+        v-if="effectiveShowTree"
+        class="tree-resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整文件树宽度"
+        @pointerdown="beginResize($event, 'tree')"
+      />
 
       <!-- 编辑/预览区域 -->
       <div
         class="editor-content"
         :inert="isApplyingExternalChanges ? true : undefined"
       >
+        <!-- 知识库浏览模式概览：无打开文件时作为「右文」默认页 -->
         <div
-          v-if="!activeTab"
+          v-if="!activeTab && vaultBrowseMode"
+          class="vault-overview"
+        >
+          <header class="vault-hero">
+            <div class="vault-hero-text">
+              <p class="vault-eyebrow">
+                KNOWLEDGE BASE
+              </p>
+              <h2>知识库</h2>
+              <p class="vault-sub">
+                从左侧文件树选择文档即可在此编辑，或从下面的入口开始。
+              </p>
+            </div>
+            <button
+              class="vault-new-btn"
+              data-testid="vault-overview-new"
+              @click="handleNewFile(newDocumentFolder)"
+            >
+              <Plus :size="15" />
+              新建文档
+            </button>
+          </header>
+
+          <section class="vault-section">
+            <h3>空间</h3>
+            <div class="vault-space-grid">
+              <button
+                v-for="space in vaultSpaces"
+                :key="space.key"
+                class="vault-space-card"
+                :data-testid="`vault-space-${space.key}`"
+                :title="`在左侧文件树中定位 ${space.dir}/`"
+                @click="focusSpace(space.dir)"
+              >
+                <component
+                  :is="space.icon"
+                  :size="16"
+                  class="vault-space-icon"
+                />
+                <span class="vault-space-name">{{ space.label }}</span>
+                <span class="vault-space-count">{{ spaceCounts[space.dir.toLowerCase()] || 0 }} 篇</span>
+              </button>
+            </div>
+          </section>
+
+          <section
+            v-if="recentFiles.length"
+            class="vault-section"
+          >
+            <h3>最近打开</h3>
+            <div class="vault-recent-list">
+              <button
+                v-for="file in recentFiles"
+                :key="file.path"
+                class="vault-recent-item"
+                data-testid="vault-recent-file"
+                :title="file.path"
+                @click="openFileByPath(file.path)"
+              >
+                <FileText
+                  :size="14"
+                  class="vault-recent-icon"
+                />
+                <span class="vault-recent-name">{{ file.title }}</span>
+                <span class="vault-recent-path">{{ file.path }}</span>
+              </button>
+            </div>
+          </section>
+
+          <footer class="vault-footer">
+            <button
+              class="vault-dashboard-link"
+              data-testid="vault-overview-dashboard"
+              @click="router.push('/vault')"
+            >
+              查看完整仪表盘 →
+            </button>
+          </footer>
+        </div>
+
+        <div
+          v-else-if="!activeTab"
           class="empty-state"
         >
           <div class="empty-icon">
@@ -1252,12 +1455,23 @@ watch(() => workspaceStore.fileTreeVersion, () => {
 
 /* 文件树面板 */
 .file-tree-pane {
-  width: 240px;
+  width: 280px;
   border-right: 1px solid var(--border);
   background: var(--bg-sidebar);
   flex-shrink: 0;
   overflow: hidden;
 }
+
+/* 树宽拖拽手柄：贴在树窗格右缘 */
+.tree-resize-handle {
+  width: 5px;
+  margin-left: -3px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  touch-action: none;
+  z-index: 5;
+}
+.tree-resize-handle:hover { background: var(--accent); opacity: .35; }
 
 .overlay-tree .file-tree-pane {
   position: absolute;
@@ -1292,6 +1506,65 @@ watch(() => workspaceStore.fileTreeVersion, () => {
   display: flex;
   overflow: hidden;
 }
+
+/* ---- 知识库浏览模式概览（右文默认页） ---- */
+.vault-overview {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 32px;
+  color: var(--text-primary);
+}
+.vault-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.vault-eyebrow { margin: 0 0 6px; font-size: 10px; letter-spacing: .12em; font-weight: 650; color: var(--text-muted); }
+.vault-hero h2 { margin: 0 0 8px; font-size: 22px; font-weight: 600; letter-spacing: -.03em; }
+.vault-sub { margin: 0; font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+.vault-new-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px;
+  border-radius: 7px; font-size: 12px; white-space: nowrap;
+  color: var(--text-inverse, #fff); background: var(--accent); border: 1px solid var(--accent);
+}
+.vault-new-btn:hover { background: var(--accent-hover, var(--accent)); }
+.vault-section { margin-bottom: 24px; }
+.vault-section h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.vault-space-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.vault-space-card {
+  display: flex; align-items: center; gap: 8px; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card);
+  color: var(--text-secondary); text-align: left;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.vault-space-card:hover { background: var(--bg-hover); border-color: var(--border-accent, var(--accent)); color: var(--text-primary); }
+.vault-space-icon { color: var(--accent); flex-shrink: 0; }
+.vault-space-name { flex: 1; min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vault-space-count { font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.vault-recent-list { display: flex; flex-direction: column; gap: 2px; }
+.vault-recent-item {
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+  border: none; border-radius: 6px; background: transparent;
+  color: var(--text-secondary); text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.vault-recent-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.vault-recent-icon { color: var(--text-muted); flex-shrink: 0; }
+.vault-recent-name { flex-shrink: 0; font-size: 12px; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vault-recent-path { flex: 1; min-width: 0; font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vault-footer { padding-top: 4px; }
+.vault-dashboard-link {
+  padding: 4px 0; border: none; background: transparent;
+  color: var(--text-muted); font-size: 12px; cursor: pointer;
+  transition: color var(--transition-fast);
+}
+.vault-dashboard-link:hover { color: var(--accent); }
 
 .empty-state {
   flex: 1;

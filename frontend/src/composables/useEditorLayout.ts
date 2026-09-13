@@ -8,7 +8,7 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 export function useEditorLayout() {
   let saved: { treeWidth?: number; treeOpen?: boolean; splitPercent?: number; viewMode?: Mode } = {}
   try { saved = JSON.parse(localStorage.getItem(storageKey) || '{}') ?? {} } catch { /* Defaults recover old/corrupt preferences. */ }
-  const treeWidth = ref(clamp(Number(saved.treeWidth) || 224, 180, 360))
+  const treeWidth = ref(clamp(Number(saved.treeWidth) || 280, 180, 360))
   const treeOpen = ref(saved.treeOpen !== false)
   const splitPercent = ref(clamp(Number(saved.splitPercent) || 50, 30, 70))
   const viewMode = ref<Mode>(['split', 'editor', 'preview'].includes(saved.viewMode || '') ? saved.viewMode! : 'split')

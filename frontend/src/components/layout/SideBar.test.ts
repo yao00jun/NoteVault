@@ -125,12 +125,18 @@ describe('SideBar', () => {
     expect(zones).toEqual([true, false])
   })
 
-  it.each(['today', 'projects', 'learning', 'vault'])('opens the %s workflow and marks it active', async (destination) => {
+  it.each([
+    ['today', '/today'],
+    ['projects', '/projects'],
+    ['learning', '/learning'],
+    // 知识库直达 Mybase 式左树右文编辑器（空态即浏览模式），仪表盘保留在 /vault
+    ['vault', '/editor'],
+  ])('opens the %s workflow and marks it active', async (destination, expectedPath) => {
     const { wrapper, router } = mountSideBar()
     await flushPromises()
     await wrapper.get('[data-testid="nav-' + destination + '"]').trigger('click')
     await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/' + destination)
+    expect(router.currentRoute.value.path).toBe(expectedPath)
     expect(wrapper.get('[data-testid="nav-' + destination + '"]').attributes('aria-current')).toBe('page')
   })
 

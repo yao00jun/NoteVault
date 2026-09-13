@@ -15,6 +15,10 @@ export interface FileTreeContextMenuActions {
   onDelete?: (node: FileNode) => void
   onArchive?: (node: FileNode) => void
   onTrash?: (node: FileNode) => void
+  /** Mybase 式补充：复制文件、导出（仅文件节点） */
+  onCopy?: (node: FileNode) => void
+  onExportMarkdown?: (node: FileNode) => void
+  onExportHTML?: (node: FileNode) => void
 }
 
 export function useFileTreeContextMenu(actions?: FileTreeContextMenuActions) {
@@ -59,6 +63,21 @@ export function useFileTreeContextMenu(actions?: FileTreeContextMenuActions) {
     closeContextMenu()
   }
 
+  function handleCopy(node: FileNode) {
+    actions?.onCopy?.(node)
+    closeContextMenu()
+  }
+
+  function handleExportMarkdown(node: FileNode) {
+    actions?.onExportMarkdown?.(node)
+    closeContextMenu()
+  }
+
+  function handleExportHTML(node: FileNode) {
+    actions?.onExportHTML?.(node)
+    closeContextMenu()
+  }
+
   return {
     contextMenu,
     openContextMenu,
@@ -70,5 +89,8 @@ export function useFileTreeContextMenu(actions?: FileTreeContextMenuActions) {
     handleDelete,
     handleArchive,
     handleTrash,
+    handleCopy,
+    handleExportMarkdown,
+    handleExportHTML,
   }
 }

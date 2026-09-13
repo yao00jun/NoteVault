@@ -161,3 +161,54 @@ describe('EditorView outline navigation', () => {
     expect(mocks.toggleSidebar).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('EditorView knowledge browse mode (Mybase left-tree right-editor)', () => {
+  async function renderBrowse() {
+    // 预置最近文档（store.openFile 会触发 activeFile watch 直接打开文件，不能用）
+    localStorage.setItem('notevault_navigation:C:/vault', JSON.stringify({
+      pins: [],
+      recent: [{ path: 'Learning/a.md', title: 'a.md', openedAt: '2026-09-14T00:00:00Z' }],
+    }))
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const workspace = useWorkspaceStore()
+    workspace.setCurrentWorkspace({ id: 'a', name: 'A', path: 'C:/vault', createdAt: '', lastOpenedAt: '' })
+    const router = createRouter({ history: createMemoryHistory(), routes: [
+      { path: '/editor', component: EditorView },
+      { path: '/vault', component: { template: '<div>vault-dashboard</div>' } },
+    ] })
+    vi.mocked(FileService.GetFileTree).mockResolvedValue([
+      { name: 'Learning', path: 'Learning', fullPath: 'C:/vault/Learning', isDir: true, children: [
+        { name: 'a.md', path: 'Learning/a.md', fullPath: 'C:/vault/Learning/a.md', isDir: false },
+        { name: 'b.md', path: 'Learning/b.md', fullPath: 'C:/vault/Learning/b.md', isDir: false },
+      ] },
+    ] as never)
+    await router.push('/editor')
+    const wrapper = shallowMount({ template: '<RouterView />' }, { global: {
+      plugins: [pinia, router, i18n],
+      stubs: { RouterView: false, EditorView: false, EditorContextDrawer: false, EditorTabBar: false, MarkdownPreview: false },
+    } })
+    await flushPromises()
+    return { wrapper, router, workspace }
+  }
+
+  it('shows the vault overview with space counts, recents and dashboard link when no file is open', async () => {
+    const { wrapper } = await renderBrowse()
+    expect(wrapper.find('[data-testid="vault-overview-new"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="vault-space-learning"]').text()).toContain('2 篇')
+    expect(wrapper.findAll('[data-testid="vault-recent-file"]')).toHaveLength(1)
+
+    // 点击最近文档：直接在右侧进入编辑器，概览消失
+    vi.mocked(FileService.ReadFile).mockImplementation(() => Promise.resolve('# A') as never)
+    await wrapper.find('[data-testid="vault-recent-file"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="vault-overview-new"]').exists()).toBe(false)
+  })
+
+  it('routes to the full dashboard from the overview footer', async () => {
+    const { wrapper, router } = await renderBrowse()
+    await wrapper.find('[data-testid="vault-overview-dashboard"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/vault')
+  })
+})

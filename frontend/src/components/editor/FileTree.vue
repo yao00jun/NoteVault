@@ -18,6 +18,8 @@ import {
   X,
   FolderCog,
   ChevronsDownUp,
+  Copy,
+  Download,
 } from '@lucide/vue'
 import { normalizeNotePath } from '@/utils/navigation'
 import WorkflowTreeItem from '@/components/layout/WorkflowTreeItem.vue'
@@ -56,6 +58,9 @@ const emit = defineEmits<{
   'delete': [node: FileNode]
   'archive': [node: FileNode]
   'trash': [node: FileNode]
+  'copy': [node: FileNode]
+  'export-md': [node: FileNode]
+  'export-html': [node: FileNode]
 }>()
 
 // 1. 搜索过滤
@@ -81,6 +86,9 @@ const {
   handleDelete,
   handleArchive,
   handleTrash,
+  handleCopy,
+  handleExportMarkdown,
+  handleExportHTML,
 } = useFileTreeContextMenu({
   onNewFile: (p) => emit('new-file', p),
   onNewFolder: (p) => emit('new-folder', p),
@@ -88,6 +96,9 @@ const {
   onDelete: (n) => emit('delete', n),
   onArchive: (n) => emit('archive', n),
   onTrash: (n) => emit('trash', n),
+  onCopy: (n) => emit('copy', n),
+  onExportMarkdown: (n) => emit('export-md', n),
+  onExportHTML: (n) => emit('export-html', n),
 })
 
 function onNodeContextMenu(e: MouseEvent, n: FileNode) {
@@ -141,20 +152,41 @@ const menuItems = computed(() => {
   if (!contextMenu.value) return []
   const { node, parentPath } = contextMenu.value
   const target = node?.isDir ? node.path : parentPath
+  const parentOf = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '')
   const items: Array<{ key: string; label: string; icon: any; danger?: boolean; dividerBefore?: boolean; action: () => void }> = [
     { key: 'new-file', label: '新建文档', icon: FileText, action: () => handleNewFile(target) },
     { key: 'new-folder', label: '新建文件夹', icon: Folder, action: () => handleNewFolder(target) },
   ]
-  if (node && !node.isDir) {
+  if (node?.isDir) {
+    // Mybase 式「添加兄弟项」：在目录的同级创建
     items.push(
-      { key: 'archive', label: '归档', icon: Archive, dividerBefore: true, action: () => handleArchive(node) },
-      { key: 'trash', label: '移动到回收站', icon: Trash2, action: () => handleTrash(node) },
+      { key: 'new-sibling-file', label: '新建兄弟文档', icon: FileText, action: () => handleNewFile(parentOf(node.path)) },
+      { key: 'new-sibling-folder', label: '新建兄弟文件夹', icon: Folder, action: () => handleNewFolder(parentOf(node.path)) },
     )
   }
   if (node) {
     items.push(
-      { key: 'rename', label: '重命名', icon: MoreVertical, dividerBefore: !items.some(i => i.dividerBefore), action: () => handleRename(node) },
-      { key: 'delete', label: '永久删除', icon: null, danger: true, action: () => handleDelete(node) },
+      { key: 'rename', label: '重命名', icon: MoreVertical, dividerBefore: true, action: () => handleRename(node) },
+    )
+    if (!node.isDir) {
+      items.push(
+        { key: 'copy', label: '复制', icon: Copy, action: () => handleCopy(node) },
+      )
+    }
+    if (!node.isDir) {
+      items.push(
+        { key: 'export-md', label: '导出为 Markdown', icon: Download, dividerBefore: true, action: () => handleExportMarkdown(node) },
+        { key: 'export-html', label: '导出为 HTML', icon: Download, action: () => handleExportHTML(node) },
+      )
+    }
+    if (!node.isDir) {
+      items.push(
+        { key: 'archive', label: '归档', icon: Archive, dividerBefore: true, action: () => handleArchive(node) },
+        { key: 'trash', label: '移动到回收站', icon: Trash2, action: () => handleTrash(node) },
+      )
+    }
+    items.push(
+      { key: 'delete', label: '永久删除', icon: null, danger: true, dividerBefore: node.isDir, action: () => handleDelete(node) },
     )
   }
   return items
