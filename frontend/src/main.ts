@@ -8,6 +8,7 @@ import { installErrorReporter } from './composables/useErrorReporter'
 import './styles/variables.css'
 import './styles/global.css'
 import './styles/themes.css'
+import './styles/responsive.css'
 
 const app = createApp(App)
 

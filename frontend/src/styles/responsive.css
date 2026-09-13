@@ -1,0 +1,77 @@
+/* ============================================================
+   宽屏自适应规则（container query 的扩展方向）
+
+   窄屏断点（@media max-width）散在各视图 scoped 样式里；这里统一
+   管理宽方向：内容列随容器变宽而扩展铺满，而不是固定 max-width
+   居中留下两片空白。沿用 themes.css 的 workbench-content 容器与
+   html[data-theme] 前缀（保证能覆盖组件 scoped 样式）。
+   ============================================================ */
+
+/* 注册其余主内容视图为容器查询容器
+   （.today-view / .collection-page 已在 themes.css 声明） */
+html[data-theme]
+  :is(
+    .search-view,
+    .tags-view,
+    .archive-view,
+    .reminders-view,
+    .settings-view,
+    .reports-view,
+    .qna-view
+  ) {
+  container: workbench-content / inline-size;
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------
+   今日工作台：内容列宽屏分档扩展
+   ------------------------------------------------------------ */
+@container workbench-content (min-width: 1600px) {
+  html[data-theme] .today-view .today-content {
+    max-width: 1680px;
+  }
+
+  html[data-theme] .today-view .workday-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 26%);
+  }
+
+  html[data-theme] .today-view .focus-column {
+    max-width: none;
+  }
+}
+
+@container workbench-content (min-width: 1900px) {
+  html[data-theme] .today-view .today-content {
+    max-width: 1840px;
+  }
+}
+
+/* ------------------------------------------------------------
+   列表/表单类视图：宽屏下内容区块放宽一档（约 +30%），
+   保证呼吸感的同时消除两侧大片空白
+   ------------------------------------------------------------ */
+@container workbench-content (min-width: 1600px) {
+  html[data-theme] .search-view :is(.semantic-hint, .error-banner) {
+    max-width: 940px;
+  }
+
+  html[data-theme] .tags-view :is(.tag-cloud-section, .tag-files-section) {
+    max-width: 980px;
+  }
+
+  html[data-theme] .archive-view .files-list {
+    max-width: 920px;
+  }
+
+  html[data-theme] .reminders-view .reminders-list {
+    max-width: 920px;
+  }
+
+  html[data-theme] .learning-page :is(.learning-review-section) {
+    max-width: 1120px;
+  }
+
+  html[data-theme] .settings-view .settings-section {
+    max-width: 1180px;
+  }
+}

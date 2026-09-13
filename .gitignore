@@ -44,4 +44,4 @@ node_modules/
 Thumbs.db
 *.tmp
 
-.codegraph
+.codegraph.zcode/
