@@ -5,7 +5,6 @@ import {
   FolderOpen,
   FileText,
   BarChart3,
-  Clock,
   Trash2,
   ChevronRight,
   Plus,
@@ -19,8 +18,6 @@ import {
   Pin,
   PinOff,
   GripVertical,
-  FolderPlus,
-  Edit3,
 } from '@lucide/vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -31,13 +28,11 @@ import { useI18n } from 'vue-i18n'
 import { FileService, WorkspaceService } from '@/api'
 import { useToast } from '@/composables/useToast'
 import { promptDialog } from '@/composables/usePrompt'
-import { confirmDialog } from '@/composables/useConfirm'
 import { useWorkLog } from '@/composables/useWorkLog'
 import { usePageContext } from '@/composables/usePageContext'
+import { useSidebarResize } from '@/composables/useSidebarResize'
 import { flushOpenEditor } from '@/composables/useEditorSession'
 import { requestSourceImport } from '@/composables/useSourceImport'
-import WorkflowTreeItem from './WorkflowTreeItem.vue'
-import type { FileNode } from '@/components/editor/FileTree.vue'
 
 const toast = useToast()
 const { openTodayWorkLog } = useWorkLog()
@@ -138,21 +133,18 @@ function handleClickOutside(e: MouseEvent) {
     newMenuOpen.value = false
   }
   if (!pinMenuRef.value?.contains(e.target as Node)) pinMenu.value = null
-  if (!treeContextMenuRef.value?.contains(e.target as Node)) treeContextMenu.value = null
 }
 
 function handleEscape(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     workspaceMenuOpen.value = false
     closePinMenu()
-    closeTreeContextMenu()
   }
 }
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleEscape)
-  void loadFileTree()
 })
 
 onBeforeUnmount(() => {
@@ -181,7 +173,6 @@ async function createNewDoc(folder?: string) {
     if (node?.path && workspaceStore.currentWorkspace?.path === workspacePath) {
       workspaceStore.openFile(node.path)
       workspaceStore.incrementFileTreeVersion()
-      await loadFileTree()
       await router.push({ path: '/editor', query: { file: node.path } })
     }
   } catch (e) {
@@ -269,12 +260,6 @@ function openReport() {
 
 interface PinnedItem { path: string; title: string }
 const pins = computed(() => workspaceStore.pinnedItems.slice(0, 8))
-const recentFiles = computed(() => workspaceStore.recentFiles.slice(0, 4))
-const recentExpanded = ref(localStorage.getItem('notevault:sidebar-recent-expanded') === 'true')
-function toggleRecentExpanded() {
-  recentExpanded.value = !recentExpanded.value
-  localStorage.setItem('notevault:sidebar-recent-expanded', String(recentExpanded.value))
-}
 const draggedPin = ref<string | null>(null)
 const dragOverIndex = ref<number | null>(null)
 const pinAnnouncement = ref('')
@@ -368,213 +353,8 @@ function handlePinKey(event: KeyboardEvent, item: PinnedItem, index: number) {
 
 watch(() => workspaceStore.currentWorkspace?.path, () => {
   pinMenu.value = null
-  treeContextMenu.value = null
   finishPinDrag()
-  void loadFileTree()
 })
-
-watch(() => workspaceStore.fileTreeVersion, () => {
-  void loadFileTree()
-})
-
-// ---- 工作流下属树状结构与文件操作（方案 A：工作流与目录合一） ----
-const rootFileTree = ref<FileNode[]>([])
-const expandedWorkflows = ref<Set<string>>(new Set(['learning', 'projects', 'vault']))
-const expandedDirs = ref<Set<string>>(new Set())
-const treeContextMenu = ref<{ x: number; y: number; node: FileNode } | null>(null)
-const treeContextMenuRef = ref<HTMLElement | null>(null)
-
-async function loadFileTree() {
-  const wsPath = workspaceStore.currentWorkspace?.path
-  if (!wsPath || typeof FileService.GetFileTree !== 'function') {
-    rootFileTree.value = []
-    return
-  }
-  try {
-    const tree = await FileService.GetFileTree(wsPath)
-    rootFileTree.value = (tree || []) as FileNode[]
-  } catch (e) {
-    console.error('Failed to load file tree in SideBar:', e)
-  }
-}
-
-const learningNodes = computed(() => {
-  const node = rootFileTree.value.find(n => n.name.toLowerCase() === 'learning')
-  return node?.children || []
-})
-
-const projectNodes = computed(() => {
-  const node = rootFileTree.value.find(n => n.name.toLowerCase() === 'projects')
-  return node?.children || []
-})
-
-const todayNodes = computed(() => {
-  const node = rootFileTree.value.find(n => n.name.toLowerCase() === 'daily')
-  return node?.children || []
-})
-
-const vaultNodes = computed(() => {
-  const exclude = new Set(['learning', 'projects', 'daily', 'assets', 'templates'])
-  return rootFileTree.value.filter(n => {
-    const lower = n.name.toLowerCase()
-    return !exclude.has(lower) && !n.name.startsWith('.')
-  })
-})
-
-function getWorkflowNodes(id: string): FileNode[] {
-  if (id === 'learning') return learningNodes.value
-  if (id === 'projects') return projectNodes.value
-  if (id === 'today') return todayNodes.value
-  if (id === 'vault') return vaultNodes.value
-  return []
-}
-
-function hasWorkflowChildren(id: string): boolean {
-  return getWorkflowNodes(id).length > 0
-}
-
-function toggleWorkflowExpanded(id: string) {
-  if (expandedWorkflows.value.has(id)) {
-    expandedWorkflows.value.delete(id)
-  } else {
-    expandedWorkflows.value.add(id)
-  }
-}
-
-function toggleDirNode(node: FileNode) {
-  const p = node.path.replace(/\\/g, '/')
-  if (expandedDirs.value.has(p)) {
-    expandedDirs.value.delete(p)
-  } else {
-    expandedDirs.value.add(p)
-  }
-}
-
-const activeTreePath = computed(() => {
-  if (route.path === '/editor' && typeof route.query.file === 'string') {
-    return route.query.file
-  }
-  return workspaceStore.activeFile
-})
-
-watch(activeTreePath, (filePath) => {
-  if (!filePath) return
-  const norm = filePath.replace(/\\/g, '/')
-  const parts = norm.split('/')
-  const top = parts[0]?.toLowerCase()
-  if (top === 'learning') expandedWorkflows.value.add('learning')
-  else if (top === 'projects') expandedWorkflows.value.add('projects')
-  else if (top === 'daily') expandedWorkflows.value.add('today')
-  else expandedWorkflows.value.add('vault')
-
-  for (let i = 1; i < parts.length; i++) {
-    const dir = parts.slice(0, i).join('/')
-    expandedDirs.value.add(dir)
-  }
-}, { immediate: true })
-
-function openTreeNode(node: FileNode) {
-  openFile(node.path)
-}
-
-function quickAddInWorkflow(id: string) {
-  if (id === 'learning') void createNewDoc('Learning')
-  else if (id === 'projects') void createNewDoc('Projects')
-  else if (id === 'today') void createNewDoc('Daily')
-  else void createNewDoc('Inbox')
-}
-
-function quickAddInFolder(node: FileNode) {
-  void createNewDoc(node.path)
-}
-
-function showTreeContextMenu(event: MouseEvent, node: FileNode) {
-  treeContextMenu.value = {
-    x: Math.min(event.clientX, window.innerWidth - 180),
-    y: Math.min(event.clientY, window.innerHeight - 180),
-    node,
-  }
-  void nextTick(() => treeContextMenuRef.value?.querySelector<HTMLButtonElement>('button')?.focus())
-}
-
-function closeTreeContextMenu() {
-  treeContextMenu.value = null
-}
-
-function togglePinTreeItem(node: FileNode) {
-  closeTreeContextMenu()
-  workspaceStore.togglePin(node.path)
-}
-
-async function createSubfolder(node: FileNode) {
-  closeTreeContextMenu()
-  const name = await promptDialog({
-    message: `在「${node.name}」中新建子目录：`,
-    defaultValue: '新建文件夹',
-  })
-  if (!name?.trim() || !workspaceStore.currentWorkspace?.path) return
-  try {
-    await FileService.CreateFolder(workspaceStore.currentWorkspace.path, `${node.path}/${name.trim()}`)
-    workspaceStore.incrementFileTreeVersion()
-    expandedDirs.value.add(node.path)
-    await loadFileTree()
-    toast.success('子目录创建成功')
-  } catch (e) {
-    toast.error(`创建失败：${(e as Error).message}`)
-  }
-}
-
-async function renameTreeNode(node: FileNode) {
-  closeTreeContextMenu()
-  const oldName = node.name
-  const isDoc = !node.isDir
-  const newName = await promptDialog({
-    message: `重命名「${oldName}」：`,
-    defaultValue: oldName,
-  })
-  if (!newName?.trim() || newName === oldName || !workspaceStore.currentWorkspace?.path) return
-  const parent = node.path.includes('/') ? node.path.slice(0, node.path.lastIndexOf('/')) : ''
-  const newPath = parent ? `${parent}/${newName.trim()}` : newName.trim()
-  try {
-    await FileService.RenameFile(workspaceStore.currentWorkspace.path, node.path, newPath)
-    if (isDoc && workspaceStore.activeFile === node.path) {
-      workspaceStore.setActiveFile(newPath)
-      if (route.path === '/editor') {
-        await router.replace({ path: '/editor', query: { ...route.query, file: newPath } })
-      }
-    }
-    workspaceStore.incrementFileTreeVersion()
-    await loadFileTree()
-    toast.success('重命名成功')
-  } catch (e) {
-    toast.error(`重命名失败：${(e as Error).message}`)
-  }
-}
-
-async function deleteTreeNode(node: FileNode) {
-  closeTreeContextMenu()
-  const confirmed = await confirmDialog({
-    title: node.isDir ? '删除目录' : '删除文件',
-    message: `确定要删除「${node.name}」吗？${node.isDir ? '目录下的所有文件将被一并删除。' : ''}`,
-    confirmText: '删除',
-    danger: true,
-  })
-  if (!confirmed || !workspaceStore.currentWorkspace?.path) return
-  try {
-    await FileService.DeleteFile(workspaceStore.currentWorkspace.path, node.path)
-    if (!node.isDir && workspaceStore.isPinned(node.path)) {
-      workspaceStore.togglePin(node.path)
-    }
-    if (!node.isDir && workspaceStore.activeFile === node.path && route.path === '/editor') {
-      router.push('/today')
-    }
-    workspaceStore.incrementFileTreeVersion()
-    await loadFileTree()
-    toast.success('删除成功')
-  } catch (e) {
-    toast.error(`删除失败：${(e as Error).message}`)
-  }
-}
 
 const indexStatus = computed(() => {
   if (!workspaceStore.hasWorkspace) return { state: 'idle', label: '选择工作区', detail: '打开工作区后开始索引' }
@@ -584,15 +364,29 @@ const indexStatus = computed(() => {
   return { state: 'idle', label: '等待索引', detail: '尚未读取工作区内容' }
 })
 
-const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-width)')
+// 侧边栏宽度：折叠固定 56px，展开时用户可拖拽调宽（持久化），窄窗口自动折叠
+const { width: resizableWidth, resizing: sidebarResizing, beginResize: beginSidebarResize } = useSidebarResize({
+  collapsed,
+  autoCollapse: () => settingsStore.toggleSidebar(),
+})
+const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth.value}px`)
 </script>
 
 <template>
   <aside
     class="sidebar"
-    :class="{ collapsed }"
+    :class="{ collapsed, resizing: sidebarResizing }"
     :style="{ width: sidebarWidth }"
   >
+    <!-- 右缘拖拽手柄：调宽侧边栏（折叠态不显示） -->
+    <span
+      v-if="!collapsed"
+      class="sidebar-resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      :aria-label="`调整侧边栏宽度，当前 ${resizableWidth} 像素`"
+      @pointerdown="beginSidebarResize"
+    />
     <!-- 工作区选择器（下拉菜单） -->
     <div
       ref="workspaceMenuRef"
@@ -759,7 +553,60 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-wi
     </section>
 
     <div class="sidebar-scroll">
+      <nav
+        class="sidebar-zone nav-list"
+        aria-label="页面导航"
+      >
+        <div
+          v-if="!collapsed"
+          class="section-heading"
+        >
+          页面
+        </div>
+        <!-- 页面入口：功能页导航，紧凑排列 -->
+        <div
+          class="nav-chip-row"
+          :class="{ collapsed }"
+        >
+          <button
+            v-for="item in navItems"
+            :key="item.id"
+            class="nav-item"
+            :data-testid="`nav-${item.id}`"
+            :class="{ collapsed, active: isActive(item) }"
+            :aria-current="isActive(item) ? 'page' : undefined"
+            :aria-label="item.label"
+            :title="item.alert ? `${item.label} · ${workbenchStore.blockers.length} 个卡点待处理` : `${item.label} · ${item.description}`"
+            @click="router.push(item.route)"
+          >
+            <component
+              :is="item.icon"
+              :size="16"
+              class="nav-icon"
+            />
+            <span
+              v-if="!collapsed"
+              class="nav-label"
+            >
+              <span>{{ item.label }}</span>
+            </span>
+            <span
+              v-if="!collapsed && item.badge !== undefined"
+              class="nav-badge"
+              :class="{ 'has-blockers': item.alert }"
+            >{{ item.badge }}</span>
+            <span
+              v-if="collapsed && item.alert"
+              class="blocker-dot"
+              aria-label="有卡点待处理"
+            />
+          </button>
+        </div>
+      </nav>
+
+      <!-- 固定区：有固定项才显示，空态不占位 -->
       <section
+        v-if="pins.length"
         class="sidebar-zone pins-zone"
         data-testid="sidebar-pins"
         aria-label="固定内容"
@@ -817,158 +664,6 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-wi
           />
         </button>
       </section>
-
-      <nav
-        class="sidebar-zone nav-list"
-        aria-label="工作流"
-      >
-        <div
-          v-if="!collapsed"
-          class="section-heading"
-        >
-          工作流
-        </div>
-        <div
-          v-for="item in navItems"
-          :key="item.id"
-          class="workflow-group"
-        >
-          <div class="workflow-header-row">
-            <button
-              v-if="!collapsed && hasWorkflowChildren(item.id)"
-              class="workflow-expand-btn"
-              :title="expandedWorkflows.has(item.id) ? '收起目录' : '展开目录'"
-              :aria-label="expandedWorkflows.has(item.id) ? '收起目录' : '展开目录'"
-              @click.stop="toggleWorkflowExpanded(item.id)"
-            >
-              <ChevronRight
-                :size="12"
-                class="workflow-chevron"
-                :class="{ expanded: expandedWorkflows.has(item.id) }"
-              />
-            </button>
-            <button
-              class="nav-item"
-              :data-testid="`nav-${item.id}`"
-              :class="{ collapsed, active: isActive(item), 'has-chevron': !collapsed && hasWorkflowChildren(item.id) }"
-              :aria-current="isActive(item) ? 'page' : undefined"
-              :aria-label="item.label"
-              :title="item.alert ? `${item.label} · ${workbenchStore.blockers.length} 个卡点待处理` : `${item.label} · ${item.description}`"
-              @click="router.push(item.route)"
-            >
-              <component
-                :is="item.icon"
-                :size="17"
-                class="nav-icon"
-              />
-              <span
-                v-if="!collapsed"
-                class="nav-label"
-              >
-                <span>{{ item.label }}</span>
-                <small>{{ item.description }}</small>
-              </span>
-              <span
-                v-if="!collapsed && item.badge !== undefined"
-                class="nav-badge"
-                :class="{ 'has-blockers': item.alert }"
-              >{{ item.badge }}</span>
-              <span
-                v-if="collapsed && item.alert"
-                class="blocker-dot"
-                aria-label="有卡点待处理"
-              />
-            </button>
-            <button
-              v-if="!collapsed"
-              class="workflow-quick-add"
-              :title="`在「${item.label}」中新建文档`"
-              @click.stop="quickAddInWorkflow(item.id)"
-            >
-              <Plus :size="13" />
-            </button>
-          </div>
-
-          <!-- 工作流展开树（仅在未收起且有子节点时渲染） -->
-          <div
-            v-if="!collapsed && expandedWorkflows.has(item.id) && hasWorkflowChildren(item.id)"
-            class="workflow-subtree"
-            :data-testid="`subtree-${item.id}`"
-          >
-            <WorkflowTreeItem
-              v-for="node in getWorkflowNodes(item.id)"
-              :key="node.path"
-              :node="node"
-              :depth="0"
-              :active-path="activeTreePath"
-              :expanded-dirs="expandedDirs"
-              :kind="item.id as any"
-              @open-file="openTreeNode"
-              @toggle-dir="toggleDirNode"
-              @quick-add="quickAddInFolder"
-              @context-menu="showTreeContextMenu"
-            />
-          </div>
-        </div>
-      </nav>
-
-      <section
-        class="sidebar-zone recent-zone"
-        data-testid="sidebar-recent"
-        aria-label="最近文档"
-      >
-        <div
-          v-if="!collapsed"
-          class="section-heading section-heading-clickable"
-          data-testid="sidebar-recent-toggle"
-          :title="recentExpanded ? '收起最近文档' : '展开最近文档'"
-          :aria-expanded="recentExpanded"
-          role="button"
-          tabindex="0"
-          @click="toggleRecentExpanded"
-          @keydown.enter.prevent="toggleRecentExpanded"
-          @keydown.space.prevent="toggleRecentExpanded"
-        >
-          <ChevronRight
-            :size="12"
-            class="section-chevron"
-            :class="{ expanded: recentExpanded }"
-          />
-          <Clock :size="12" />
-          <span>最近</span>
-          <span
-            v-if="recentFiles.length"
-            class="zone-count"
-          >{{ recentFiles.length }}</span>
-        </div>
-        <div
-          v-show="recentExpanded"
-          class="recent-items-container"
-        >
-          <p
-            v-if="!recentFiles.length && !collapsed"
-            class="zone-empty"
-          >
-            打开过的文档会出现在这里。
-          </p>
-          <button
-            v-for="file in recentFiles"
-            :key="file.path"
-            class="file-shortcut"
-            data-testid="sidebar-recent-file"
-            :class="{ active: route.path === '/editor' && workspaceStore.activeFile === file.path }"
-            :title="file.path"
-            :aria-label="file.title"
-            @click="openFile(file.path)"
-          >
-            <FileText :size="14" />
-            <span
-              v-if="!collapsed"
-              class="file-shortcut-label"
-            >{{ file.title }}</span>
-          </button>
-        </div>
-      </section>
     </div>
 
     <div class="sidebar-footer">
@@ -987,8 +682,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-wi
         v-if="!collapsed"
         class="shortcut-hints"
       >
-        <span><kbd>Ctrl+K</kbd> 搜索 / 命令</span>
-        <span><kbd>Ctrl+J</kbd> Copilot</span>
+        <span><kbd>Ctrl+K</kbd> 搜索 · <kbd>Ctrl+J</kbd> Copilot</span>
       </div>
       <div class="footer-actions">
         <button
@@ -1046,72 +740,6 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-wi
           取消固定
         </button>
       </div>
-
-      <!-- 树节点右键菜单 -->
-      <div
-        v-if="treeContextMenu"
-        ref="treeContextMenuRef"
-        class="pin-context-menu tree-context-menu"
-        role="menu"
-        :aria-label="treeContextMenu.node.isDir ? '目录操作' : '文件操作'"
-        :style="{ left: `${treeContextMenu.x}px`, top: `${treeContextMenu.y}px` }"
-      >
-        <template v-if="!treeContextMenu.node.isDir">
-          <button
-            role="menuitem"
-            @click="togglePinTreeItem(treeContextMenu.node)"
-          >
-            <Pin :size="13" />
-            <span>{{ workspaceStore.isPinned(treeContextMenu.node.path) ? '取消固定' : '固定到侧栏' }}</span>
-          </button>
-          <button
-            role="menuitem"
-            @click="renameTreeNode(treeContextMenu.node)"
-          >
-            <Edit3 :size="13" />
-            <span>重命名</span>
-          </button>
-          <button
-            role="menuitem"
-            class="danger-item"
-            @click="deleteTreeNode(treeContextMenu.node)"
-          >
-            <Trash2 :size="13" />
-            <span>移至回收站</span>
-          </button>
-        </template>
-        <template v-else>
-          <button
-            role="menuitem"
-            @click="quickAddInFolder(treeContextMenu.node); closeTreeContextMenu()"
-          >
-            <Plus :size="13" />
-            <span>新建文档</span>
-          </button>
-          <button
-            role="menuitem"
-            @click="createSubfolder(treeContextMenu.node)"
-          >
-            <FolderPlus :size="13" />
-            <span>新建子目录</span>
-          </button>
-          <button
-            role="menuitem"
-            @click="renameTreeNode(treeContextMenu.node)"
-          >
-            <Edit3 :size="13" />
-            <span>重命名目录</span>
-          </button>
-          <button
-            role="menuitem"
-            class="danger-item"
-            @click="deleteTreeNode(treeContextMenu.node)"
-          >
-            <Trash2 :size="13" />
-            <span>删除目录</span>
-          </button>
-        </template>
-      </div>
     </Teleport>
   </aside>
 </template>
@@ -1123,6 +751,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-wi
 .new-action-options button { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; color: var(--text-primary); text-align: left; padding: 10px; border-radius: var(--control-radius, 5px); font-size: 12px; }
 .new-action-options button:hover { background: var(--bg-hover); }
 .sidebar {
+  position: relative;
   display: flex;
   flex-direction: column;
   background: var(--bg-sidebar);
@@ -1134,6 +763,22 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-wi
   transition: width var(--transition-base);
   overflow: visible;
 }
+
+/* 右缘拖拽手柄：覆盖在边框上，拖动调宽 */
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 70;
+  touch-action: none;
+}
+.sidebar-resize-handle:hover,
+.sidebar.resizing .sidebar-resize-handle { background: var(--accent); opacity: .35; }
+/* 拖拽进行中关闭宽度过渡，跟手 */
+.sidebar.resizing { transition: none; user-select: none; }
 
 .workspace-selector {
   padding: var(--space-2);
@@ -1274,13 +919,6 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-wi
   display: flex; align-items: center; gap: 6px; min-height: 22px;
   padding: 0 4px 4px; color: var(--text-muted); font-size: 11px; font-weight: 600;
 }
-.section-heading-clickable {
-  cursor: pointer; user-select: none; border-radius: var(--radius-sm);
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-.section-heading-clickable:hover { background: var(--bg-hover); color: var(--text-primary); }
-.section-chevron { color: var(--text-muted); transition: transform var(--transition-fast); flex-shrink: 0; }
-.section-chevron.expanded { transform: rotate(90deg); }
 .zone-count { margin-left: auto; font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 400; }
 .action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
 .action-btn {
@@ -1297,7 +935,6 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-wi
 .report-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--bg-card); font-size: 10px; font-variant-numeric: tabular-nums; }
 .sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .sidebar-scroll .sidebar-zone + .sidebar-zone { border-top: 1px solid var(--border); }
-.zone-empty { margin: 2px 6px 4px; color: var(--text-muted); font-size: 11px; line-height: 1.7; }
 .pin-current-btn {
   display: flex; align-items: center; justify-content: center; width: 22px; height: 22px;
   border-radius: 4px; color: var(--text-muted);
@@ -1315,107 +952,18 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : 'var(--sidebar-wi
 .file-shortcut-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pin-grip { opacity: 0; cursor: grab; }
 .pin-item:hover .pin-grip, .pin-item:focus-visible .pin-grip { opacity: 0.6; }
-.workflow-group {
+
+/* 页面入口：功能页导航纵向紧凑列表（图标 + 名称 + 徽章） */
+.nav-chip-row {
   display: flex;
   flex-direction: column;
-  margin: 1px 0;
+  gap: 2px;
+  margin: 2px 0 8px;
 }
-
-.workflow-header-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-
-.workflow-header-row .nav-item.has-chevron {
-  padding-left: 28px;
-}
-
-.workflow-expand-btn {
-  position: absolute;
-  left: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-radius: 3px;
-  transition: color var(--transition-fast);
-}
-
-.workflow-expand-btn:hover {
-  color: var(--text-primary);
-}
-
-.workflow-chevron {
-  transition: transform var(--transition-fast);
-}
-
-.workflow-chevron.expanded {
-  transform: rotate(90deg);
-}
-
-.workflow-quick-add {
-  display: none;
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: 1px solid var(--border);
-  background: var(--bg-card);
-  color: var(--text-muted);
-  cursor: pointer;
-  border-radius: 4px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.workflow-header-row:hover .workflow-quick-add {
-  display: flex;
-}
-
-.workflow-quick-add:hover {
-  background: var(--bg-hover);
-  color: var(--accent);
-  border-color: var(--border-accent);
-}
-
-.workflow-subtree {
-  display: flex;
-  flex-direction: column;
-  padding: 2px 0 4px 4px;
-  margin-left: 12px;
-  border-left: 1px dashed var(--border);
-}
-
-.workflow-subtree-empty {
-  padding: 6px 12px;
-  font-size: 11px;
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-.tree-context-menu button.danger-item {
-  color: var(--error, #ef4444);
-}
-
-.tree-context-menu button.danger-item:hover {
-  background: rgba(239, 68, 68, 0.1);
-}
+.nav-chip-row.collapsed { gap: 2px; }
+.nav-chip-row .nav-item { min-height: 30px; margin: 0; padding: 5px 8px; }
+.nav-chip-row .nav-label { font-size: 12px; }
+.nav-chip-row .nav-label span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .nav-item {
   position: relative; display: flex; align-items: center; gap: 9px; width: 100%;

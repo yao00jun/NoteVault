@@ -98,7 +98,7 @@ describe('SideBar', () => {
     piniaInstances.splice(0).forEach(disposePinia)
   })
 
-  it('renders four workflow destinations separately from the three direct actions', async () => {
+  it('renders page navigation and direct actions as pure navigation', async () => {
     const { wrapper } = mountSideBar()
     await flushPromises()
     expect(wrapper.findAll('.nav-item').map(item => item.attributes('data-testid'))).toEqual([
@@ -107,8 +107,22 @@ describe('SideBar', () => {
     expect(wrapper.find('[data-testid="action-new"]').text()).toContain('新建')
     expect(wrapper.find('[data-testid="action-daily"]').text()).toContain('每日工作日志')
     expect(wrapper.find('[data-testid="action-report"]').text()).toContain('生成日报')
-    expect(wrapper.find('[data-testid="sidebar-pins"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="sidebar-recent"]').exists()).toBe(true)
+    // 侧栏精简为纯导航：无固定项时固定区不占位；文件树/搜索框/最近全部移除
+    expect(wrapper.find('[data-testid="sidebar-pins"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="sidebar-tree"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="sidebar-tree-search"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="sidebar-recent"]').exists()).toBe(false)
+  })
+
+  it('shows the pins zone only when there are pinned items, below the page navigation', async () => {
+    const { wrapper, workspaceStore } = mountSideBar()
+    workspaceStore.setCurrentWorkspace({ ...workspace })
+    workspaceStore.togglePin('第一篇.md')
+    await flushPromises()
+    const pins = wrapper.find('[data-testid="sidebar-pins"]')
+    expect(pins.exists()).toBe(true)
+    const zones = wrapper.findAll('.sidebar-scroll .sidebar-zone').map(z => z.classes().includes('nav-list'))
+    expect(zones).toEqual([true, false])
   })
 
   it.each(['today', 'projects', 'learning', 'vault'])('opens the %s workflow and marks it active', async (destination) => {
@@ -272,20 +286,6 @@ describe('SideBar', () => {
     expect(useToast().toasts.value.some(toast => toast.message.includes('8'))).toBe(true)
   })
 
-  it('shows only the four most recent files and opens the selected file', async () => {
-    const { wrapper, workspaceStore, router } = mountSideBar()
-    workspaceStore.setCurrentWorkspace({ ...workspace })
-    for (let index = 1; index <= 6; index++) workspaceStore.openFile('note-' + index + '.md')
-    await flushPromises()
-    expect(wrapper.findAll('[data-testid="sidebar-recent-file"]').map(item => item.text())).toEqual([
-      'note-6.md', 'note-5.md', 'note-4.md', 'note-3.md',
-    ])
-    await wrapper.findAll('[data-testid="sidebar-recent-file"]')[2].trigger('click')
-    await flushPromises()
-    expect(workspaceStore.activeFile).toBe('note-4.md')
-    expect(router.currentRoute.value.query.file).toBe('note-4.md')
-  })
-
   it('keeps actions reachable and labeled when collapsed', async () => {
     const { wrapper, settingsStore } = mountSideBar()
     await flushPromises()
@@ -351,19 +351,5 @@ describe('SideBar', () => {
     await wrapper.get('[data-testid="sidebar-' + destination + '"]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/' + destination)
-  })
-
-  it('collapses recent files by default and toggles on click', async () => {
-    const { wrapper, workspaceStore } = mountSideBar()
-    workspaceStore.setCurrentWorkspace({ ...workspace })
-    workspaceStore.openFile('recent-1.md')
-    await flushPromises()
-    const toggle = wrapper.get('[data-testid="sidebar-recent-toggle"]')
-    expect(toggle.attributes('aria-expanded')).toBe('false')
-    expect(wrapper.get('.recent-items-container').attributes('style')).toContain('display: none')
-    await toggle.trigger('click')
-    expect(toggle.attributes('aria-expanded')).toBe('true')
-    expect(wrapper.get('.recent-items-container').attributes('style')).not.toContain('display: none')
-    expect(localStorage.getItem('notevault:sidebar-recent-expanded')).toBe('true')
   })
 })

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import {
   ChevronRight,
   FileText,
@@ -13,6 +13,17 @@ import {
 import { normalizeNotePath } from '@/utils/navigation'
 import { normalizeFolderDisplayPath } from '@/utils/folderDisplayNames'
 import type { FileNode } from '@/components/editor/FileTree.vue'
+
+/** 目录徽章用：递归统计子树内的 Markdown 笔记数（不含子目录与 .md 以外文件） */
+function countNotesRecursive(children?: FileNode[]): number {
+  if (!children) return 0
+  let notes = 0
+  for (const child of children) {
+    if (child.isDir) notes += countNotesRecursive(child.children)
+    else if (/\.md$/i.test(child.name)) notes++
+  }
+  return notes
+}
 
 defineOptions({
   name: 'WorkflowTreeItem',
@@ -28,6 +39,10 @@ const props = withDefaults(
     folderDisplayNames?: Record<string, string>
     stripExtension?: boolean
     focusedDir?: string | null
+    /** 搜索过滤时强制全展开（isExpanded 直接为真） */
+    forceExpand?: boolean
+    /** 递归笔记计数（Mybase 式目录徽章）；默认仍为直接子项数 */
+    recursiveCount?: boolean
   }>(),
   {
     depth: 0,
@@ -36,6 +51,8 @@ const props = withDefaults(
     folderDisplayNames: undefined,
     stripExtension: false,
     focusedDir: null,
+    forceExpand: false,
+    recursiveCount: false,
   },
 )
 
@@ -44,9 +61,29 @@ const emit = defineEmits<{
   'toggle-dir': [node: FileNode]
   'quick-add': [node: FileNode]
   'context-menu': [event: MouseEvent, node: FileNode]
+  'tree-drag-start': [event: DragEvent, node: FileNode]
+  'tree-drop': [dragged: FileNode, target: FileNode]
+  'tree-drag-end': []
 }>()
 
+const isDropTarget = ref(false)
+
+function onDragStart(event: DragEvent, node: FileNode) {
+  isDropTarget.value = false
+  emit('tree-drag-start', event, node)
+}
+
+function onDrop(event: DragEvent, target: FileNode) {
+  isDropTarget.value = false
+  const raw = event.dataTransfer?.getData('application/x-notevault-tree-node')
+  if (!raw) return
+  try {
+    emit('tree-drop', JSON.parse(raw) as FileNode, target)
+  } catch { /* 非本树的拖拽负载，忽略 */ }
+}
+
 const isExpanded = computed(() => {
+  if (props.forceExpand) return true
   const norm = normalizeNotePath(props.node.path)
   return props.expandedDirs.has(norm) || props.expandedDirs.has(props.node.path)
 })
@@ -61,9 +98,12 @@ const isNodeFocused = computed(() => {
   return props.focusedDir === props.node.path || normalizeNotePath(props.focusedDir) === normalizeNotePath(props.node.path)
 })
 
+// 目录徽章：默认显示直接子项数；recursiveCount 时统计子树内的笔记数
+// （不含子目录本身与 .md 以外的文件），供 Mybase 式「递归笔记计数」使用
 const childCount = computed(() => {
   if (!props.node.isDir || !props.node.children) return 0
-  return props.node.children.length
+  if (!props.recursiveCount) return props.node.children.length
+  return countNotesRecursive(props.node.children)
 })
 
 const displayChildren = computed(() => {
@@ -108,12 +148,19 @@ const displayName = computed(() => {
       :class="{
         'is-focused': isNodeFocused,
         'is-active': isNodeActive,
+        'drop-target': isDropTarget,
       }"
       :data-path="node.path"
       :style="{ paddingLeft: `${depth * 14 + 10}px` }"
       :title="node.path"
+      :draggable="true"
       @click="emit('toggle-dir', node)"
       @contextmenu.prevent="emit('context-menu', $event, node)"
+      @dragstart="onDragStart($event, node)"
+      @dragend="emit('tree-drag-end')"
+      @dragover.prevent="isDropTarget = true"
+      @dragleave="isDropTarget = false"
+      @drop.prevent="onDrop($event, node)"
     >
       <button
         class="chevron-btn node-toggle"
@@ -156,8 +203,11 @@ const displayName = computed(() => {
       :data-path="node.path"
       :style="{ paddingLeft: `${depth * 14 + 26}px` }"
       :title="node.path"
+      :draggable="true"
       @click="emit('open-file', node)"
       @contextmenu.prevent="emit('context-menu', $event, node)"
+      @dragstart="onDragStart($event, node)"
+      @dragend="emit('tree-drag-end')"
     >
       <component
         :is="fileIcon(node)"
@@ -184,6 +234,8 @@ const displayName = computed(() => {
         :folder-display-names="folderDisplayNames"
         :strip-extension="stripExtension"
         :focused-dir="focusedDir"
+        :force-expand="forceExpand"
+        :recursive-count="recursiveCount"
         @open-file="emit('open-file', $event)"
         @toggle-dir="emit('toggle-dir', $event)"
         @quick-add="emit('quick-add', $event)"
@@ -221,6 +273,13 @@ const displayName = computed(() => {
 .tree-row:hover {
   background: var(--bg-hover, rgba(255, 255, 255, 0.05));
   color: var(--text-primary);
+}
+
+/* 拖拽悬停的落点高亮：目录行加 accent 描边 */
+.tree-row.drop-target {
+  outline: 1px dashed var(--accent, #eab308);
+  outline-offset: -1px;
+  background: color-mix(in srgb, var(--accent, #eab308) 10%, transparent);
 }
 
 .chevron-btn {
