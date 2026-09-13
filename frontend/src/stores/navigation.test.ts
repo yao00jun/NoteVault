@@ -165,5 +165,14 @@ describe('page context', () => {
     const rootCtx = pageContext({ path: '/editor', query: { file: '开始使用.md' } })
     const rootCrumbs = contextBreadcrumbs(rootCtx, { path: '/editor', query: { file: '开始使用.md' } })
     expect(rootCrumbs.map(c => c.label)).toEqual(['知识库', '开始使用.md'])
+    // 知识库浏览模式（/editor 无 file/folder）始终归属「知识库」，不被来源 section 抢走高亮
+    const browseCtx = pageContext({ path: '/editor', query: {} }, 'learning')
+    expect(browseCtx.section).toBe('vault')
+    const browseCrumbs = contextBreadcrumbs(browseCtx, { path: '/editor', query: {} })
+    expect(browseCrumbs.map(c => c.label)).toEqual(['知识库', '文档'])
+
+    // 带文件的编辑态仍按文件路径前缀归属（来源 section 优先级低于显式前缀）
+    const editingCtx = pageContext({ path: '/editor', query: { file: 'Learning/Go/go.md' } })
+    expect(editingCtx.section).toBe('learning')
   })
 })

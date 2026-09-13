@@ -27,7 +27,10 @@ export function pageContext(route: RouteContextInput, origin?: WorkflowSection):
   else if (route.path === '/projects') section = 'projects'
   else if (route.path === '/learning') section = 'learning'
   else if (resourcePage || route.path === '/settings') {
-    if (origin) section = origin
+    // 知识库浏览模式（/editor 等资源页无 file/folder）始终归属「知识库」：
+    // 它是 Mybase 式左树右文的入口，不能被来源页的 section（origin）抢走高亮
+    if (resourcePage && !file && !folder) section = 'vault'
+    else if (origin) section = origin
     else if (/^Projects\//i.test(file || folder || '')) section = 'projects'
     else if (/^Learning\//i.test(file || folder || '')) section = 'learning'
     else if (/^Daily\//i.test(file || folder || '')) section = 'today'
