@@ -18,6 +18,10 @@ import {
   Pin,
   PinOff,
   GripVertical,
+  CheckCircle2,
+  Bell,
+  AlertTriangle,
+  GraduationCap,
 } from '@lucide/vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -209,6 +213,7 @@ interface NavItem {
 }
 
 const completedToday = computed(() => workbenchStore.todayTasks.filter(task => task.completed).length)
+const todayPending = computed(() => workbenchStore.todayTasks.length - completedToday.value)
 const navItems = computed<NavItem[]>(() => [
   {
     id: 'today',
@@ -665,6 +670,64 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
           />
         </button>
       </section>
+
+      <!-- 今日脉搏：全局常驻的当天状态速览（数据来自 workbenchStore，点击直达对应页） -->
+      <section
+        v-if="!collapsed && workspaceStore.hasWorkspace"
+        class="sidebar-zone pulse-zone"
+        data-testid="sidebar-pulse"
+        aria-label="今日脉搏"
+      >
+        <div class="section-heading">
+          今日脉搏
+        </div>
+        <div class="pulse-grid">
+          <button
+            class="pulse-cell"
+            :class="{ 'has-active': todayPending > 0 }"
+            data-testid="pulse-todos"
+            :title="`今日待办 ${completedToday}/${workbenchStore.todayTasks.length} · 点击打开今日工作台`"
+            @click="router.push('/today')"
+          >
+            <CheckCircle2 :size="13" />
+            <span class="pulse-label">今日待办</span>
+            <span class="pulse-value">{{ completedToday }}/{{ workbenchStore.todayTasks.length }}</span>
+          </button>
+          <button
+            class="pulse-cell"
+            :class="{ 'has-active': workbenchStore.dueReminders.length > 0 }"
+            data-testid="pulse-reminders"
+            :title="`到期提醒 ${workbenchStore.dueReminders.length} 项 · 点击打开提醒列表`"
+            @click="router.push('/reminders')"
+          >
+            <Bell :size="13" />
+            <span class="pulse-label">到期提醒</span>
+            <span class="pulse-value">{{ workbenchStore.dueReminders.length }}</span>
+          </button>
+          <button
+            class="pulse-cell"
+            :class="{ 'has-alert': workbenchStore.blockers.length > 0 }"
+            data-testid="pulse-blockers"
+            :title="`阻塞卡点 ${workbenchStore.blockers.length} 处 · 点击打开任务列表`"
+            @click="router.push('/todos')"
+          >
+            <AlertTriangle :size="13" />
+            <span class="pulse-label">卡点</span>
+            <span class="pulse-value">{{ workbenchStore.blockers.length }}</span>
+          </button>
+          <button
+            class="pulse-cell"
+            :class="{ 'has-active': workbenchStore.reviewQueue.length > 0 }"
+            data-testid="pulse-review"
+            :title="`待复习 ${workbenchStore.reviewQueue.length} 张 · 点击打开学习页`"
+            @click="router.push('/learning')"
+          >
+            <GraduationCap :size="13" />
+            <span class="pulse-label">待复习</span>
+            <span class="pulse-value">{{ workbenchStore.reviewQueue.length }}</span>
+          </button>
+        </div>
+      </section>
     </div>
 
     <div class="sidebar-footer">
@@ -965,6 +1028,34 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
 .nav-chip-row .nav-item { min-height: 30px; margin: 0; padding: 5px 8px; }
 .nav-chip-row .nav-label { font-size: 12px; }
 .nav-chip-row .nav-label span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 今日脉搏：2×2 迷你指标卡 */
+.pulse-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+.pulse-cell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 11px;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.pulse-cell:hover { background: var(--bg-hover); color: var(--text-primary); }
+.pulse-cell svg { flex-shrink: 0; color: var(--text-muted); }
+.pulse-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.pulse-value { flex-shrink: 0; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.pulse-cell.has-active .pulse-value { color: var(--accent); }
+.pulse-cell.has-active svg { color: var(--accent); }
+.pulse-cell.has-alert .pulse-value { color: var(--error, #d54c4c); }
+.pulse-cell.has-alert svg { color: var(--error, #d54c4c); }
 
 .nav-item {
   position: relative; display: flex; align-items: center; gap: 9px; width: 100%;

@@ -52,7 +52,7 @@ import SideBar from './SideBar.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkbenchStore } from '@/stores/workbench'
-import { FileService, TemplateService, WorkbenchService } from '@/api'
+import { FileService, ReminderService, TemplateService, WorkbenchService } from '@/api'
 import type { WorkbenchSnapshot } from '@/api/workbench'
 import { promptDialog } from '@/composables/usePrompt'
 import { localDateKey } from '@/utils/workbench'
@@ -63,9 +63,11 @@ const piniaInstances: Pinia[] = []
 const routes = [
   { path: '/', redirect: '/today' },
   { path: '/knowledge', redirect: '/today' },
-  ...['today', 'projects', 'learning', 'vault', 'library', 'editor', 'trash', 'settings'].map(path => ({
+  ...['today', 'projects', 'learning', 'vault', 'library', 'editor', 'trash', 'settings', 'review'].map(path => ({
     path: '/' + path, component: { template: '<div>' + path + '</div>' },
   })),
+  // 今日脉搏的提醒入口走真实重定向链：/reminders → /review?tab=tasks&sub=reminders
+  { path: '/reminders', redirect: (to: { query: Record<string, unknown> }) => ({ path: '/review', query: { ...to.query, tab: 'tasks', sub: 'reminders' } }) },
 ]
 
 function mountSideBar() {
@@ -121,8 +123,43 @@ describe('SideBar', () => {
     await flushPromises()
     const pins = wrapper.find('[data-testid="sidebar-pins"]')
     expect(pins.exists()).toBe(true)
+    // 顺序：页面导航 → 固定 → 今日脉搏（后两者均为条件渲染的非导航区）
     const zones = wrapper.findAll('.sidebar-scroll .sidebar-zone').map(z => z.classes().includes('nav-list'))
-    expect(zones).toEqual([true, false])
+    expect(zones).toEqual([true, false, false])
+  })
+
+  it('renders the today pulse card with live workbench metrics and deep links', async () => {
+    // 通过服务 mock 喂数据：直接改 store 会被 setCurrentWorkspace 触发的异步 refresh 覆盖
+    const day = localDateKey()
+    vi.mocked(WorkbenchService.GetWorkbench).mockResolvedValueOnce({
+      date: day,
+      tasks: [
+        { id: 't1', filePath: 'Projects/a.md', fileName: 'a.md', lineIndex: 0, sourceLine: '', content: '被阻塞的任务', title: '被阻塞的任务', type: 'todo', project: '', projectPath: '', completed: false, blocker: true, progress: [] },
+        { id: 't2', filePath: 'Projects/a.md', fileName: 'a.md', lineIndex: 1, sourceLine: '', content: '已完成任务', title: '已完成任务', type: 'todo', project: '', projectPath: '', completed: true, completedAt: day, progress: [] },
+      ],
+      projects: [], books: [], cards: [], progress: [], documents: [],
+      radar: { path: '', content: '' }, indexedAt: '2026-09-14T08:00:00Z', warnings: [],
+    } as never)
+    vi.mocked(ReminderService.GetAllReminders).mockResolvedValueOnce([
+      { id: 'r1', content: '到期事项', remindAt: `${day}T09:00:00`, completed: false, filePath: '' },
+    ] as never)
+    const { wrapper, workspaceStore, router } = mountSideBar()
+    workspaceStore.setCurrentWorkspace({ ...workspace })
+    await flushPromises()
+
+    const pulse = wrapper.find('[data-testid="sidebar-pulse"]')
+    expect(pulse.exists()).toBe(true)
+    expect(wrapper.get('[data-testid="pulse-todos"]').text()).toContain('1/2')
+    expect(wrapper.get('[data-testid="pulse-reminders"]').text()).toContain('1')
+    expect(wrapper.get('[data-testid="pulse-blockers"]').classes()).toContain('has-alert')
+    expect(wrapper.get('[data-testid="pulse-review"]').text()).toContain('0')
+
+    await wrapper.get('[data-testid="pulse-todos"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/today')
+    await wrapper.get('[data-testid="pulse-reminders"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query).toMatchObject({ tab: 'tasks', sub: 'reminders' })
   })
 
   it.each([
