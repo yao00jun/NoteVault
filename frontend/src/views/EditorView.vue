@@ -645,6 +645,21 @@ function jumpToLine(line: number) {
   view.focus()
 }
 
+// ---- 侧栏「文档大纲」联动：广播实时大纲（body 行号与 jumpToLine 同源），并响应侧栏跳转 ----
+let lastOutlineBroadcast = ''
+watch([() => activeTab.value?.path, outline], ([path, items]) => {
+  const signature = `${path}|${items.map(item => `${item.level}:${item.text}:${item.line}`).join(';')}`
+  if (signature === lastOutlineBroadcast) return
+  lastOutlineBroadcast = signature
+  window.dispatchEvent(new CustomEvent('notevault:outline-changed', { detail: { file: path || '', items } }))
+}, { immediate: true })
+
+function handleSidebarOutlineJump(event: Event) {
+  if (route.path !== '/editor') return
+  const line = (event as CustomEvent<{ line?: number }>).detail?.line
+  if (typeof line === 'number') jumpToLine(line)
+}
+
 function openDrawerPath(path: string) {
   void openFileByPath(path)
 }
@@ -1001,6 +1016,7 @@ onDeactivated(() => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleEditorKeydown)
+  window.removeEventListener('notevault:outline-jump', handleSidebarOutlineJump)
   unregisterFlush()
   disposeDraft()
 })
@@ -1032,6 +1048,7 @@ watch(() => route.query.file, (val) => {
 
 onMounted(async () => {
   window.addEventListener('keydown', handleEditorKeydown)
+  window.addEventListener('notevault:outline-jump', handleSidebarOutlineJump)
   // 外部修改冲突保护：订阅后端 fsnotify 推送（蓝图专项 1，订阅在 useEditorDraft 内）
   startConflictWatcher()
   if (!currentWorkspace.value) {

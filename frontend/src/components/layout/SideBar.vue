@@ -22,6 +22,8 @@ import {
   Bell,
   AlertTriangle,
   GraduationCap,
+  Calendar,
+  ListTree,
 } from '@lucide/vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -35,6 +37,8 @@ import { promptDialog } from '@/composables/usePrompt'
 import { useWorkLog } from '@/composables/useWorkLog'
 import { usePageContext } from '@/composables/usePageContext'
 import { useSidebarResize } from '@/composables/useSidebarResize'
+import SidebarCalendar from './SidebarCalendar.vue'
+import SidebarOutline from './SidebarOutline.vue'
 import { flushOpenEditor } from '@/composables/useEditorSession'
 import { requestSourceImport } from '@/composables/useSourceImport'
 
@@ -214,6 +218,21 @@ interface NavItem {
 
 const completedToday = computed(() => workbenchStore.todayTasks.filter(task => task.completed).length)
 const todayPending = computed(() => workbenchStore.todayTasks.length - completedToday.value)
+
+// ---- 手风琴面板：迷你月历（默认展开）与文档大纲（默认折叠），状态持久化 ----
+const calendarExpanded = ref(localStorage.getItem('notevault:sidebar-calendar-expanded') !== 'false')
+const outlineExpanded = ref(localStorage.getItem('notevault:sidebar-outline-expanded') === 'true')
+const outlineCount = ref(0)
+
+function toggleCalendarExpanded() {
+  calendarExpanded.value = !calendarExpanded.value
+  localStorage.setItem('notevault:sidebar-calendar-expanded', String(calendarExpanded.value))
+}
+
+function toggleOutlineExpanded() {
+  outlineExpanded.value = !outlineExpanded.value
+  localStorage.setItem('notevault:sidebar-outline-expanded', String(outlineExpanded.value))
+}
 const navItems = computed<NavItem[]>(() => [
   {
     id: 'today',
@@ -728,6 +747,67 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
           </button>
         </div>
       </section>
+
+      <!-- 📅 迷你月历（手风琴，默认展开，状态持久化） -->
+      <section
+        v-if="!collapsed"
+        class="sidebar-zone accordion-zone"
+        aria-label="日历"
+      >
+        <div
+          class="section-heading section-heading-clickable"
+          data-testid="sidebar-calendar-toggle"
+          role="button"
+          tabindex="0"
+          :aria-expanded="calendarExpanded"
+          @click="toggleCalendarExpanded"
+          @keydown.enter.prevent="toggleCalendarExpanded"
+          @keydown.space.prevent="toggleCalendarExpanded"
+        >
+          <ChevronRight
+            :size="12"
+            class="section-chevron"
+            :class="{ expanded: calendarExpanded }"
+          />
+          <Calendar :size="12" />
+          <span>日历</span>
+        </div>
+        <SidebarCalendar v-if="calendarExpanded" />
+      </section>
+
+      <!-- 📑 文档大纲（手风琴，默认折叠，随编辑器实时更新） -->
+      <section
+        v-if="!collapsed"
+        class="sidebar-zone accordion-zone"
+        aria-label="文档大纲"
+      >
+        <div
+          class="section-heading section-heading-clickable"
+          data-testid="sidebar-outline-toggle"
+          role="button"
+          tabindex="0"
+          :aria-expanded="outlineExpanded"
+          @click="toggleOutlineExpanded"
+          @keydown.enter.prevent="toggleOutlineExpanded"
+          @keydown.space.prevent="toggleOutlineExpanded"
+        >
+          <ChevronRight
+            :size="12"
+            class="section-chevron"
+            :class="{ expanded: outlineExpanded }"
+          />
+          <ListTree :size="12" />
+          <span>大纲</span>
+          <span
+            v-if="outlineCount > 0"
+            class="zone-count"
+          >{{ outlineCount }}</span>
+        </div>
+        <SidebarOutline
+          v-if="outlineExpanded"
+          @count="outlineCount = $event"
+        />
+      </section>
     </div>
 
     <div class="sidebar-footer">
@@ -984,6 +1064,15 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
   padding: 0 4px 4px; color: var(--text-muted); font-size: 11px; font-weight: 600;
 }
 .zone-count { margin-left: auto; font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 400; }
+.section-heading-clickable {
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.section-heading-clickable:hover { background: var(--bg-hover); color: var(--text-primary); }
+.section-chevron { color: var(--text-muted); transition: transform var(--transition-fast); flex-shrink: 0; }
+.section-chevron.expanded { transform: rotate(90deg); }
 .action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
 .action-btn {
   display: flex; align-items: center; justify-content: center; gap: 5px;

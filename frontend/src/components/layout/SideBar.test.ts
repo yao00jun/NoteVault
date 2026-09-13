@@ -123,9 +123,35 @@ describe('SideBar', () => {
     await flushPromises()
     const pins = wrapper.find('[data-testid="sidebar-pins"]')
     expect(pins.exists()).toBe(true)
-    // 顺序：页面导航 → 固定 → 今日脉搏（后两者均为条件渲染的非导航区）
+    // 顺序：页面导航 → 固定 → 今日脉搏 → 日历 → 大纲（后四者均为条件渲染的非导航区）
     const zones = wrapper.findAll('.sidebar-scroll .sidebar-zone').map(z => z.classes().includes('nav-list'))
-    expect(zones).toEqual([true, false, false])
+    expect(zones).toEqual([true, false, false, false, false])
+  })
+
+  it('renders calendar and outline accordions with persisted expand state', async () => {
+    const { wrapper, workspaceStore } = mountSideBar()
+    workspaceStore.setCurrentWorkspace({ ...workspace })
+    await flushPromises()
+
+    // 日历默认展开、大纲默认折叠
+    expect(wrapper.find('[data-testid="sidebar-calendar"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="sidebar-outline"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="sidebar-calendar-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="sidebar-outline-toggle"]').trigger('click')
+    await nextTick()
+    expect(localStorage.getItem('notevault:sidebar-calendar-expanded')).toBe('false')
+    expect(localStorage.getItem('notevault:sidebar-outline-expanded')).toBe('true')
+    expect(wrapper.find('[data-testid="sidebar-calendar"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="sidebar-outline"]').exists()).toBe(true)
+
+    // 状态持久化：重挂载后沿用
+    const reopened = mountSideBar()
+    await flushPromises()
+    expect(reopened.wrapper.find('[data-testid="sidebar-calendar"]').exists()).toBe(false)
+    expect(reopened.wrapper.find('[data-testid="sidebar-outline"]').exists()).toBe(true)
+    localStorage.setItem('notevault:sidebar-calendar-expanded', 'true')
+    localStorage.setItem('notevault:sidebar-outline-expanded', 'false')
   })
 
   it('renders the today pulse card with live workbench metrics and deep links', async () => {
