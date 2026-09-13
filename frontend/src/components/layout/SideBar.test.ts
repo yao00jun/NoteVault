@@ -109,11 +109,11 @@ describe('SideBar', () => {
     expect(wrapper.find('[data-testid="action-new"]').text()).toContain('新建')
     expect(wrapper.find('[data-testid="action-daily"]').text()).toContain('每日工作日志')
     expect(wrapper.find('[data-testid="action-report"]').text()).toContain('生成日报')
-    // 侧栏精简为纯导航：无固定项时固定区不占位；文件树/搜索框/最近全部移除
+    // 侧栏纯导航：无固定项时固定区不占位；文件树与搜索框移除，最近列表回归
     expect(wrapper.find('[data-testid="sidebar-pins"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="sidebar-tree"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="sidebar-tree-search"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="sidebar-recent"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="sidebar-recent"]').exists()).toBe(true)
   })
 
   it('shows the pins zone only when there are pinned items, below the page navigation', async () => {
@@ -123,35 +123,40 @@ describe('SideBar', () => {
     await flushPromises()
     const pins = wrapper.find('[data-testid="sidebar-pins"]')
     expect(pins.exists()).toBe(true)
-    // 顺序：页面导航 → 固定 → 今日脉搏 → 日历 → 大纲（后四者均为条件渲染的非导航区）
+    // 顺序：页面导航 → 固定 → 今日脉搏 → 日历 → 最近（后四者均为条件渲染的非导航区）
     const zones = wrapper.findAll('.sidebar-scroll .sidebar-zone').map(z => z.classes().includes('nav-list'))
     expect(zones).toEqual([true, false, false, false, false])
   })
 
-  it('renders calendar and outline accordions with persisted expand state', async () => {
+  it('renders calendar and recent accordions with persisted expand state', async () => {
     const { wrapper, workspaceStore } = mountSideBar()
     workspaceStore.setCurrentWorkspace({ ...workspace })
+    for (let index = 1; index <= 12; index++) workspaceStore.openFile('note-' + index + '.md')
     await flushPromises()
 
-    // 日历默认展开、大纲默认折叠
+    // 日历默认展开、最近默认折叠
     expect(wrapper.find('[data-testid="sidebar-calendar"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="sidebar-outline"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="sidebar-recent-toggle"]').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('[data-testid="sidebar-recent-file"]').isVisible()).toBe(false)
 
     await wrapper.get('[data-testid="sidebar-calendar-toggle"]').trigger('click')
-    await wrapper.get('[data-testid="sidebar-outline-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="sidebar-recent-toggle"]').trigger('click')
     await nextTick()
     expect(localStorage.getItem('notevault:sidebar-calendar-expanded')).toBe('false')
-    expect(localStorage.getItem('notevault:sidebar-outline-expanded')).toBe('true')
+    expect(localStorage.getItem('notevault:sidebar-recent-expanded')).toBe('true')
     expect(wrapper.find('[data-testid="sidebar-calendar"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="sidebar-outline"]').exists()).toBe(true)
+    // 最近最多展示 10 条
+    expect(wrapper.findAll('[data-testid="sidebar-recent-file"]')).toHaveLength(10)
 
     // 状态持久化：重挂载后沿用
     const reopened = mountSideBar()
+    reopened.workspaceStore.setCurrentWorkspace({ ...workspace })
     await flushPromises()
     expect(reopened.wrapper.find('[data-testid="sidebar-calendar"]').exists()).toBe(false)
-    expect(reopened.wrapper.find('[data-testid="sidebar-outline"]').exists()).toBe(true)
+    expect(reopened.wrapper.findAll('[data-testid="sidebar-recent-file"]')).toHaveLength(10)
+    expect(reopened.wrapper.find('[data-testid="sidebar-recent-file"]').isVisible()).toBe(true)
     localStorage.setItem('notevault:sidebar-calendar-expanded', 'true')
-    localStorage.setItem('notevault:sidebar-outline-expanded', 'false')
+    localStorage.setItem('notevault:sidebar-recent-expanded', 'false')
   })
 
   it('renders the today pulse card with live workbench metrics and deep links', async () => {

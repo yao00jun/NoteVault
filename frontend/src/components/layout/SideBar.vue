@@ -23,7 +23,7 @@ import {
   AlertTriangle,
   GraduationCap,
   Calendar,
-  ListTree,
+  Clock,
 } from '@lucide/vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -38,7 +38,6 @@ import { useWorkLog } from '@/composables/useWorkLog'
 import { usePageContext } from '@/composables/usePageContext'
 import { useSidebarResize } from '@/composables/useSidebarResize'
 import SidebarCalendar from './SidebarCalendar.vue'
-import SidebarOutline from './SidebarOutline.vue'
 import { flushOpenEditor } from '@/composables/useEditorSession'
 import { requestSourceImport } from '@/composables/useSourceImport'
 
@@ -219,20 +218,22 @@ interface NavItem {
 const completedToday = computed(() => workbenchStore.todayTasks.filter(task => task.completed).length)
 const todayPending = computed(() => workbenchStore.todayTasks.length - completedToday.value)
 
-// ---- 手风琴面板：迷你月历（默认展开）与文档大纲（默认折叠），状态持久化 ----
+// ---- 手风琴面板：迷你月历（默认展开）与最近文档（默认折叠），状态持久化 ----
 const calendarExpanded = ref(localStorage.getItem('notevault:sidebar-calendar-expanded') !== 'false')
-const outlineExpanded = ref(localStorage.getItem('notevault:sidebar-outline-expanded') === 'true')
-const outlineCount = ref(0)
+const recentExpanded = ref(localStorage.getItem('notevault:sidebar-recent-expanded') === 'true')
 
 function toggleCalendarExpanded() {
   calendarExpanded.value = !calendarExpanded.value
   localStorage.setItem('notevault:sidebar-calendar-expanded', String(calendarExpanded.value))
 }
 
-function toggleOutlineExpanded() {
-  outlineExpanded.value = !outlineExpanded.value
-  localStorage.setItem('notevault:sidebar-outline-expanded', String(outlineExpanded.value))
+function toggleRecentExpanded() {
+  recentExpanded.value = !recentExpanded.value
+  localStorage.setItem('notevault:sidebar-recent-expanded', String(recentExpanded.value))
 }
+
+// 最近文档：最多展示 10 条
+const recentFiles = computed(() => workspaceStore.recentFiles.slice(0, 10))
 const navItems = computed<NavItem[]>(() => [
   {
     id: 'today',
@@ -775,38 +776,60 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
         <SidebarCalendar v-if="calendarExpanded" />
       </section>
 
-      <!-- 📑 文档大纲（手风琴，默认折叠，随编辑器实时更新） -->
+      <!-- 🕒 最近文档（手风琴，最多 10 条，状态持久化） -->
       <section
         v-if="!collapsed"
-        class="sidebar-zone accordion-zone"
-        aria-label="文档大纲"
+        class="sidebar-zone recent-zone"
+        data-testid="sidebar-recent"
+        aria-label="最近文档"
       >
         <div
           class="section-heading section-heading-clickable"
-          data-testid="sidebar-outline-toggle"
+          data-testid="sidebar-recent-toggle"
           role="button"
           tabindex="0"
-          :aria-expanded="outlineExpanded"
-          @click="toggleOutlineExpanded"
-          @keydown.enter.prevent="toggleOutlineExpanded"
-          @keydown.space.prevent="toggleOutlineExpanded"
+          :aria-expanded="recentExpanded"
+          :title="recentExpanded ? '收起最近文档' : '展开最近文档'"
+          @click="toggleRecentExpanded"
+          @keydown.enter.prevent="toggleRecentExpanded"
+          @keydown.space.prevent="toggleRecentExpanded"
         >
           <ChevronRight
             :size="12"
             class="section-chevron"
-            :class="{ expanded: outlineExpanded }"
+            :class="{ expanded: recentExpanded }"
           />
-          <ListTree :size="12" />
-          <span>大纲</span>
+          <Clock :size="12" />
+          <span>最近</span>
           <span
-            v-if="outlineCount > 0"
+            v-if="recentFiles.length"
             class="zone-count"
-          >{{ outlineCount }}</span>
+          >{{ recentFiles.length }}</span>
         </div>
-        <SidebarOutline
-          v-if="outlineExpanded"
-          @count="outlineCount = $event"
-        />
+        <div
+          v-show="recentExpanded"
+          class="recent-items-container"
+        >
+          <p
+            v-if="!recentFiles.length"
+            class="recent-empty"
+          >
+            打开过的文档会出现在这里。
+          </p>
+          <button
+            v-for="file in recentFiles"
+            :key="file.path"
+            class="file-shortcut"
+            data-testid="sidebar-recent-file"
+            :class="{ active: route.path === '/editor' && workspaceStore.activeFile === file.path }"
+            :title="file.path"
+            :aria-label="file.title"
+            @click="openFile(file.path)"
+          >
+            <FileText :size="14" />
+            <span class="file-shortcut-label">{{ file.title }}</span>
+          </button>
+        </div>
       </section>
     </div>
 
@@ -1073,6 +1096,8 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
 .section-heading-clickable:hover { background: var(--bg-hover); color: var(--text-primary); }
 .section-chevron { color: var(--text-muted); transition: transform var(--transition-fast); flex-shrink: 0; }
 .section-chevron.expanded { transform: rotate(90deg); }
+.recent-items-container { display: flex; flex-direction: column; gap: 1px; padding-bottom: 2px; }
+.recent-empty { margin: 2px 6px 4px; color: var(--text-muted); font-size: 11px; line-height: 1.7; }
 .action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
 .action-btn {
   display: flex; align-items: center; justify-content: center; gap: 5px;
