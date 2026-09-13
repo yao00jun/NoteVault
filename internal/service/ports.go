@@ -21,6 +21,8 @@ type FileOperator interface {
 	SaveFile(workspacePath string, relativePath string, content string) error
 	DeleteFile(workspacePath string, relativePath string) error
 	RenameFile(workspacePath string, oldRelativePath string, newName string) (*FileNode, error)
+	// MoveEntry 跨目录移动文件或文件夹（侧栏树拖拽整理）
+	MoveEntry(workspacePath string, oldRelativePath string, newRelativePath string) (*FileNode, error)
 	CreateFolder(workspacePath string, relativePath string) (*FileNode, error)
 	SaveImage(workspacePath string, fileName string, data []byte) (string, error)
 	// ScanOrphanAssets / MoveOrphansToTrash 媒体资产 GC（蓝图专项 6）：

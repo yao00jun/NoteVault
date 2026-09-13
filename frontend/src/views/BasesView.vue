@@ -18,7 +18,7 @@ import {
   ArrowUp,
   ArrowDown,
 } from '@lucide/vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { confirmDialog } from '@/composables/useConfirm'
 import { promptDialog } from '@/composables/usePrompt'
 import { useI18n } from 'vue-i18n'
@@ -26,6 +26,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 
 const router = useRouter()
+const route = useRoute()
 const { t } = useI18n()
 const workspaceStore = useWorkspaceStore()
 
@@ -170,9 +171,13 @@ async function init() {
   isLoading.value = true
   try {
     await Promise.all([loadMeta(), loadProperties(), loadBases()])
-    // 有已保存视图就打开第一个，否则给一份能跑的空白定义——
-    // 落地页是一张空表单是查询工具最大的上手门槛
-    if (bases.value.length > 0) {
+    // 侧栏「智能分组」深链 ?base=<名称> 优先；其次打开第一个已保存视图，
+    // 否则给一份能跑的空白定义——落地页是一张空表单是查询工具最大的上手门槛
+    const requested = typeof route.query.base === 'string' ? route.query.base : ''
+    const matched = bases.value.find((b) => b.name === requested)
+    if (matched) {
+      await selectBase(matched.name)
+    } else if (bases.value.length > 0) {
       await selectBase(bases.value[0].name)
     } else {
       await newBase()

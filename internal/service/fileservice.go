@@ -328,6 +328,71 @@ func (s *FileService) RenameFile(workspacePath string, oldRelativePath string, n
 	}, nil
 }
 
+// MoveEntry 移动文件或文件夹到新的相对路径（跨目录拖拽整理用）
+// workspacePath: 工作区根目录
+// oldRelativePath: 旧的相对路径
+// newRelativePath: 新的相对路径（含目标目录与最终名称）
+func (s *FileService) MoveEntry(workspacePath string, oldRelativePath string, newRelativePath string) (*FileNode, error) {
+	if strings.TrimSpace(newRelativePath) == "" {
+		return nil, core.NewError(core.ErrInvalidInput, "目标路径不能为空")
+	}
+	oldFullPath, oldRelativePath, err := fileOperationPath(workspacePath, oldRelativePath)
+	if err != nil {
+		return nil, err
+	}
+	newFullPath, newRelativePath, err := fileOperationPath(workspacePath, newRelativePath)
+	if err != nil {
+		return nil, err
+	}
+	if oldRelativePath == newRelativePath {
+		return nil, core.NewError(core.ErrInvalidInput, "源路径与目标路径相同: "+oldRelativePath)
+	}
+	oldInfo, err := os.Lstat(oldFullPath)
+	if err != nil {
+		return nil, core.OsToNVError(err, "读取原文件信息失败: "+oldRelativePath)
+	}
+	if !oldInfo.Mode().IsRegular() && !oldInfo.IsDir() {
+		return nil, core.NewError(core.ErrInvalidInput, "只能移动普通文件或文件夹")
+	}
+	// 目录不能移动进自己（或自己的子目录），否则源会随目标一起消失
+	if oldInfo.IsDir() {
+		oldNorm := filepath.ToSlash(filepath.Clean(oldRelativePath)) + "/"
+		newNorm := filepath.ToSlash(filepath.Clean(newRelativePath)) + "/"
+		if strings.HasPrefix(newNorm, oldNorm) {
+			return nil, core.NewError(core.ErrInvalidInput, "不能把目录移动到它自己内部: "+newRelativePath)
+		}
+	}
+	if targetInfo, err := os.Lstat(newFullPath); err == nil {
+		// 与 RenameFile 同口径：大小写不敏感文件系统上仅大小写差异视为同一文件
+		if !os.SameFile(oldInfo, targetInfo) {
+			return nil, core.WrapError(core.ErrAlreadyExists, "目标位置已存在同名文件或文件夹: "+newRelativePath, os.ErrExist)
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, core.OsToNVError(err, "检查目标路径失败: "+newRelativePath)
+	}
+
+	if err := os.Rename(oldFullPath, newFullPath); err != nil {
+		if os.IsExist(err) {
+			return nil, core.WrapError(core.ErrAlreadyExists, "目标位置已存在同名文件或文件夹: "+newRelativePath, err)
+		}
+		return nil, core.OsToNVError(err, "移动失败: "+oldRelativePath)
+	}
+
+	info, err := os.Stat(newFullPath)
+	if err != nil {
+		return nil, core.OsToNVError(err, "读取文件信息失败: "+newRelativePath)
+	}
+
+	return &FileNode{
+		Name:     filepath.Base(newRelativePath),
+		Path:     filepath.ToSlash(newRelativePath),
+		FullPath: newFullPath,
+		IsDir:    info.IsDir(),
+		Size:     info.Size(),
+		ModTime:  info.ModTime().Format(time.RFC3339),
+	}, nil
+}
+
 // CreateFolder 创建文件夹
 // workspacePath: 工作区根目录
 // relativePath: 相对于工作区根目录的文件夹路径

@@ -52,6 +52,16 @@ export function GetFileTree(workspacePath: string): $CancellablePromise<($models
 }
 
 /**
+ * MoveEntry 移动文件或文件夹到新的相对路径（跨目录拖拽整理用）
+ * workspacePath: 工作区根目录
+ * oldRelativePath: 旧的相对路径
+ * newRelativePath: 新的相对路径（含目标目录与最终名称）
+ */
+export function MoveEntry(workspacePath: string, oldRelativePath: string, newRelativePath: string): $CancellablePromise<$models.FileNode | null> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.FileService.MoveEntry", workspacePath, oldRelativePath, newRelativePath);
+}
+
+/**
  * MoveOrphansToTrash 把指定孤立附件逐个移入 .trash/（可恢复）。
  * 单个失败不中断整体，返回成功数量与最后一个错误。
  */
