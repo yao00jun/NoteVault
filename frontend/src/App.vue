@@ -46,6 +46,7 @@ const sourceImportRequest = ref<SourceImportOpenRequest | null>(null)
 const copilotRequest = ref<CopilotRequest | null>(null)
 const sidebar = ref<InstanceType<typeof SideBar> | null>(null)
 let stopFileEvents: (() => void) | undefined
+let stopReminderEvents: (() => void) | undefined
 let appDisposed = false
 
 function openSourceImport(event: Event) {
@@ -155,7 +156,13 @@ onMounted(() => {
   window.addEventListener('notevault:source-import', openSourceImport)
   window.addEventListener('notevault:new-file', handleNewFileFromPalette)
   void import('@wailsio/runtime').then(({ Events }) => {
-    if (!appDisposed) stopFileEvents = Events.On('workspace:file-changed', () => workbenchStore.scheduleRefresh())
+    if (appDisposed) return
+    stopFileEvents = Events.On('workspace:file-changed', () => workbenchStore.scheduleRefresh())
+    // 原生通知点击（main.go OnNotificationResponse 派发）→ 打开对应笔记
+    stopReminderEvents = Events.On('reminder:open', (ev?: { data?: unknown }) => {
+      const path = typeof ev?.data === 'string' ? ev.data : ''
+      if (path) void openDocument(router, workspaceStore, path)
+    })
   }).catch(error => console.warn('Workbench file events unavailable:', error))
   void pluginRuntimeStore.initialize()
   void restoreCurrentWorkspace()
@@ -177,6 +184,7 @@ onBeforeUnmount(() => {
   stopNavigation()
   appDisposed = true
   stopFileEvents?.()
+  stopReminderEvents?.()
   window.removeEventListener('notevault:daily-report', openDailyReport)
   window.removeEventListener('notevault:copilot-request', openCopilotRequest)
   window.removeEventListener('notevault:source-import', openSourceImport)
@@ -197,8 +205,8 @@ function closeCommandPalette() {
 }
 
 // OmniSearch 命中：打开文件进编辑器（与工作台文档列表同款动线）
-function openFileFromOmni(path: string) {
-  void openDocument(router, workspaceStore, path)
+function openFileFromOmni(path: string, anchor?: string) {
+  void openDocument(router, workspaceStore, path, anchor)
 }
 
 function handleNewFileFromPalette(event?: Event) {

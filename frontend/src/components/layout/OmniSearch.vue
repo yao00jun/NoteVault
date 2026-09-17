@@ -12,7 +12,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Search, MessageCircle, X, FileText, ArrowRight } from '@lucide/vue'
 import { SearchService, QnAService } from '@/api'
-import type { RerankProvider } from '@/api'
+import type { QnACitation, RerankProvider } from '@/api'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { isImeComposing } from '@/utils/ime'
@@ -24,7 +24,8 @@ const settingsStore = useSettingsStore()
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'open-file', path: string): void
+  /** anchor 为目标标题文本，缺省时父层只打开文件 */
+  (e: 'open-file', path: string, anchor?: string): void
 }>()
 
 type Mode = 'search' | 'ask'
@@ -38,7 +39,8 @@ interface OmniResult {
 const results = ref<OmniResult[]>([])
 const searching = ref(false)
 const answer = ref('')
-const citations = ref<{ index: number; path: string; title: string; snippet: string }[]>([])
+// P3-9：用完整 QnACitation（含 heading），引用才能跳到具体章节
+const citations = ref<QnACitation[]>([])
 const asking = ref(false)
 const asked = ref(false)
 const errorMsg = ref('')
@@ -151,13 +153,14 @@ function submit() {
   }
 }
 
-function openResult(path: string) {
-  emit('open-file', path)
+function openResult(path: string, anchor?: string) {
+  emit('open-file', path, anchor)
   emit('close')
 }
 
-function openCitation(path: string) {
-  openResult(path)
+// 与 useAIChat.openCitation 同口径：整份引用交给父层，由 openDocument 带锚点跳转
+function openCitation(citation: { path: string; heading?: string }) {
+  openResult(citation?.path, citation?.heading)
 }
 
 function switchMode() {
@@ -301,7 +304,7 @@ defineExpose({ switchMode })
               :key="c.index"
               class="omni-citation"
               :title="c.path"
-              @click="openCitation(c.path)"
+              @click="openCitation(c)"
             >
               [{{ c.index }}] {{ c.title || c.path }}
             </button>

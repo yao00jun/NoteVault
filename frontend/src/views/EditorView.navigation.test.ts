@@ -53,7 +53,8 @@ async function renderEditor(mode = 'preview', content = '# Start\n\n## Next\n') 
   workspace.setCurrentWorkspace({ id: 'a', name: 'A', path: 'C:/vault', createdAt: '', lastOpenedAt: '' })
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/editor', component: EditorView }] })
   await router.push('/editor?file=Learning/Go/Chapter.md')
-  const wrapper = shallowMount({ template: '<RouterView />' }, { global: {
+  // attachTo: 锚点滚动经 document.querySelector('.markdown-preview')，游离节点查不到
+  const wrapper = shallowMount({ template: '<RouterView />' }, { attachTo: document.body, global: {
     plugins: [pinia, router, i18n],
     stubs: { RouterView: false, EditorView: false, EditorContextDrawer: false, EditorTabBar: false, MarkdownPreview: false },
   } })
@@ -210,5 +211,53 @@ describe('EditorView knowledge browse mode (Mybase left-tree right-editor)', () 
     await wrapper.find('[data-testid="vault-overview-dashboard"]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/vault')
+  })
+})
+
+describe('EditorView citation anchor jump (P3-9)', () => {
+  it('opens a cited document and scrolls to the cited heading', async () => {
+    const { wrapper, router } = await renderEditor('preview', '# Start\n\n## Next\n\nbody\n')
+    // spy 必须挂在跳转之前：目标文件在挂载时就已打开，走的是"活动标签"同步兜底路径
+    const heading = wrapper.findAll('.markdown-preview h2')[0]!
+    const scroll = vi.fn()
+    Object.defineProperty(heading.element, 'scrollIntoView', { value: scroll })
+
+    await router.push('/editor?file=Learning/Go/Chapter.md&anchor=Next')
+    await flushPromises()
+    // 锚点滚动经 pendingAnchor 的两帧重试，需显式把帧推完
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+  })
+
+  it('jumps to another section inside the already open document', async () => {
+    const { wrapper, router } = await renderEditor('preview', '# Start\n\n## Next\n\nbody\n')
+    await router.push('/editor?file=Learning/Go/Chapter.md&anchor=Start')
+    await flushPromises()
+
+    // 同一文件内只换 anchor：query.file 不变，靠组合键 watcher 接住
+    const heading = wrapper.findAll('.markdown-preview h2')[0]!
+    const scroll = vi.fn()
+    Object.defineProperty(heading.element, 'scrollIntoView', { value: scroll })
+    await router.push('/editor?file=Learning/Go/Chapter.md&anchor=Next')
+    await flushPromises()
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+  })
+
+  it('consumes the anchor once so the reader is not pulled back after scrolling away', async () => {
+    const { router } = await renderEditor('preview', '# Start\n\n## Next\n')
+    await router.push('/editor?file=Learning/Go/Chapter.md&anchor=Next')
+    await flushPromises()
+    expect(router.currentRoute.value.query.anchor).toBeUndefined()
+    expect(router.currentRoute.value.query.file).toBe('Learning/Go/Chapter.md')
+  })
+
+  it('still opens the file when the citation carries no heading', async () => {
+    const { router } = await renderEditor('preview', '# Start\n')
+    vi.mocked(FileService.ReadFile).mockImplementation(() => Promise.resolve('# Other\n') as never)
+    await router.push('/editor?file=Learning/Go/Other.md')
+    await flushPromises()
+    expect(router.currentRoute.value.query.file).toBe('Learning/Go/Other.md')
+    expect(router.currentRoute.value.query.anchor).toBeUndefined()
   })
 })

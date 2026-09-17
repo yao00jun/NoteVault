@@ -38,8 +38,8 @@ function createTestRouter() {
 
 enableAutoUnmount(afterEach)
 
-/** 通过宿主组件在真实 setup 上下文里调用 useAIChat */
-function mountHost(buildContext?: ContextBuilder) {
+/** 通过宿主组件在真实 setup 上下文里调用 useAIChat；返回 router 便于断言跳转结果 */
+function mountHostWithRouter(buildContext?: ContextBuilder) {
   const pinia = createPinia()
   setActivePinia(pinia)
   let chat!: ReturnType<typeof useAIChat>
@@ -51,7 +51,11 @@ function mountHost(buildContext?: ContextBuilder) {
   })
   const router = createTestRouter()
   mount(Host, { global: { plugins: [pinia, router, i18n] } })
-  return chat
+  return { chat, router }
+}
+
+function mountHost(buildContext?: ContextBuilder) {
+  return mountHostWithRouter(buildContext).chat
 }
 
 describe('useAIChat', () => {
@@ -288,5 +292,45 @@ describe('useAIChat', () => {
     expect(answerMock.mock.calls.map(call => call[8])).toEqual(['C:/notes-a', 'C:/notes-b'])
     expect(chat.isAsking.value).toBe(false)
     expect(isAIAnswering.value).toBe(false)
+  })
+})
+
+describe('openCitation 引用跳转（P3-9：定位到具体章节）', () => {
+  it('带 heading 的引用：跳转携带 anchor，编辑器据此滚到章节', async () => {
+    const { chat, router } = mountHostWithRouter()
+    await chat.openCitation({ path: 'docs/设计方案.md', heading: '架构分层', chunkIndex: 2 })
+    await flushPromises()
+
+    expect(router.currentRoute.value.path).toBe('/editor')
+    expect(router.currentRoute.value.query.file).toBe('docs/设计方案.md')
+    expect(router.currentRoute.value.query.anchor).toBe('架构分层')
+  })
+
+  it('不带 heading：降级为只打开文件，不产生 anchor', async () => {
+    const { chat, router } = mountHostWithRouter()
+    await chat.openCitation({ path: 'docs/设计方案.md', chunkIndex: 0 })
+    await flushPromises()
+
+    expect(router.currentRoute.value.query.file).toBe('docs/设计方案.md')
+    expect(router.currentRoute.value.query.anchor).toBeUndefined()
+  })
+
+  it('heading 为空白串等同没有 heading', async () => {
+    const { chat, router } = mountHostWithRouter()
+    await chat.openCitation({ path: 'docs/a.md', heading: '   ' })
+    await flushPromises()
+
+    expect(router.currentRoute.value.query.anchor).toBeUndefined()
+  })
+
+  it('畸形引用（空 path / 缺字段）不跳转也不抛错', async () => {
+    const { chat, router } = mountHostWithRouter()
+    await flushPromises() // 等初始导航（/ → /knowledge）落地后再取基线
+    const before = router.currentRoute.value.fullPath
+    await chat.openCitation({ path: '' })
+    await chat.openCitation({} as Parameters<typeof chat.openCitation>[0])
+    await flushPromises()
+
+    expect(router.currentRoute.value.fullPath).toBe(before)
   })
 })

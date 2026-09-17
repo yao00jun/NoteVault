@@ -1005,13 +1005,55 @@ onBeforeUnmount(() => {
   disposeDraft()
 })
 
+/**
+ * P3-9：QnA / 全局检索的引用跳转。route.query.anchor 是目标标题文本，
+ * 转成 pendingAnchor 复用既有的 [[note#heading]] 滚动机制。
+ * anchor 缺省时等价 openFileByPath（只打开文件，保持旧行为）。
+ */
+async function openFileWithAnchor(filePath: string, fromRoute = false) {
+  const raw = route.query.anchor
+  const anchor = typeof raw === 'string' ? raw.trim() : ''
+  if (!anchor) {
+    await openFileByPath(filePath, fromRoute)
+    return
+  }
+  // 目标本来就是活动标签时 openFileByPath 不会改变 activeTabIndex，
+  // watch(activeTab) 不触发 → 必须同步兜底，否则跳转静默失效（与今日日记同款陷阱）。
+  const alreadyActive = activeTab.value?.path === normalizeNotePath(filePath)
+  pendingAnchor.value = { anchor, block: '' }
+  await openFileByPath(filePath, fromRoute)
+  // 摘除 anchor 放在打开之后：一次跳转只生效一次，避免用户滚开后又被"粘"回锚点；
+  // 且此时重入的 watcher 会因「文件已打开且无锚点」提前返回，不会重复打开
+  if (route.query.anchor !== undefined) {
+    await router.replace({ path: route.path, query: { ...route.query, anchor: undefined } })
+  }
+  if (alreadyActive) {
+    await nextTick()
+    requestAnimationFrame(() => {
+      if (!tryScrollToPendingAnchor()) requestAnimationFrame(() => resolvePendingAnchor())
+    })
+  }
+}
+
+/** 已在目标文档上、只带 anchor（同一文件内换章节）时不必重开文件，直接滚 */
+async function scrollToAnchor(heading: string) {
+  pendingAnchor.value = { anchor: heading, block: '' }
+  if (route.query.anchor !== undefined) {
+    await router.replace({ path: route.path, query: { ...route.query, anchor: undefined } })
+  }
+  await nextTick()
+  requestAnimationFrame(() => {
+    if (!tryScrollToPendingAnchor()) requestAnimationFrame(() => resolvePendingAnchor())
+  })
+}
+
 // 打开请求的文件：优先 route.query.file（欢迎页"新建文档"经此跳转），
 // 其次 store 里的 activeFile。keep-alive 下 onMounted 只跑一次，
 // 第二次从欢迎页带 query 跳转必须由 watcher 接住，否则新文件静默不打开。
 async function openRequestedFile() {
   const requestedPath = route.query.file
   if (typeof requestedPath === 'string' && requestedPath.trim()) {
-    await openFileByPath(requestedPath, true)
+    await openFileWithAnchor(requestedPath, true)
   } else if (workspaceStore.activeFile && !route.query.folder) {
     await openFileByPath(workspaceStore.activeFile, true)
   }
@@ -1024,11 +1066,23 @@ onActivated(() => {
   void openRequestedFile()
 })
 
-watch(() => route.query.file, (val) => {
-  if (route.path === '/editor' && typeof val === 'string' && val.trim()) {
-    void openFileByPath(val, true)
-  }
-})
+// P3-9：file 与 anchor 一起监听——只改 anchor（已在目标文件上点别的引用）也要触发，
+// 否则「当前文件恰好是引用目标」时 query.file 不变、跳转静默失效。
+watch(
+  () => [route.query.file, route.query.anchor] as const,
+  ([file, anchor]) => {
+    if (route.path !== '/editor') return
+    const target = typeof file === 'string' ? file.trim() : ''
+    const heading = typeof anchor === 'string' ? anchor.trim() : ''
+    if (target) {
+      // 摘除 anchor 引发的二次触发：文件已是当前标签且无锚点，无需重复打开
+      if (!heading && target === activeTab.value?.path) return
+      void openFileWithAnchor(target, true)
+      return
+    }
+    if (heading) void scrollToAnchor(heading)
+  },
+)
 
 onMounted(async () => {
   window.addEventListener('keydown', handleEditorKeydown)

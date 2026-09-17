@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
 	"github.com/notevault/notevault/internal/app"
 	"github.com/notevault/notevault/internal/core"
@@ -116,6 +117,12 @@ func main() {
 	// 主窗口引用：单实例锁回调里聚焦已有窗口
 	var mainWindow *application.WebviewWindow
 
+	// 提醒走 Wails 原生通知（Windows toast / macOS / Linux D-Bus）：WebView2 的
+	// HTML5 Notification 支持不可靠（无权限提示、常静默失败），PRD 要求用原生通道。
+	// 注意：它不是 Container 字段，故不能直接进 WailsServices()——
+	// container_test.go 用「字段数 == 注册数」做契约校验，只能在这里单独追加。
+	notifier := notifications.New()
+
 	opts := application.Options{
 		Name:        core.AppName,
 		Description: "本地优先的个人知识库管理工具",
@@ -133,7 +140,7 @@ func main() {
 				}
 			},
 		},
-		Services: container.WailsServices(),
+		Services: append(container.WailsServices(), application.NewService(notifier)),
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 			// 注入 CSP：即使插件能执行任意 JS，也掐断它把笔记数据带出去的通道。
@@ -178,6 +185,22 @@ func main() {
 		Windows: application.WindowsWindow{
 			NonClientRegionSupport: true,
 		},
+	})
+
+	// 通知点击 → 打开对应笔记。Data.filePath 由前端 SendNotification 时带上，
+	// 这里是 best-effort：拿不到窗口或路径就只靠系统默认行为（激活窗口）。
+	notifier.OnNotificationResponse(func(result notifications.NotificationResult) {
+		if mainWindow == nil {
+			return
+		}
+		mainWindow.Show()
+		mainWindow.Focus()
+		// 通知回传的自定义负载在 UserInfo（不是 Data）
+		if path, ok := result.Response.UserInfo["filePath"].(string); ok && path != "" {
+			if !mainWindow.EmitEvent("reminder:open", path) {
+				log.Printf("[notifications] 提醒跳转事件未送达: %s", path)
+			}
+		}
 	})
 
 	err := wailsApp.Run()

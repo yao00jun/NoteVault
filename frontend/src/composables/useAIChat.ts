@@ -9,6 +9,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { conversationContext } from '@/utils/conversation'
 import { isLocalBaseURL } from '@/utils/localEndpoint'
+import { openDocument } from '@/utils/navigation'
 
 /**
  * AI 问答核心状态机（AI-COPILOT-FLOATING-ORB 蓝图 Step 1）。
@@ -176,9 +177,15 @@ export function useAIChat(options: UseAIChatOptions = {}) {
     }
   }
 
-  function openCitation(path: string) {
-    workspaceStore.openFile(path)
-    void router.push({ path: '/editor', query: { file: path } })
+  /**
+   * 打开引用来源。P3-9：带上 Heading 让编辑器滚到具体章节而不只是打开文件。
+   * heading 为空（旧后端 / 无章节的块）时自动降级为「只打开文件」。
+   * chunkIndex 只是占位接收——它到行号没有可靠映射，不据此编造位置。
+   */
+  function openCitation(citation: { path: string; heading?: string; chunkIndex?: number }) {
+    const path = citation?.path
+    if (!path) return
+    void openDocument(router, workspaceStore, path, citation.heading)
   }
 
   /** AI 回答渲染为 Markdown 前必须清洗：模型输出也可能带注入 HTML */

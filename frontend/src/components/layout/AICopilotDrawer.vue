@@ -420,7 +420,7 @@ onBeforeUnmount(() => {
               type="button"
               class="citation-chip"
               :title="c.path"
-              @click="openCitation(c.path)"
+              @click="openCitation(c)"
             >
               <FileText :size="12" />
               <span class="cite-index">[{{ c.index }}]</span>

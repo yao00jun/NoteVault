@@ -3,7 +3,6 @@
 
 /**
  * AppService 是 NoteVault 的核心应用服务
- * 后续 Phase 会拆分为多个独立 Service（FileService、SearchService 等）
  * @module
  */
 

@@ -47,3 +47,8 @@ export {
   TrashService,
   WorkspaceService,
 } from "@bindings/github.com/notevault/notevault/internal/service/index.js";
+
+// Wails 官方通知服务（Windows toast / macOS / Linux D-Bus）。
+// 它不在 internal/ 下，绑定落在 wailsapp 包路径；提醒通知改走原生通道后用它，
+// 替代在 WebView2 里不可靠的 HTML5 Notification。
+export * as NotificationsService from "@bindings/github.com/wailsapp/wails/v3/pkg/services/notifications/notificationservice.js";

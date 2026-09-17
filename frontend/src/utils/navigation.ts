@@ -70,10 +70,24 @@ export function navigationIdentity(route: RouteContextInput): string {
   return [route.path, queryText(route.query.file), queryText(route.query.folder), queryText(route.query.project), queryText(route.query.book)].join('|')
 }
 
-export function openDocument(router: Router, workspace: { openFile(path: string): void }, path: string): Promise<unknown> {
+/**
+ * 打开文档。anchor 为目标标题文本（来自 QnA 引用的 Heading 或 [[note#heading]]），
+ * 会以 query.anchor 带到编辑器页，由 EditorView 转成 pendingAnchor 滚到具体章节。
+ * 缺省则只打开文件（保持既有行为）。
+ */
+export function openDocument(
+  router: Router,
+  workspace: { openFile(path: string): void },
+  path: string,
+  anchor?: string,
+): Promise<unknown> {
   const file = normalizeNotePath(path)
   workspace.openFile(file)
-  return router.push({ path: /\.canvas$/i.test(file) ? '/canvas' : '/editor', query: { file } })
+  const heading = anchor?.trim()
+  return router.push({
+    path: /\.canvas$/i.test(file) ? '/canvas' : '/editor',
+    query: heading ? { file, anchor: heading } : { file },
+  })
 }
 
 export interface Breadcrumb { label: string; to?: RouteLocationRaw }
