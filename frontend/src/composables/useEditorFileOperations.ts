@@ -167,6 +167,50 @@ export function useEditorFileOperations(options: {
     })
   }
 
+  // 拖拽移动的受保护根目录：与 FileTree 的系统/模板收纳分组保持同一口径（根段匹配，大小写不敏感）
+  const PROTECTED_ROOTS = new Set(['assets', 'templates', '.templates', '.trash', '.notevault'])
+  const protectedRoot = (path: string) => PROTECTED_ROOTS.has(normalizeNotePath(path).split('/')[0]!.toLowerCase())
+
+  async function handleMoveEntry(dragged: FileNode, target: FileNode) {
+    if (!target.isDir) return
+    const source = { ...dragged, path: normalizeNotePath(dragged.path).replace(/\/$/, '') }
+    const destinationDir = normalizeNotePath(target.path).replace(/\/$/, '')
+    // no-op：拖到自身、拖回所在目录，或把目录拖进自己的子树
+    if (source.path === destinationDir) return
+    const parent = source.path.includes('/') ? source.path.slice(0, source.path.lastIndexOf('/')) : ''
+    if (parent === destinationDir) return
+    if (source.isDir && (destinationDir + '/').startsWith(source.path + '/')) return
+    // 系统目录既不能移动，也不能作为落点
+    if (protectedRoot(source.path) || protectedRoot(destinationDir)) return
+    const destination = joined(destinationDir, source.name)
+    return run('移动', async (workspace, current) => {
+      const caseInsensitive = windowsWorkspace(workspace)
+      const remap = (path: string) => renamedEntryPath(path, source.path, destination, source.isDir, caseInsensitive)
+      const affected = options.tabs.value.filter(tab => isEntryPath(tab.path, source.path, source.isDir, caseInsensitive))
+      const paths = [source.path, destination, ...affected.flatMap(tab => [tab.path, remap(tab.path)])]
+      options.onBegin?.()
+      await options.withExternalFileChanges(paths, async () => {
+        if (!current()) throw new Error('工作区或页面已变化，请重新操作。')
+        await FileService.MoveEntry(workspace, source.path, destination)
+        if (!current()) return
+        // 与重命名同口径：先迁移打开的标签页路径，再释放草稿锁
+        for (const tab of affected) {
+          tab.path = remap(tab.path)
+          tab.name = tab.path.split('/').pop() || tab.path
+        }
+        store.renameFilePaths(source.path, destination, source.isDir)
+        if (options.focusFolder.value) options.focusFolder.value = remap(options.focusFolder.value)
+        if (source.isDir) options.focusFolder.value = destination
+        const query: LocationQueryRaw = { ...route.query }
+        for (const key of ['file', 'folder']) if (typeof query[key] === 'string') query[key] = remap(query[key])
+        await router.replace({ path: route.path, query })
+      })
+      if (!current()) return
+      await options.refresh()
+      if (current()) toast.success(`已移动到 ${destinationDir}/`)
+    })
+  }
+
   return {
     busy,
     handleNewFile: (parent: string) => create(parent, false),
@@ -175,5 +219,6 @@ export function useEditorFileOperations(options: {
     handleDeleteFile: (node: FileNode) => remove(node, 'delete'),
     handleArchiveFile: (node: FileNode) => remove(node, 'archive'),
     handleTrashFile: (node: FileNode) => remove(node, 'trash'),
+    handleMoveEntry,
   }
 }

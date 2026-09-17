@@ -61,7 +61,20 @@ const emit = defineEmits<{
   'copy': [node: FileNode]
   'export-md': [node: FileNode]
   'export-html': [node: FileNode]
+  'move-entry': [dragged: FileNode, target: FileNode]
 }>()
+
+// 跨目录拖拽移动：负载走 dataTransfer（WorkflowTreeItem 的 onDrop 读取此 key），校验在宿主层完成
+function onTreeDragStart(event: DragEvent, node: FileNode) {
+  if (!event.dataTransfer) return
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData('application/x-notevault-tree-node', JSON.stringify(node))
+}
+
+function onTreeDrop(dragged: FileNode, target: FileNode) {
+  if (!target.isDir) return
+  emit('move-entry', dragged, target)
+}
 
 // 1. 搜索过滤
 const { searchQuery, clearSearch, filterNodeList } = useFileTreeSearch({ isRoot: props.isRoot })
@@ -233,6 +246,8 @@ const menuItems = computed(() => {
         @toggle-dir="toggleDir"
         @quick-add="handleNewFile($event.path)"
         @context-menu="onNodeContextMenu"
+        @tree-drag-start="onTreeDragStart"
+        @tree-drop="onTreeDrop"
       />
 
       <!-- 底部系统与模板折叠区（仅根树展示） -->
@@ -266,6 +281,8 @@ const menuItems = computed(() => {
             @toggle-dir="toggleDir"
             @quick-add="handleNewFile($event.path)"
             @context-menu="onNodeContextMenu"
+            @tree-drag-start="onTreeDragStart"
+            @tree-drop="onTreeDrop"
           />
         </div>
       </div>

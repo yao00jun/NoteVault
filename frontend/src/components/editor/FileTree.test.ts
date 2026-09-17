@@ -254,5 +254,30 @@ describe('FileTree', () => {
     await nextTick()
     expect(wrapper.findAll('.tree-children')).toHaveLength(0)
   })
+
+  it('emits move-entry when a dragged node is dropped onto a folder', async () => {
+    const wrapper = mount(FileTree, { props: { nodes: learningTree, activeFilePath: 'Learning/Go/Chapter.md' } })
+    const payload: Record<string, string> = {}
+    const dataTransfer = {
+      effectAllowed: '',
+      setData: (kind: string, value: string) => { payload[kind] = value },
+      getData: (kind: string) => payload[kind] ?? '',
+    }
+    await wrapper.get('[data-path="Learning/Go/Chapter.md"]').trigger('dragstart', { dataTransfer })
+    expect(payload['application/x-notevault-tree-node']).toContain('Learning/Go/Chapter.md')
+    expect(dataTransfer.effectAllowed).toBe('move')
+    await wrapper.get('[data-path="Learning-Archive"]').trigger('drop', { dataTransfer })
+    expect(wrapper.emitted('move-entry')?.[0]).toEqual([
+      expect.objectContaining({ path: 'Learning/Go/Chapter.md' }),
+      expect.objectContaining({ path: 'Learning-Archive' }),
+    ])
+  })
+
+  it('does not emit move-entry for foreign drag payloads', async () => {
+    const wrapper = mount(FileTree, { props: { nodes: learningTree } })
+    const dataTransfer = { getData: () => '' }
+    await wrapper.get('[data-path="Learning"]').trigger('drop', { dataTransfer })
+    expect(wrapper.emitted('move-entry')).toBeUndefined()
+  })
 })
 

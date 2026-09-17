@@ -240,6 +240,9 @@ const displayName = computed(() => {
         @toggle-dir="emit('toggle-dir', $event)"
         @quick-add="emit('quick-add', $event)"
         @context-menu="(e, n) => emit('context-menu', e, n)"
+        @tree-drag-start="(e, n) => emit('tree-drag-start', e, n)"
+        @tree-drop="(d, t) => emit('tree-drop', d, t)"
+        @tree-drag-end="emit('tree-drag-end')"
       />
     </div>
   </div>

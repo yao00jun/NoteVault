@@ -11,7 +11,6 @@ import (
 )
 
 // AppService 是 NoteVault 的核心应用服务
-// 后续 Phase 会拆分为多个独立 Service（FileService、SearchService 等）
 type AppService struct {
 	// App 在服务初始化后注入（Wails 的 OnBackendReady 钩子）
 	App *application.App

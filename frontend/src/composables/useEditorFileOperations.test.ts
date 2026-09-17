@@ -17,7 +17,7 @@ vi.mock('./useConfirm', () => ({ confirmDialog: mocks.confirm }))
 vi.mock('./useToast', () => ({ useToast: () => ({ error: mocks.error, warning: mocks.warning, success: mocks.success }) }))
 vi.mock('@wailsio/runtime', () => ({ Events: { On: vi.fn(() => () => {}) } }))
 vi.mock('@/api', () => ({
-  FileService: { ReadFile: vi.fn(), SaveFile: vi.fn(), CreateFile: vi.fn(), CreateFolder: vi.fn(), RenameFile: vi.fn(), DeleteFile: vi.fn() },
+  FileService: { ReadFile: vi.fn(), SaveFile: vi.fn(), CreateFile: vi.fn(), CreateFolder: vi.fn(), RenameFile: vi.fn(), MoveEntry: vi.fn(), DeleteFile: vi.fn() },
   ArchiveService: { ArchiveFile: vi.fn() }, TrashService: { MoveToTrash: vi.fn() },
 }))
 
@@ -286,5 +286,68 @@ describe('editor file operations', () => {
     expect(FileService.DeleteFile).not.toHaveBeenCalled()
     expect(FileService.SaveFile).not.toHaveBeenCalled()
     expect(tabs.value[0]?.isDirty).toBe(true)
+  })
+})
+
+describe('drag & drop move entry', () => {
+  function mockMove(disk: Map<string, string>) {
+    vi.mocked(FileService.MoveEntry).mockImplementation((_ws, old, next) => backendPromise(Promise.resolve().then(() => {
+      for (const [key, content] of [...disk]) if (key === old || key.startsWith(old + '/')) {
+        disk.delete(key)
+        disk.set(next + key.slice(old.length), content)
+      }
+      return { name: next.split('/').pop()!, path: next, fullPath: 'C:/vault/' + next, isDir: !next.endsWith('.md') } as any
+    })))
+  }
+
+  it('moves a file into another folder and remaps the open tab, route and toast', async () => {
+    const { operations, tabs, router, disk, refresh } = await setup()
+    mockMove(disk)
+    await operations.handleMoveEntry(file('Projects/Go/Tasks.md'), file('Learning', true))
+    expect(FileService.MoveEntry).toHaveBeenCalledWith('C:/vault', 'Projects/Go/Tasks.md', 'Learning/Tasks.md')
+    expect(disk.get('Learning/Tasks.md')).toBe('latest draft')
+    expect(disk.has('Projects/Go/Tasks.md')).toBe(false)
+    expect(tabs.value.map(tab => tab.path)).toEqual(['Learning/Tasks.md', 'Projects/Go/nested/design.md', 'Projects/Gopher/keep.md'])
+    expect(router.currentRoute.value.query.file).toBe('Learning/Tasks.md')
+    expect(refresh).toHaveBeenCalledOnce()
+    expect(mocks.success).toHaveBeenCalledWith(expect.stringContaining('Learning/'))
+    expect(mocks.error).not.toHaveBeenCalled()
+  })
+
+  it('moves a folder with all open descendant tabs and keeps pins in sync', async () => {
+    const { operations, tabs, store, focusFolder, disk } = await setup()
+    mockMove(disk)
+    await operations.handleMoveEntry(file('Projects/Go', true), file('Learning', true))
+    expect(FileService.MoveEntry).toHaveBeenCalledWith('C:/vault', 'Projects/Go', 'Learning/Go')
+    expect(tabs.value.map(tab => tab.path)).toEqual(['Learning/Go/Tasks.md', 'Learning/Go/nested/design.md', 'Projects/Gopher/keep.md'])
+    expect(disk.get('Learning/Go/nested/design.md')).toBe('nested draft')
+    expect(store.pinnedItems[0]?.path).toBe('Learning/Go/Tasks.md')
+    expect(store.activeFile).toBe('Learning/Go/Tasks.md')
+    expect(focusFolder.value).toBe('Learning/Go')
+    expect(mocks.error).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['self drop', file('Projects/Go', true), file('Projects/Go', true)],
+    ['same parent', file('Projects/Go', true), file('Projects', true)],
+    ['own descendant', file('Projects/Go', true), file('Projects/Go/nested', true)],
+    ['protected source root', file('assets', true), file('Learning', true)],
+    ['protected drop target', file('Learning/Go', true), file('.trash', true)],
+  ])('ignores a %s without calling the backend', async (_label, dragged, target) => {
+    const { operations } = await setup()
+    await operations.handleMoveEntry(dragged, target)
+    expect(FileService.MoveEntry).not.toHaveBeenCalled()
+    expect(mocks.error).not.toHaveBeenCalled()
+  })
+
+  it('surfaces backend conflicts and keeps every tab on its original path', async () => {
+    const { operations, tabs, router, refresh } = await setup()
+    vi.mocked(FileService.MoveEntry).mockRejectedValue(new Error('目标位置已存在同名文件或文件夹'))
+    await operations.handleMoveEntry(file('Projects/Go/Tasks.md'), file('Projects/Gopher', true))
+    expect(FileService.MoveEntry).toHaveBeenCalledWith('C:/vault', 'Projects/Go/Tasks.md', 'Projects/Gopher/Tasks.md')
+    expect(tabs.value[0]?.path).toBe('Projects/Go/Tasks.md')
+    expect(router.currentRoute.value.query.file).toBe('Projects/Go/Tasks.md')
+    expect(mocks.error).toHaveBeenCalledWith(expect.stringContaining('已存在'))
+    expect(refresh).not.toHaveBeenCalled()
   })
 })

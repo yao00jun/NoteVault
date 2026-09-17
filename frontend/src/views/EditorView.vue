@@ -385,7 +385,7 @@ async function closeTab(index: number, event?: Event) {
   }
 }
 
-const { busy: fileOperationsBusy, handleNewFile, handleNewFolder, handleRename, handleDeleteFile, handleArchiveFile, handleTrashFile } = useEditorFileOperations({
+const { busy: fileOperationsBusy, handleNewFile, handleNewFolder, handleRename, handleMoveEntry, handleDeleteFile, handleArchiveFile, handleTrashFile } = useEditorFileOperations({
   tabs, activeTabIndex, focusFolder,
   workspacePath: computed(() => currentWorkspace.value?.path),
   withExternalFileChanges,
@@ -1169,6 +1169,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
           @archive="handleArchiveFile"
           @trash="handleTrashFile"
           @copy="handleCopyFile"
+          @move-entry="handleMoveEntry"
           @export-md="exportFileMarkdown"
           @export-html="exportFileHTML"
         />
