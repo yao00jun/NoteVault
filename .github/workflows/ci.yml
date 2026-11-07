@@ -15,7 +15,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.27'
           cache: true
       - name: Go vet
         run: go vet ./...
@@ -25,7 +25,7 @@ jobs:
       # bindings 就提交 → 这里直接阻断
       - name: Regenerate Wails bindings and detect drift
         run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.16
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
           wails3 generate bindings ./... -f '-tags production -trimpath' -clean=true -ts -i -names
           git diff --exit-code frontend/bindings/
 
@@ -37,7 +37,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.27'
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:

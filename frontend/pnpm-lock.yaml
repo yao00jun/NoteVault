@@ -33,8 +33,8 @@ importers:
         specifier: ^1.41.0
         version: 1.41.0(vue@3.5.42(typescript@6.0.3))
       '@wailsio/runtime':
-        specifier: latest
-        version: 3.0.0-beta.16
+        specifier: 3.1.0
+        version: 3.1.0
       codemirror:
         specifier: ^6.0.2
         version: 6.0.2
@@ -768,8 +768,8 @@ packages:
       '@vue/server-renderer':
         optional: true
 
-  '@wailsio/runtime@3.0.0-beta.16':
-    resolution: {integrity: sha512-IzaYrUKYDmvWDXf3Pqfl0onT1R5T5YHTx+AnK9vX4MyuE1PF3lXZmQrtvtfYNAsBnL+9e+iCJvIROGhjyf1rew==}
+  '@wailsio/runtime@3.1.0':
+    resolution: {integrity: sha512-noEAedvRyO8TLCrqhGwzrp+mbMxAIDa2rYmdJQOzvJV9MxgaZeXAJGNBiMiKMTSSy4ESOtQi4VH/5heSzi6ZmA==}
 
   abbrev@5.0.0:
     resolution: {integrity: sha512-/XrFJgzQQQHpti1raDJC6m4ws6aNktmjBlhk8Fdlk7LwCEuDoieEJJY9OFHjfiFJFFRM2tK+Ky/IsfbbmlMu1w==}
@@ -2715,7 +2715,7 @@ snapshots:
     optionalDependencies:
       '@vue/server-renderer': 3.5.42
 
-  '@wailsio/runtime@3.0.0-beta.16': {}
+  '@wailsio/runtime@3.1.0': {}
 
   abbrev@5.0.0: {}
 
