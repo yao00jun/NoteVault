@@ -38,6 +38,8 @@ const now = new Date()
 const year = now.getFullYear()
 const month = String(now.getMonth() + 1).padStart(2, '0')
 const todayDay = String(now.getDate()).padStart(2, '0')
+// 日历渲染的日期文本是不补零的数字（cell.day = date.getDate()），与文件名（YYYY-MM-DD）区分开
+const todayDayText = String(now.getDate())
 const today = `${year}-${month}-${todayDay}`
 const monthPrefix = `${year}-${month}-`
 // 本月 12 日有旧式日记，本月今天有日报（日期动态生成，测试不随月份漂移）
@@ -81,7 +83,7 @@ describe('SidebarCalendar', () => {
 
     const loggedDays = wrapper.findAll('button.calendar-cell.has-log').map(cell => cell.find('.calendar-day').text())
     expect(loggedDays).toContain('12')
-    expect(loggedDays).toContain(todayDay)
+    expect(loggedDays).toContain(todayDayText)
     expect(wrapper.findAll('.calendar-cell.is-today')).toHaveLength(1)
     // 无打卡的普通日期渲染为不可交互的 span
     expect(wrapper.findAll('span.calendar-cell').length).toBeGreaterThan(0)
