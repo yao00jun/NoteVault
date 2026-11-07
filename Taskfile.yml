@@ -50,6 +50,17 @@ tasks:
         platforms: [windows]
         ignore_error: true
 
+  release:
+    summary: 发布 GitHub Release（VERSION=vX.Y.Z）：构建 → 冒烟 → 推送 → gh release create
+    platforms: [windows]
+    preconditions:
+      - sh: 'test -n "{{.VERSION}}"'
+        msg: "缺少版本号，用法：wails3 task release VERSION=v0.2.0"
+    deps:
+      - task: windows:build
+    cmds:
+      - bash scripts/release.sh {{.VERSION}}
+
   setup:docker:
     summary: Builds Docker image for cross-compilation (~800MB download)
     cmds:
