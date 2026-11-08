@@ -81,6 +81,47 @@ describe('application navigation', () => {
     stop()
   })
 
+  it('lands on Today at startup when a workspace is restored onto the welcome route', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: routes.map(path => ({ path, component: { template: '<div />' } })) })
+    const workspace = useWorkspaceStore()
+    await router.push('/')
+    const navigation = useNavigationStore()
+    const stop = navigation.connect(router, workspace) // 启动时工作区尚未恢复
+    workspace.setCurrentWorkspace(ws('one')) // 模拟 restoreCurrentWorkspace 异步完成
+    await nextTick()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(router.currentRoute.value.path).toBe('/today')
+    expect(navigation.visits.map(visit => visit.fullPath)).toEqual(['/today'])
+    expect(navigation.canGoBack).toBe(false)
+    stop()
+  })
+
+  it('preserves a deep link opened at startup', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: routes.map(path => ({ path, component: { template: '<div />' } })) })
+    const workspace = useWorkspaceStore()
+    await router.push('/editor?file=Daily/2026-11-09.md')
+    const navigation = useNavigationStore()
+    const stop = navigation.connect(router, workspace)
+    workspace.setCurrentWorkspace(ws('one'))
+    await nextTick()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(router.currentRoute.value.fullPath).toBe('/editor?file=Daily/2026-11-09.md')
+    stop()
+  })
+
+  it('stays on the welcome route when startup restores no workspace', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: routes.map(path => ({ path, component: { template: '<div />' } })) })
+    const workspace = useWorkspaceStore()
+    await router.push('/')
+    const navigation = useNavigationStore()
+    const stop = navigation.connect(router, workspace)
+    await nextTick()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(router.currentRoute.value.path).toBe('/')
+    expect(navigation.visits.map(visit => visit.fullPath)).toEqual(['/'])
+    stop()
+  })
+
   it('does not let browser back open an old workspace document', async () => {
     const { router, workspace, navigation, stop } = await setup()
     await router.push('/editor?file=Projects/private.md')

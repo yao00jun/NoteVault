@@ -24,6 +24,13 @@ import {
   GraduationCap,
   Calendar,
   Clock,
+  Compass,
+  History,
+  Lightbulb,
+  Presentation,
+  Download,
+  Puzzle,
+  Archive,
 } from '@lucide/vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -210,7 +217,6 @@ interface NavItem {
   description: string
   icon: Component
   route: string
-  activeOn: string[]
   badge?: string | number
   alert?: boolean
 }
@@ -232,46 +238,60 @@ function toggleRecentExpanded() {
   localStorage.setItem('notevault:sidebar-recent-expanded', String(recentExpanded.value))
 }
 
+// ---- 「扩展」折叠区：长尾功能页（发现/回顾/洞察/白板/导入/插件/归档），默认折叠 ----
+const extendedExpanded = ref(localStorage.getItem('notevault:sidebar-extended-expanded') === 'true')
+
+function toggleExtendedExpanded() {
+  extendedExpanded.value = !extendedExpanded.value
+  localStorage.setItem('notevault:sidebar-extended-expanded', String(extendedExpanded.value))
+}
+
+const extendedItems = computed(() => [
+  { id: 'discover', label: t('sidebar.extended.discover'), icon: Compass, route: '/discover' },
+  { id: 'review', label: t('sidebar.extended.review'), icon: History, route: '/review' },
+  { id: 'insights', label: t('sidebar.extended.insights'), icon: Lightbulb, route: '/insights' },
+  { id: 'canvas', label: t('sidebar.extended.canvas'), icon: Presentation, route: '/canvas' },
+  { id: 'import', label: t('sidebar.extended.import'), icon: Download, route: '/import' },
+  { id: 'plugins', label: t('sidebar.extended.plugins'), icon: Puzzle, route: '/plugins' },
+  { id: 'archive', label: t('sidebar.extended.archive'), icon: Archive, route: '/archive' },
+])
+
 // 最近文档：最多展示 10 条
 const recentFiles = computed(() => workspaceStore.recentFiles.slice(0, 10))
 const navItems = computed<NavItem[]>(() => [
   {
     id: 'today',
-    label: '今日',
-    description: '个人工作台',
+    label: t('sidebar.nav.today'),
+    description: t('sidebar.navDesc.today'),
     icon: Zap,
     route: '/today',
-    activeOn: ['/today', '/knowledge'],
     badge: workspaceStore.hasWorkspace && workbenchStore.lastUpdated
       ? `${completedToday.value}/${workbenchStore.todayTasks.length}` : undefined,
   },
   {
     id: 'projects',
-    label: '项目',
-    description: '组合看板',
+    label: t('sidebar.nav.projects'),
+    description: t('sidebar.navDesc.projects'),
     icon: Rocket,
     route: '/projects',
-    activeOn: ['/projects'],
     badge: workspaceStore.hasWorkspace && workbenchStore.lastUpdated ? workbenchStore.projects.length : undefined,
     alert: workbenchStore.blockers.length > 0,
   },
   {
     id: 'learning',
-    label: '学习',
-    description: '技术书架',
+    label: t('sidebar.nav.learning'),
+    description: t('sidebar.navDesc.learning'),
     icon: BookOpen,
     route: '/learning',
-    activeOn: ['/learning'],
     badge: workspaceStore.hasWorkspace && workbenchStore.lastUpdated && workbenchStore.reviewQueue.length ? `待复习 ${workbenchStore.reviewQueue.length}` : undefined,
   },
   {
     id: 'vault',
-    label: '知识库',
-    description: '知识沉淀',
+    label: t('sidebar.nav.vault'),
+    description: t('sidebar.navDesc.vault'),
     icon: Library,
     // Mybase 式左树右文：直达编辑器空态（知识库浏览模式），仪表盘保留在 /vault
     route: '/editor',
-    activeOn: ['/vault', '/library', '/editor', '/insights', '/discover', '/review', '/canvas', '/archive', '/import', '/plugins'],
     badge: 'PARA',
   },
 ])
@@ -629,6 +649,55 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
           </button>
         </div>
       </nav>
+
+      <!-- 🧩 扩展区：长尾功能页（手风琴，默认折叠，状态持久化） -->
+      <section
+        v-if="!collapsed"
+        class="sidebar-zone accordion-zone extended-zone"
+        data-testid="sidebar-extended"
+        aria-label="扩展功能"
+      >
+        <div
+          class="section-heading section-heading-clickable"
+          data-testid="sidebar-extended-toggle"
+          role="button"
+          tabindex="0"
+          :aria-expanded="extendedExpanded"
+          @click="toggleExtendedExpanded"
+          @keydown.enter.prevent="toggleExtendedExpanded"
+          @keydown.space.prevent="toggleExtendedExpanded"
+        >
+          <ChevronRight
+            :size="12"
+            class="section-chevron"
+            :class="{ expanded: extendedExpanded }"
+          />
+          <Puzzle :size="12" />
+          <span>{{ t('sidebar.extended.title') }}</span>
+        </div>
+        <div
+          v-if="extendedExpanded"
+          class="extended-list"
+        >
+          <button
+            v-for="entry in extendedItems"
+            :key="entry.id"
+            class="file-shortcut extended-item"
+            :data-testid="`nav-extended-${entry.id}`"
+            :title="entry.label"
+            @click="router.push(entry.route)"
+          >
+            <component
+              :is="entry.icon"
+              :size="15"
+            />
+            <span
+              v-if="!collapsed"
+              class="file-shortcut-label"
+            >{{ entry.label }}</span>
+          </button>
+        </div>
+      </section>
 
       <!-- 固定区：有固定项才显示，空态不占位 -->
       <section
@@ -1128,6 +1197,10 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
 .file-shortcut:hover { background: var(--bg-hover); color: var(--text-primary); }
 .file-shortcut.active { background: var(--accent-alpha, rgba(0, 122, 255, 0.08)); color: var(--accent); }
 .file-shortcut-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 扩展区：长尾功能页纵向列表（默认折叠，展开后与最近文档同款行样式） */
+.extended-list { display: flex; flex-direction: column; gap: 2px; padding: 2px 0 4px; }
+.extended-item { min-height: 28px; padding: 5px 8px; font-size: 12px; }
 .pin-grip { opacity: 0; cursor: grab; }
 .pin-item:hover .pin-grip, .pin-item:focus-visible .pin-grip { opacity: 0.6; }
 

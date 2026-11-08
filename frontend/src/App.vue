@@ -170,6 +170,7 @@ onMounted(() => {
 
 // 桌面应用重启后后端仍记住当前工作区；前端 store 需要先恢复，
 // 否则搜索这类依赖 store 的页面会在首次进入时静默跳过请求。
+// 恢复完成后由 navigation store 负责「打开即今天」的启动跳转。
 async function restoreCurrentWorkspace() {
   if (workspaceStore.currentWorkspace) return
   try {
@@ -190,11 +191,18 @@ onBeforeUnmount(() => {
   window.removeEventListener('notevault:source-import', openSourceImport)
   window.removeEventListener('notevault:new-file', handleNewFileFromPalette)
   window.removeEventListener('keydown', handleGlobalKeydown)
+  window.removeEventListener('app:open-omni-search', openOmniSearchFromEvent)
   window.removeEventListener('app:open-command-palette', openCommandPaletteFromEvent)
 })
 
-// 顶栏搜索按钮通过 CustomEvent 打开命令面板（避免 router 跳到 /search 时
-// 把当前工作区切走；让 palette 直接浮在当前视图上）
+// 顶栏搜索按钮通过 CustomEvent 打开 OmniSearch（词面 + 语义 + RAG 的统一入口；
+// 不要 router.push('/search')：那会把当前工作区切走，浮层直接盖在当前视图上）
+function openOmniSearchFromEvent() {
+  showOmniSearch.value = true
+}
+window.addEventListener('app:open-omni-search', openOmniSearchFromEvent)
+
+// 命令面板仍由 Ctrl+P / 插件等入口唤起
 function openCommandPaletteFromEvent() {
   showCommandPalette.value = true
 }

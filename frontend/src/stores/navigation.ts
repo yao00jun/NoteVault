@@ -83,7 +83,15 @@ export const useNavigationStore = defineStore('navigation', () => {
           if (failure && !isNavigationFailure(failure, NavigationFailureType.duplicated)) return
           if (version === generation && !visits.value.length && router.currentRoute.value.fullPath === home) observe(true)
         })
-      } else observe(true) // Startup restoration preserves a legitimate deep link.
+      } else if (hasWorkspace.value && router.currentRoute.value.path === '/') {
+        // 启动恢复出工作区且停在欢迎页 → 直达「今天」（打开即工作台）。
+        // 非 / 的初始路由是真正的 deep link（如通知点击），原样保留。
+        replaceNext = true
+        void router.replace('/today').then(failure => {
+          if (failure && !isNavigationFailure(failure, NavigationFailureType.duplicated)) return
+          if (version === generation && !visits.value.length && router.currentRoute.value.fullPath === '/today') observe(true)
+        })
+      } else observe(true) // Startup deep links (non-/ initial routes) are preserved as-is.
     }, { flush: 'sync' })
     disconnect = () => { stopWorkspace(); stopHistory(); stopGuard(); stopAfter(); disconnect = undefined }
     return disconnect

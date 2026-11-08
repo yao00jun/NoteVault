@@ -11,6 +11,10 @@ export default {
   },
   sidebar: {
     nav: {
+      today: 'Today',
+      projects: 'Projects',
+      learning: 'Learning',
+      vault: 'Vault',
       workbench: 'Workbench',
       editor: 'All Documents',
       daily: 'Daily work log / report',
@@ -40,6 +44,22 @@ export default {
       tasks: 'Tasks',
       workspace: 'Workspace',
       manage: 'Manage',
+    },
+    navDesc: {
+      today: 'Todos, work log and due reviews',
+      projects: 'Project briefs, tasks and progress',
+      learning: 'Tech learning and spaced repetition',
+      vault: 'Documents, backlinks and graph',
+    },
+    extended: {
+      title: 'Extensions',
+      discover: 'Discover (Search / Q&A / Views)',
+      review: 'Review (Reports / Tasks / Versions)',
+      insights: 'Insights (Graph / Compile / Bases)',
+      canvas: 'Canvas Board',
+      import: 'Import Data',
+      plugins: 'Plugins',
+      archive: 'Archive',
     },
     selectWorkspace: 'Select Workspace',
     workspaceTitle: 'Workspace',
@@ -142,7 +162,7 @@ export default {
     openNoteMissing: 'Note path is empty or the file does not exist',
   },
   titlebar: {
-    searchPlaceholder: 'Search and commands (Ctrl+P)',
+    searchPlaceholder: 'Search, semantic & AI Q&A (Ctrl+K)',
     home: 'Home',
     switchTheme: 'Switch theme',
     chooseTheme: 'Choose Theme',

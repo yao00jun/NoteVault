@@ -92,9 +92,9 @@ function goHome() {
 }
 
 function openSearch() {
-  // 走 CustomEvent 让 App.vue 打开命令面板，
-  // 不要 router.push('/search')：那会把当前工作区切走。
-  window.dispatchEvent(new CustomEvent('app:open-command-palette'))
+  // 走 CustomEvent 让 App.vue 打开 OmniSearch（词面 + 语义 + RAG 问答的统一入口），
+  // 不要 router.push('/search')：那会把当前工作区切走。命令面板仍走 Ctrl+P。
+  window.dispatchEvent(new CustomEvent('app:open-omni-search'))
 }
 
 // 窗口控制

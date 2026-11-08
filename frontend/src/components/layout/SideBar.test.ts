@@ -63,7 +63,7 @@ const piniaInstances: Pinia[] = []
 const routes = [
   { path: '/', redirect: '/today' },
   { path: '/knowledge', redirect: '/today' },
-  ...['today', 'projects', 'learning', 'vault', 'library', 'editor', 'trash', 'settings', 'review'].map(path => ({
+  ...['today', 'projects', 'learning', 'vault', 'library', 'editor', 'trash', 'settings', 'review', 'canvas', 'discover', 'insights', 'import', 'plugins', 'archive'].map(path => ({
     path: '/' + path, component: { template: '<div>' + path + '</div>' },
   })),
   // 今日脉搏的提醒入口走真实重定向链：/reminders → /review?tab=tasks&sub=reminders
@@ -123,9 +123,31 @@ describe('SideBar', () => {
     await flushPromises()
     const pins = wrapper.find('[data-testid="sidebar-pins"]')
     expect(pins.exists()).toBe(true)
-    // 顺序：页面导航 → 固定 → 今日脉搏 → 日历 → 最近（后四者均为条件渲染的非导航区）
+    // 顺序：页面导航 → 扩展 → 固定 → 今日脉搏 → 日历 → 最近（后五者均为条件渲染的非导航区）
     const zones = wrapper.findAll('.sidebar-scroll .sidebar-zone').map(z => z.classes().includes('nav-list'))
-    expect(zones).toEqual([true, false, false, false, false])
+    expect(zones).toEqual([true, false, false, false, false, false])
+  })
+
+  it('renders the extended zone as a collapsed accordion with persisted state', async () => {
+    const { wrapper, router } = mountSideBar()
+    await flushPromises()
+    const toggle = wrapper.get('[data-testid="sidebar-extended-toggle"]')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('[data-testid="nav-extended-canvas"]').exists()).toBe(false)
+
+    await toggle.trigger('click')
+    await nextTick()
+    expect(localStorage.getItem('notevault:sidebar-extended-expanded')).toBe('true')
+    expect(wrapper.findAll('[data-testid^="nav-extended-"]')).toHaveLength(7)
+    await wrapper.get('[data-testid="nav-extended-canvas"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/canvas')
+
+    // 状态持久化：重挂载后沿用展开态
+    const reopened = mountSideBar()
+    await flushPromises()
+    expect(reopened.wrapper.get('[data-testid="sidebar-extended-toggle"]').attributes('aria-expanded')).toBe('true')
+    localStorage.setItem('notevault:sidebar-extended-expanded', 'false')
   })
 
   it('renders calendar and recent accordions with persisted expand state', async () => {

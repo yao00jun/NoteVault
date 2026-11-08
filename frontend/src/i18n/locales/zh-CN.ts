@@ -11,6 +11,10 @@ export default {
   },
   sidebar: {
     nav: {
+      today: '今天',
+      projects: '项目',
+      learning: '学习',
+      vault: '知识库',
       workbench: '工作台',
       editor: '所有文档',
       daily: '每日工作日志 / 汇报',
@@ -40,6 +44,22 @@ export default {
       tasks: '任务',
       workspace: '工作区',
       manage: '管理',
+    },
+    navDesc: {
+      today: '今日待办、工作日志与到期复习',
+      projects: '项目档案、任务与进展',
+      learning: '技术学习与间隔复习',
+      vault: '文档、双链与知识图谱',
+    },
+    extended: {
+      title: '扩展',
+      discover: '发现（搜索 / 问答 / 视图）',
+      review: '回顾（报表 / 任务 / 版本）',
+      insights: '洞察（图谱 / 编译 / Bases）',
+      canvas: 'Canvas 白板',
+      import: '数据导入',
+      plugins: '插件',
+      archive: '归档',
     },
     selectWorkspace: '选择工作区',
     workspaceTitle: '工作区',
@@ -142,7 +162,7 @@ export default {
     openNoteMissing: '笔记路径为空或文件不存在',
   },
   titlebar: {
-    searchPlaceholder: '搜索与命令 (Ctrl+P)',
+    searchPlaceholder: '搜索、语义检索与 AI 问答 (Ctrl+K)',
     home: '主页',
     switchTheme: '切换主题',
     chooseTheme: '选择主题',
