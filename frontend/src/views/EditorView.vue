@@ -66,7 +66,7 @@ const activeTabIndex = ref(-1)
 const focusFolder = ref<string | null>(null)
 const distillSource = ref<DistillationSource | null>(null)
 const preparingDistillation = ref(false)
-const { mainRef, panesRef, treeWidth, showTree, overlayTree, splitPercent, effectiveViewMode, toggleTree, toggleViewMode, beginResize, adjust } = useEditorLayout()
+const { mainRef, panesRef, treeWidth, showTree, overlayTree, splitPercent, viewMode, effectiveViewMode, toggleTree, toggleViewMode, beginResize, adjust } = useEditorLayout()
 let openFileVersion = 0
 let fileTreeRequest = 0
 let deferredOpen: string | null = null
@@ -389,7 +389,8 @@ const { busy: fileOperationsBusy, handleNewFile, handleNewFolder, handleRename, 
   tabs, activeTabIndex, focusFolder,
   workspacePath: computed(() => currentWorkspace.value?.path),
   withExternalFileChanges,
-  openFile,
+  // 文件树新建：新文档打开时确保不在纯预览模式（新建是为了写）
+  openFile: async (node) => { await openFile(node); ensureWritableMode() },
   onBegin: () => { openFileVersion++ },
   refresh: async () => {
     await invalidateTagCache()
@@ -596,10 +597,19 @@ async function handleNewFileWithName(fileName: string) {
     )
     await loadFileTree()
     workspaceStore.incrementFileTreeVersion()
-    if (node) openFile(node as FileNode)
+    if (node) {
+      openFile(node as FileNode)
+      ensureWritableMode()
+    }
   } catch (e) {
     console.error('Failed to create file:', e)
   }
+}
+
+// 新建文档是为了写，不是为了读：纯预览模式的会话里打开刚创建的文档时
+// 自动回到分屏（用户手动选过预览的既有文档不受影响，只干预"新建"这一次）。
+function ensureWritableMode() {
+  if (viewMode.value === 'preview') viewMode.value = 'split'
 }
 
 // ---- 右侧辅助抽屉（Context Drawer）：大纲 + 反向链接 ----
@@ -621,6 +631,11 @@ watch([effectiveViewMode, () => outline.value.length], ([mode, count]) => {
   if (userManuallyToggledDrawer.value) return
   drawerOpen.value = mode === 'preview' && count > 0
   if (drawerOpen.value) drawerTab.value = 'outline'
+}, { immediate: true })
+
+// 从新建入口（侧栏 createNewDoc）带来的 created 标记：纯预览会话下自动回到分屏
+watch(() => route.query.created, (flag) => {
+  if (flag === '1') ensureWritableMode()
 }, { immediate: true })
 
 function setDrawerOpen(open: boolean) {
@@ -720,7 +735,10 @@ async function handleDrop(e: DragEvent) {
       await invalidateTagCache()
         await loadFileTree()
         workspaceStore.incrementFileTreeVersion()
-        if (node) openFile(node as FileNode)
+        if (node) {
+          openFile(node as FileNode)
+          ensureWritableMode()
+        }
       } catch {
         // 文件已存在，直接打开
         const existingNode = findFileByName(fileTree.value, fileName)

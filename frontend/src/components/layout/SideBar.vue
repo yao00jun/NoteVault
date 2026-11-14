@@ -187,7 +187,7 @@ async function createNewDoc(folder?: string) {
     if (node?.path && workspaceStore.currentWorkspace?.path === workspacePath) {
       workspaceStore.openFile(node.path)
       workspaceStore.incrementFileTreeVersion()
-      await router.push({ path: '/editor', query: { file: node.path } })
+      await router.push({ path: '/editor', query: { file: node.path, created: '1' } })
     }
   } catch (e) {
     if ((e as Error).message?.includes('exist')) {
