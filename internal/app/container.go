@@ -127,7 +127,7 @@ func NewContainer(cfg ContainerConfig) *Container {
 		Graph:        service.NewGraphService(),
 		Export:       service.NewExportService(),
 		Summarize:    summarizeService,
-		QnA:          service.NewQnAServiceWithRegistry(fileService, indexRegistry, service.NewOllamaEmbeddingClient(), service.NewReranker()),
+		QnA:          service.NewQnAServiceWithRegistryAndSink(fileService, indexRegistry, service.NewOllamaEmbeddingClient(), service.NewReranker(), wailsTaskEmitter{}),
 		LLMConfig:    service.NewLLMConfigService(),
 		Credentials:  service.NewCredentialService(platform.NewCredentialStore("NoteVault")),
 		Import:       service.NewImportServiceWithTasks(taskService),

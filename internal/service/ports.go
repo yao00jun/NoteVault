@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+
 	"github.com/notevault/notevault/internal/core"
 )
 
@@ -221,6 +223,11 @@ type QnAProvider interface {
 	// rerankCfg 为可选重排序端点配置（P1-3b）；未配置时融合退化为纯 BM25 + 向量 RRF，
 	// 与 P1-3 结束态一致；重排服务不可用时静默回退，不阻断问答。
 	Answer(apiKey, baseURL, model, protocol, embBaseURL, embModel, embAPIKey string, rerankCfg RerankConfig, workspacePath, question string) (*QnAResponse, error)
+	// AnswerStream 流式版 Answer：LLM 增量经 streamSink 以 qna:delta 事件推送
+	// （QnAStreamDelta{requestID, delta}），最终结果随返回值给出。
+	// ctx 首参由 Wails 注入可取消上下文：前端 promise.cancel() 中断 SSE 读取。
+	// requestID 由前端生成，用于事件与调用一一关联。
+	AnswerStream(ctx context.Context, apiKey, baseURL, model, protocol, embBaseURL, embModel, embAPIKey string, rerankCfg RerankConfig, workspacePath, question, requestID string) (*QnAResponse, error)
 	// HybridSearch 文档级混合检索（BM25 + 向量 RRF 融合），供前端搜索增强。
 	// rerankCfg 同上，可选。
 	HybridSearch(workspacePath, query, embBaseURL, embModel, embAPIKey string, rerankCfg RerankConfig) ([]*SearchResult, error)

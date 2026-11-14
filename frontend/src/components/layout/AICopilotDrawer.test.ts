@@ -6,8 +6,18 @@ import { nextTick } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 
+const events = vi.hoisted(() => ({ deltaHandler: null as ((ev?: { data?: { requestID?: string; delta?: string } | null }) => void) | null }))
+vi.mock('@wailsio/runtime', () => ({
+  Events: {
+    On: vi.fn((_name: string, handler: (ev?: { data?: { requestID?: string; delta?: string } | null }) => void) => {
+      events.deltaHandler = handler
+      return () => { events.deltaHandler = null }
+    }),
+  },
+}))
+
 vi.mock('@/api', () => ({
-  QnAService: { Answer: vi.fn() },
+  QnAService: { Answer: vi.fn(), AnswerStream: vi.fn() },
   FileService: { ReadFile: vi.fn(async () => '# 设计方案\n\n- [ ] 评审架构\n') },
   CredentialService: {
     GetCredential: vi.fn().mockResolvedValue(''),
@@ -32,7 +42,9 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { resetToasts } from '@/composables/useToast'
 
-const answerMock = vi.mocked(QnAService.Answer)
+// 抽屉开启 stream: true，问答走 AnswerStream；前 10 个参数与 Answer 一致，
+// 末位多一个 requestID——既有按索引（call[8]/call[9]）的断言无需改动。
+const answerMock = vi.mocked(QnAService.AnswerStream)
 const readMock = vi.mocked(FileService.ReadFile)
 const insertMock = vi.mocked(insertAtCursor)
 
@@ -69,7 +81,7 @@ describe('AICopilotDrawer', () => {
     answerMock.mockResolvedValue({
       answer: '三大要点：\n1. 架构清晰\n2. 检索混合\n3. 本地优先',
       citations: [{ index: 1, title: '设计方案.md', path: 'docs/设计方案.md' }],
-    } as Awaited<ReturnType<typeof QnAService.Answer>>)
+    } as Awaited<ReturnType<typeof QnAService.AnswerStream>>)
   })
 
   it('打开时展示上下文感知条（当前文档名）与 4 个快捷胶囊', async () => {
@@ -243,7 +255,7 @@ describe('AICopilotDrawer', () => {
     const clearButton = wrapper.findAll('.header-actions button').find(button => button.attributes('title') === i18n.global.t('copilot.clear'))
     await clearButton!.trigger('click')
     expect(wrapper.findAll('.msg')).toHaveLength(0)
-    answerMock.mockResolvedValueOnce({ answer: '重新润色后的日报', citations: [] } as Awaited<ReturnType<typeof QnAService.Answer>>)
+    answerMock.mockResolvedValueOnce({ answer: '重新润色后的日报', citations: [] } as Awaited<ReturnType<typeof QnAService.AnswerStream>>)
     await wrapper.get('.copilot-input textarea').setValue('请重新润色')
     await wrapper.get('.btn-ask').trigger('click')
     await flushPromises()
@@ -301,8 +313,8 @@ describe('AICopilotDrawer', () => {
     workspaceStore.setCurrentWorkspace({ id: 'ws', name: '笔记库', path: 'C:/notes', createdAt: '', lastOpenedAt: '' })
     await router.push({ path: '/editor', query: { file: 'docs/设计方案.md' } })
     await flushPromises()
-    let finish!: (value: Awaited<ReturnType<typeof QnAService.Answer>>) => void
-    answerMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }) as ReturnType<typeof QnAService.Answer>)
+    let finish!: (value: Awaited<ReturnType<typeof QnAService.AnswerStream>>) => void
+    answerMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }) as ReturnType<typeof QnAService.AnswerStream>)
     await wrapper.get('.copilot-input textarea').setValue('先分析当前内容')
     await wrapper.get('.btn-ask').trigger('click')
     await flushPromises()
@@ -310,7 +322,7 @@ describe('AICopilotDrawer', () => {
     expect(answerMock).toHaveBeenCalledTimes(1)
     await router.push('/knowledge')
     await wrapper.setProps({ visible: false })
-    finish({ answer: '第一条回复', citations: [] } as Awaited<ReturnType<typeof QnAService.Answer>>)
+    finish({ answer: '第一条回复', citations: [] } as Awaited<ReturnType<typeof QnAService.AnswerStream>>)
     await flushPromises()
     await wrapper.setProps({ visible: true })
     await flushPromises()

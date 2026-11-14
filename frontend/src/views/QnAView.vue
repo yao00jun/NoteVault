@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessageCircle, Send, Trash2, FileText, Loader2, Sparkles } from '@lucide/vue'
+import { MessageCircle, Send, Trash2, FileText, Loader2, Sparkles, Square } from '@lucide/vue'
 // 问答状态机已抽离为 useAIChat（AI-COPILOT-FLOATING-ORB 蓝图 Step 1），
 // 本视图只保留「全页问答」这一种呈现形态。
 import { useAIChat } from '@/composables/useAIChat'
@@ -12,13 +12,16 @@ const {
   messages,
   question,
   isAsking,
+  streaming,
+  streamingText,
   canAsk,
   ask,
+  stopStreaming,
   clearConversation,
   onKeydown,
   openCitation,
   renderMarkdown,
-} = useAIChat({ persistHistory: true })
+} = useAIChat({ persistHistory: true, stream: true })
 
 const messagesRef = ref<HTMLElement | null>(null)
 
@@ -30,6 +33,8 @@ async function scrollToBottom() {
 }
 
 watch(messages, () => { scrollToBottom() }, { deep: true })
+// 流式期间增量文本也要跟随滚动（messages 只在最终 settle 时变化一次）
+watch(streamingText, () => { scrollToBottom() })
 </script>
 
 <template>
@@ -115,7 +120,28 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
         v-if="isAsking"
         class="msg assistant"
       >
-        <div class="msg-bubble thinking">
+        <div
+          v-if="streaming"
+          class="msg-bubble streaming"
+          data-testid="qna-streaming"
+        >
+          <div
+            class="streaming-body"
+            v-html="renderMarkdown(streamingText)"
+          />
+          <button
+            type="button"
+            class="stop-btn"
+            data-testid="qna-stop"
+            @click="stopStreaming"
+          >
+            <Square :size="11" />{{ t('qna.stop') }}
+          </button>
+        </div>
+        <div
+          v-else
+          class="msg-bubble thinking"
+        >
           <Loader2
             :size="14"
             class="spin"
@@ -297,6 +323,59 @@ watch(messages, () => { scrollToBottom() }, { deep: true })
   gap: 8px;
   color: var(--text-secondary, #9d9d9d);
   font-size: 13px;
+}
+
+.msg-bubble.streaming {
+  display: grid;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.streaming-body {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-primary, #e8e8e8);
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.streaming-body :deep(p) { margin: 0 0 8px; }
+.streaming-body :deep(p:last-child),
+.streaming-body :deep(ul:last-child),
+.streaming-body :deep(ol:last-child) { margin-bottom: 0; }
+.streaming-body :deep(ul),
+.streaming-body :deep(ol) { margin: 0 0 8px; padding-left: 18px; }
+.streaming-body :deep(code) {
+  background: var(--bg-hover);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 13px;
+}
+.streaming-body :deep(pre) {
+  white-space: pre-wrap;
+  background: var(--bg-hover);
+  border-radius: 6px;
+  padding: 8px;
+  overflow: auto;
+}
+
+.stop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  justify-self: start;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-content);
+  color: var(--text-secondary, #9d9d9d);
+  font-size: 11px;
+}
+
+.stop-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .msg-content :deep(p) {

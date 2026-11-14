@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -403,4 +404,139 @@ func doLLMRequest(client *http.Client, req *http.Request) ([]byte, int, error) {
 	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	return data, resp.StatusCode, nil
+}
+
+// ---- 流式（SSE）----
+
+// llmChatStream 与 llmChatComplete 同语义（返回完整文本），但通过 onDelta
+// 推送增量文本。仅 openai-chat 实现真流式（SSE）；其余协议回落到一次性完成、
+// onDelta 只收到一次完整文本——与"AI 失败必降级"同一设计立场。
+func llmChatStream(
+	ctx context.Context,
+	client *http.Client,
+	apiKey, baseURL, model, protocol, systemPrompt, userPrompt string,
+	onDelta func(string),
+) (string, error) {
+	p := LLMProtocol(strings.ToLower(strings.TrimSpace(protocol)))
+	if p == "" {
+		p = LLMProtocolOpenAIChat
+	}
+	if p != LLMProtocolOpenAIChat {
+		answer, err := llmChatComplete(ctx, client, apiKey, baseURL, model, protocol, systemPrompt, userPrompt)
+		if err != nil {
+			return "", err
+		}
+		if onDelta != nil && answer != "" {
+			onDelta(answer)
+		}
+		return answer, nil
+	}
+	if strings.TrimSpace(model) == "" {
+		model = "gpt-4o-mini"
+	}
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+	return llmChatOpenAIStream(ctx, client, apiKey, baseURL, model, systemPrompt, userPrompt, onDelta)
+}
+
+type openAIChatStreamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content string `json:"content"`
+		} `json:"delta"`
+	} `json:"choices"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+func llmChatOpenAIStream(ctx context.Context, client *http.Client, apiKey, baseURL, model, systemPrompt, userPrompt string, onDelta func(string)) (string, error) {
+	baseURL = normalizeBaseURL(baseURL)
+	reqBody := openAIChatRequest{
+		Model:  model,
+		Stream: true,
+		Messages: []openAIChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		},
+	}
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("构造请求失败：%w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("构造请求失败：%w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if key := strings.TrimSpace(apiKey); key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("请求 AI 服务失败（请检查网络与 BaseURL）：%w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// 非 200：SSE 约定下错误体仍是 JSON，按现有口径透传
+	if resp.StatusCode != http.StatusOK {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		var er openAIChatResponse
+		if json.Unmarshal(data, &er) == nil && er.Error != nil && er.Error.Message != "" {
+			return "", fmt.Errorf("AI 服务错误：%s", er.Error.Message)
+		}
+		return "", fmt.Errorf("AI 服务返回错误（%d）：%s", resp.StatusCode, string(data))
+	}
+
+	var full strings.Builder
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return "", fmt.Errorf("已取消：%w", err)
+		}
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "data:") {
+			continue // 空行 / event: / 注释行
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "" {
+			continue
+		}
+		if payload == "[DONE]" {
+			break
+		}
+		var chunk openAIChatStreamChunk
+		if json.Unmarshal([]byte(payload), &chunk) != nil {
+			continue // keep-alive 等非 JSON 行静默跳过
+		}
+		if chunk.Error != nil && chunk.Error.Message != "" {
+			return "", fmt.Errorf("AI 服务错误：%s", chunk.Error.Message)
+		}
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+		if delta := chunk.Choices[0].Delta.Content; delta != "" {
+			full.WriteString(delta)
+			if onDelta != nil {
+				onDelta(delta)
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("已取消：%w", ctx.Err())
+		}
+		return "", fmt.Errorf("解析流式响应失败：%w", err)
+	}
+	if ctx.Err() != nil {
+		return "", fmt.Errorf("已取消：%w", ctx.Err())
+	}
+	answer := strings.TrimSpace(full.String())
+	if answer == "" {
+		return "", fmt.Errorf("AI 服务未返回内容")
+	}
+	return answer, nil
 }

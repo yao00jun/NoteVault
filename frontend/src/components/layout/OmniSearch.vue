@@ -16,6 +16,7 @@ import { SearchService, QnAService } from '@/api'
 import type { QnACitation, RerankProvider } from '@/api'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
+import { subscribeQnAStream } from '@/composables/useAIChat'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { isImeComposing } from '@/utils/ime'
 
@@ -118,8 +119,15 @@ async function doAsk() {
   errorMsg.value = ''
   answer.value = ''
   citations.value = []
+  // 流式：qna:delta 逐批追加，首个 delta 即切出答案区渐进渲染；
+  // 最终结果以 AnswerStream 返回值为权威整体替换（规避事件与响应的顺序问题）。
+  const requestID = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const stopDeltas = subscribeQnAStream(requestID, (delta) => {
+    asking.value = false
+    answer.value += delta
+  })
   try {
-    const resp = await QnAService.Answer(
+    const resp = await QnAService.AnswerStream(
       ai.apiKey,
       ai.baseURL,
       ai.model,
@@ -135,6 +143,7 @@ async function doAsk() {
       },
       wsPath.value,
       q,
+      requestID,
     )
     answer.value = (resp?.answer ?? '').trim() || t('omni.emptyAnswer')
     citations.value = resp?.citations ?? []
@@ -142,6 +151,7 @@ async function doAsk() {
     // 平滑降级：问答失败给出可行动提示而非阻断
     errorMsg.value = t('omni.askFailed', { msg: (e as Error).message })
   } finally {
+    stopDeltas()
     asking.value = false
   }
 }

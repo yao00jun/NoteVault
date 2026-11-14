@@ -46,6 +46,16 @@ export function Answer(apiKey: string, baseURL: string, model: string, protocol:
 }
 
 /**
+ * AnswerStream 与 Answer 同语义（检索 → LLM → 带引用回答），但 LLM 增量经
+ * streamSink 以 qna:delta 事件推送（按 requestID 关联），最终结果随方法返回值
+ * 一次性给出。ctx 首参由 Wails 注入：前端 promise.cancel() 会取消本调用并中断
+ * SSE 读取。零命中路径与 Answer 相同（不调 LLM，无增量事件）。
+ */
+export function AnswerStream(apiKey: string, baseURL: string, model: string, protocol: string, embBaseURL: string, embModel: string, embAPIKey: string, rerankCfg: $models.RerankConfig, workspacePath: string, question: string, requestID: string): $CancellablePromise<$models.QnAResponse | null> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.QnAService.AnswerStream", apiKey, baseURL, model, protocol, embBaseURL, embModel, embAPIKey, rerankCfg, workspacePath, question, requestID);
+}
+
+/**
  * HybridSearch 是文档级混合检索，供前端搜索页语义增强使用（P1-3，P1-3b 增强）。
  * 
  * 融合 BM25 文档级排名与向量文档级排名（每个文档取最高块相似度），RRF 加权。

@@ -6,10 +6,22 @@ import { defineComponent } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 
+// 流式事件订阅（qna:delta）走 @wailsio/runtime Events；测试内捕获 handler，
+// 用 events.deltaHandler?.({ data: {...} }) 手动模拟后端派发（范式同 useEditorDraft.test.ts）
+const events = vi.hoisted(() => ({ deltaHandler: null as ((ev?: { data?: { requestID?: string; delta?: string } | null }) => void) | null }))
+vi.mock('@wailsio/runtime', () => ({
+  Events: {
+    On: vi.fn((_name: string, handler: (ev?: { data?: { requestID?: string; delta?: string } | null }) => void) => {
+      events.deltaHandler = handler
+      return () => { events.deltaHandler = null }
+    }),
+  },
+}))
+
 // QnAService 是被测对象的唯一后端出口；CredentialService / ClipperService
 // 是 settings store 初始化的副依赖（缺了会产生 Unhandled Error）
 vi.mock('@/api', () => ({
-  QnAService: { Answer: vi.fn() },
+  QnAService: { Answer: vi.fn(), AnswerStream: vi.fn() },
   CredentialService: {
     GetCredential: vi.fn().mockResolvedValue(''),
     SaveCredential: vi.fn().mockResolvedValue(undefined),
@@ -25,6 +37,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { QnAService } from '@/api'
 
 const answerMock = vi.mocked(QnAService.Answer)
+const answerStreamMock = vi.mocked(QnAService.AnswerStream)
 
 const routes = [
   { path: '/', redirect: '/knowledge' },
@@ -41,7 +54,7 @@ enableAutoUnmount(afterEach)
 /** 通过宿主组件在真实 setup 上下文里调用 useAIChat；返回 router 便于断言跳转结果 */
 function mountHostWithRouter(
   buildContext?: ContextBuilder,
-  options: { persistHistory?: boolean } = {},
+  options: { persistHistory?: boolean; stream?: boolean } = {},
   prepare?: () => void,
 ) {
   const pinia = createPinia()
@@ -59,7 +72,7 @@ function mountHostWithRouter(
   return { chat, router }
 }
 
-function mountHost(buildContext?: ContextBuilder, options: { persistHistory?: boolean } = {}, prepare?: () => void) {
+function mountHost(buildContext?: ContextBuilder, options: { persistHistory?: boolean; stream?: boolean } = {}, prepare?: () => void) {
   return mountHostWithRouter(buildContext, options, prepare).chat
 }
 
@@ -68,6 +81,7 @@ describe('useAIChat', () => {
     localStorage.clear()
     vi.clearAllMocks()
     answerMock.mockReset()
+    answerStreamMock.mockReset()
     // 通用应答：带一条引用
     answerMock.mockResolvedValue({
       answer: '这是 AI 的回答',
@@ -349,6 +363,78 @@ describe('useAIChat', () => {
     await chat.ask('单次问题')
     await flushPromises()
     expect(localStorage.getItem('notevault.copilot.history.C%3A%2Fnotes')).toBeNull()
+  })
+
+  it('stream 开启时走 AnswerStream：增量渐进上屏，resolve 后整体落一条消息', async () => {
+    const chat = mountHost(undefined, { stream: true }, () => {
+      useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
+      useWorkspaceStore().setCurrentWorkspace({ id: 'ws', name: '笔记库', path: 'C:/notes', createdAt: '', lastOpenedAt: '' })
+    })
+    let resolveStream!: (value: { answer: string; citations: never[] }) => void
+    answerStreamMock.mockImplementation(() => new Promise(resolve => { resolveStream = resolve }) as unknown as ReturnType<typeof QnAService.AnswerStream>)
+    const pending = chat.ask('流式问题')
+    await flushPromises()
+
+    expect(answerStreamMock).toHaveBeenCalledTimes(1)
+    expect(answerMock).not.toHaveBeenCalled()
+    expect(chat.streaming.value).toBe(true)
+    expect(events.deltaHandler).toBeTruthy()
+    const requestID = String(answerStreamMock.mock.calls[0]?.at(-1))
+    expect(requestID).not.toBe('')
+
+    events.deltaHandler?.({ data: { requestID, delta: '第一段 ' } })
+    events.deltaHandler?.({ data: { requestID, delta: '第二段' } })
+    expect(chat.streamingText.value).toBe('第一段 第二段')
+    expect(chat.messages.value).toHaveLength(1) // 尚未 settle，最终消息未落
+
+    resolveStream({ answer: '第一段 第二段 [1]', citations: [] })
+    await pending
+    await flushPromises()
+    expect(chat.streaming.value).toBe(false)
+    expect(chat.streamingText.value).toBe('')
+    expect(chat.messages.value).toHaveLength(2)
+    expect(chat.messages.value[1]).toMatchObject({ role: 'assistant', content: '第一段 第二段 [1]' })
+  })
+
+  it('stopStreaming 取消后保留部分文本为正常回答（非 error）', async () => {
+    const chat = mountHost(undefined, { stream: true }, () => {
+      useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
+      useWorkspaceStore().setCurrentWorkspace({ id: 'ws', name: '笔记库', path: 'C:/notes', createdAt: '', lastOpenedAt: '' })
+    })
+    let cancelFn!: () => void
+    answerStreamMock.mockImplementation(() => {
+      const promise = new Promise((_resolve, reject) => {
+        cancelFn = () => reject({ name: 'CancelError' })
+      })
+      return Object.assign(promise, { cancel: () => cancelFn() }) as unknown as ReturnType<typeof QnAService.AnswerStream>
+    })
+    const pending = chat.ask('长问题')
+    await flushPromises()
+    const requestID = String(answerStreamMock.mock.calls[0]?.at(-1))
+    events.deltaHandler?.({ data: { requestID, delta: '部分答案' } })
+
+    chat.stopStreaming()
+    await pending
+    await flushPromises()
+    expect(chat.messages.value).toHaveLength(2)
+    expect(chat.messages.value[1]).toMatchObject({ role: 'assistant', content: '部分答案' })
+    expect(chat.messages.value[1]?.error).toBeUndefined()
+    expect(chat.streaming.value).toBe(false)
+    expect(chat.streamingText.value).toBe('')
+  })
+
+  it('未开 stream 时保持阻塞式 Answer 且不订阅流式事件', async () => {
+    const { Events } = await import('@wailsio/runtime')
+    const onSpy = vi.mocked(Events.On)
+    const chat = mountHost(undefined, {}, () => {
+      useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
+      useWorkspaceStore().setCurrentWorkspace({ id: 'ws', name: '笔记库', path: 'C:/notes', createdAt: '', lastOpenedAt: '' })
+    })
+    await chat.ask('普通问题')
+    await flushPromises()
+    expect(answerMock).toHaveBeenCalledTimes(1)
+    expect(answerStreamMock).not.toHaveBeenCalled()
+    expect(onSpy).not.toHaveBeenCalled()
   })
 })
 

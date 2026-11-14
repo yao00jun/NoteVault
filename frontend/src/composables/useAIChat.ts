@@ -1,6 +1,7 @@
 import { ref, computed, watch, onScopeDispose } from 'vue'
 import { useRouter } from 'vue-router'
 import { marked } from 'marked'
+import { Events } from '@wailsio/runtime'
 import { QnAService } from '@/api'
 import type { QnACitation, RerankProvider } from '@/api'
 import { i18n } from '@/i18n'
@@ -44,6 +45,8 @@ export interface UseAIChatOptions {
   buildContext?: ContextBuilder
   /** 把对话持久化到本地（按工作区隔离），重开页面时恢复；仅抽屉 / QnA 全页开启，蒸馏窗口等单次场景关闭。 */
   persistHistory?: boolean
+  /** 走 AnswerStream 流式回答（qna:delta 事件逐字上屏 + 可停止）；蒸馏窗口等 JSON 草稿场景关闭。 */
+  stream?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -54,6 +57,44 @@ export interface UseAIChatOptions {
 // ---------------------------------------------------------------------------
 const activeAskCount = ref(0)
 export const isAIAnswering = computed(() => activeAskCount.value > 0)
+
+// ---------------------------------------------------------------------------
+// 流式增量（qna:delta）路由：模块级单例订阅，按 requestID 分发到进行中的会话。
+// 后端节流发射（≈60ms/批，负载 QnAStreamDelta{requestID, delta}）；最终结果以
+// AnswerStream 的返回值为权威（promise resolve 时整体替换），事件只承担"逐字上屏"。
+// ---------------------------------------------------------------------------
+const QNA_STREAM_EVENT = 'qna:delta'
+const deltaHandlers = new Map<string, (delta: string) => void>()
+let deltaListenerAttached = false
+
+function newStreamRequestID(): string {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `req-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function ensureDeltaListener() {
+  if (deltaListenerAttached) return
+  try {
+    Events.On(QNA_STREAM_EVENT, (ev?: { data?: { requestID?: string; delta?: string } | null }) => {
+      const payload = ev?.data
+      if (!payload?.requestID || typeof payload.delta !== 'string' || !payload.delta) return
+      deltaHandlers.get(payload.requestID)?.(payload.delta)
+    })
+    deltaListenerAttached = true
+  } catch (e) {
+    console.warn('[useAIChat] 流式事件订阅不可用（非 Wails 环境），回退阻塞式:', e)
+  }
+}
+
+/** 供不经 useAIChat 实例的调用方（OmniSearch）复用同一订阅路由；返回退订函数。 */
+export function subscribeQnAStream(requestID: string, onDelta: (delta: string) => void): () => void {
+  ensureDeltaListener()
+  deltaHandlers.set(requestID, onDelta)
+  return () => {
+    if (deltaHandlers.get(requestID) === onDelta) deltaHandlers.delete(requestID)
+  }
+}
 
 // ---------------------------------------------------------------------------
 // 会话持久化（按工作区隔离）：开启后重开抽屉/页面可接续上一段对话。
@@ -106,6 +147,12 @@ export function useAIChat(options: UseAIChatOptions = {}) {
   const messages = ref<ChatMessage[]>(options.persistHistory ? loadHistory(workspaceStore.currentWorkspace?.path) : [])
   const question = ref('')
   const isAsking = ref(false)
+  // 流式状态（stream 选项开启时使用）：streamingText 是气泡上的渐进文本，
+  // 最终消息仍以 AnswerStream 返回值整体入列（persistHistory 只在那时变化一次）。
+  const streaming = ref(false)
+  const streamingText = ref('')
+  let streamRequestID = ''
+  let streamCall: ReturnType<typeof QnAService.AnswerStream> | null = null
   let workspaceGeneration = 0
   let disposed = false
 
@@ -114,6 +161,10 @@ export function useAIChat(options: UseAIChatOptions = {}) {
     messages.value = []
     question.value = ''
     isAsking.value = false
+    if (streamRequestID) deltaHandlers.delete(streamRequestID)
+    streaming.value = false
+    streamingText.value = ''
+    streamCall = null
   }
 
   // 持久化开启时：切换前把当前对话写入旧工作区档案，再载入新工作区的历史。
@@ -195,23 +246,50 @@ export function useAIChat(options: UseAIChatOptions = {}) {
       if (questionOverride == null) question.value = ''
       activeAskCount.value += 1
       counted = true
-      const resp = await QnAService.Answer(
-        ai.apiKey,
-        ai.baseURL,
-        ai.model,
-        ai.protocol,
-        emb.baseURL,
-        emb.model,
-        emb.apiKey,
-        {
-          provider: rerank.provider as unknown as RerankProvider,
-          baseURL: rerank.baseURL,
-          model: rerank.model,
-          apiKey: rerank.apiKey,
-        },
-        ws.path,
-        payload,
-      )
+
+      const rerankCfg = {
+        provider: rerank.provider as unknown as RerankProvider,
+        baseURL: rerank.baseURL,
+        model: rerank.model,
+        apiKey: rerank.apiKey,
+      }
+      let resp: Awaited<ReturnType<typeof QnAService.Answer>>
+      if (options.stream) {
+        // 流式：注册增量路由 → qna:delta 逐批追加到 streamingText（气泡渐进渲染）；
+        // promise resolve 时以下发的 resp.answer 为最终权威整体落一条消息。
+        ensureDeltaListener()
+        streamRequestID = newStreamRequestID()
+        deltaHandlers.set(streamRequestID, (delta) => { streamingText.value += delta })
+        streaming.value = true
+        streamingText.value = ''
+        streamCall = QnAService.AnswerStream(
+          ai.apiKey,
+          ai.baseURL,
+          ai.model,
+          ai.protocol,
+          emb.baseURL,
+          emb.model,
+          emb.apiKey,
+          rerankCfg,
+          ws.path,
+          payload,
+          streamRequestID,
+        )
+        resp = await streamCall
+      } else {
+        resp = await QnAService.Answer(
+          ai.apiKey,
+          ai.baseURL,
+          ai.model,
+          ai.protocol,
+          emb.baseURL,
+          emb.model,
+          emb.apiKey,
+          rerankCfg,
+          ws.path,
+          payload,
+        )
+      }
       if (!isCurrent()) return
       messages.value.push({
         role: 'assistant',
@@ -220,12 +298,24 @@ export function useAIChat(options: UseAIChatOptions = {}) {
       })
     } catch (e) {
       if (!isCurrent()) return
+      if ((e as { name?: string } | null)?.name === 'CancelError') {
+        // 用户主动停止：保留已生成的部分文本为正常回答（无 error 标记）
+        const partial = streamingText.value.trim()
+        if (partial) messages.value.push({ role: 'assistant', content: partial, citations: [] })
+        return
+      }
       messages.value.push({
         role: 'assistant',
         content: t('qna.askFailed', { msg: (e as Error).message }),
         error: true,
       })
     } finally {
+      if (options.stream) {
+        if (streamRequestID) deltaHandlers.delete(streamRequestID)
+        streaming.value = false
+        streamingText.value = ''
+        streamCall = null
+      }
       if (isCurrent()) isAsking.value = false
       // Detached calls still count until their actual backend promise settles.
       if (counted) activeAskCount.value -= 1
@@ -236,6 +326,16 @@ export function useAIChat(options: UseAIChatOptions = {}) {
     if (isAsking.value) return
     messages.value = []
     if (options.persistHistory) saveHistory(workspaceStore.currentWorkspace?.path, [])
+  }
+
+  /** 停止当前流式回答：取消后端调用（Wails ctx 取消中断 SSE），已生成的部分文本保留为普通回答。 */
+  function stopStreaming() {
+    if (!streaming.value) return
+    try {
+      streamCall?.cancel?.()
+    } catch (e) {
+      console.warn('[useAIChat] 停止流式请求失败:', e)
+    }
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -265,8 +365,11 @@ export function useAIChat(options: UseAIChatOptions = {}) {
     messages,
     question,
     isAsking,
+    streaming,
+    streamingText,
     canAsk,
     ask,
+    stopStreaming,
     clearConversation,
     onKeydown,
     openCitation,

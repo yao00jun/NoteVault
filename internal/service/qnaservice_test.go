@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -107,6 +108,117 @@ func TestQnAService_Answer_NoWorkspace(t *testing.T) {
 	_, err := svc.Answer("k", "http://x", "m", "", "", "", "", RerankConfig{}, "", "问题")
 	if err == nil {
 		t.Errorf("expected error for empty workspace")
+	}
+}
+
+// captureSink 捕获流式增量事件的假 sink。
+type captureSink struct {
+	mu     sync.Mutex
+	events []*QnAStreamDelta
+}
+
+func (c *captureSink) Emit(eventName string, data any) {
+	if eventName != EventQnAStreamDelta {
+		return
+	}
+	if delta, ok := data.(*QnAStreamDelta); ok {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.events = append(c.events, delta)
+	}
+}
+
+func TestQnAService_AnswerStream(t *testing.T) {
+	ClearAllSearchIndexes()
+	ws := newQnATestWorkspace(t)
+
+	var gotBody openAIChatRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if !gotBody.Stream {
+			t.Error("AnswerStream must request stream=true")
+		}
+		sseChunks(w, []string{"Go 支持 ", "goroutine 并发 [1]。"}, true)
+	}))
+	defer server.Close()
+
+	sink := &captureSink{}
+	svc := NewQnAServiceWithRegistryAndSink(nil, nil, nil, nil, sink)
+	resp, err := svc.AnswerStream(context.Background(), "test-key", server.URL, "model-x", "", "", "", "",
+		RerankConfig{}, ws, "Go 语言如何做并发编程", "req-1")
+	if err != nil {
+		t.Fatalf("AnswerStream failed: %v", err)
+	}
+	if !strings.Contains(resp.Answer, "goroutine") {
+		t.Errorf("unexpected answer: %s", resp.Answer)
+	}
+	if len(resp.Citations) == 0 {
+		t.Fatalf("expected citations, got none")
+	}
+	if len(sink.events) == 0 {
+		t.Fatal("expected delta events via sink")
+	}
+	joined := ""
+	for _, e := range sink.events {
+		if e.RequestID != "req-1" {
+			t.Errorf("requestID mismatch: %s", e.RequestID)
+		}
+		joined += e.Delta
+	}
+	// 增量串接应等于最终答案（同一条 SSE 流的两面）
+	if joined != resp.Answer {
+		t.Fatalf("deltas should concatenate to the answer:\n deltas=%q\n answer=%q", joined, resp.Answer)
+	}
+}
+
+func TestQnAService_AnswerStream_NilSinkStillReturns(t *testing.T) {
+	ClearAllSearchIndexes()
+	ws := newQnATestWorkspace(t)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sseChunks(w, []string{"Go 支持 goroutine [1]。"}, true)
+	}))
+	defer server.Close()
+
+	svc := NewQnAService() // 无 sink：静默不发射，但最终结果照常返回
+	resp, err := svc.AnswerStream(context.Background(), "test-key", server.URL, "model-x", "", "", "", "",
+		RerankConfig{}, ws, "Go 语言如何做并发编程", "req-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(resp.Answer, "goroutine") {
+		t.Fatalf("unexpected answer: %s", resp.Answer)
+	}
+}
+
+func TestQnAService_AnswerStream_NoMatchEmitsNothing(t *testing.T) {
+	ClearAllSearchIndexes()
+	ws := newQnATestWorkspace(t)
+
+	sink := &captureSink{}
+	svc := NewQnAServiceWithRegistryAndSink(nil, nil, nil, nil, sink)
+	resp, err := svc.AnswerStream(context.Background(), "test-key", "http://127.0.0.1:1", "m", "", "", "", "",
+		RerankConfig{}, ws, "zzz 完全无关的量子鞋垫", "req-3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sink.events) != 0 {
+		t.Fatalf("zero-hit path must not emit deltas, got %v", sink.events)
+	}
+	if resp.Citations != nil {
+		t.Fatalf("zero-hit should return nil citations")
+	}
+}
+
+func TestQnAService_AnswerStream_RequiresRequestID(t *testing.T) {
+	svc := NewQnAService()
+	_, err := svc.AnswerStream(context.Background(), "", "http://localhost:9", "m", "", "", "", "",
+		RerankConfig{}, "/tmp", "问题", "")
+	if err == nil || !strings.Contains(err.Error(), "requestID") {
+		t.Fatalf("expected requestID error, got %v", err)
 	}
 }
 

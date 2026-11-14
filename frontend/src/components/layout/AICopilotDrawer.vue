@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { X, Trash2, Send, Loader2, FileText, Search, ListTodo, WandSparkles, Inbox } from '@lucide/vue'
+import { X, Trash2, Send, Loader2, FileText, Search, ListTodo, WandSparkles, Inbox, Square } from '@lucide/vue'
 import { FileService } from '@/api'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
@@ -116,13 +116,17 @@ const {
   messages,
   question,
   isAsking,
+  streaming,
+  streamingText,
   canAsk,
   ask: askAI,
+  stopStreaming,
   clearConversation,
   openCitation,
   renderMarkdown,
 } = useAIChat({
   persistHistory: true,
+  stream: true,
   buildContext: async (force) => {
     if (activeRequest.value && (attachContext.value || force)) return activeRequest.value.context
     // 勾选「关联当前文档上下文」或快捷指令强制注入时，带上文档内容
@@ -240,6 +244,8 @@ async function scrollToBottom() {
 }
 
 watch(messages, () => { void scrollToBottom() }, { deep: true })
+// 流式期间增量文本也要跟随滚动（messages 只在最终 settle 时变化一次）
+watch(streamingText, () => { void scrollToBottom() })
 
 function onDocMousedown(e: MouseEvent) {
   const target = e.target as HTMLElement
@@ -468,7 +474,28 @@ onBeforeUnmount(() => {
         v-if="isAsking"
         class="msg assistant"
       >
-        <div class="msg-bubble thinking">
+        <div
+          v-if="streaming"
+          class="msg-bubble streaming"
+          data-testid="copilot-streaming"
+        >
+          <div
+            class="streaming-body"
+            v-html="renderMarkdown(streamingText)"
+          />
+          <button
+            type="button"
+            class="stop-btn"
+            data-testid="copilot-stop"
+            @click="stopStreaming"
+          >
+            <Square :size="11" />{{ t('copilot.stop') }}
+          </button>
+        </div>
+        <div
+          v-else
+          class="msg-bubble thinking"
+        >
           <Loader2
             :size="14"
             class="spin"
@@ -759,6 +786,59 @@ onBeforeUnmount(() => {
   gap: 8px;
   color: var(--text-secondary, #9d9d9d);
   font-size: 12px;
+}
+
+.msg-bubble.streaming {
+  display: grid;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.streaming-body {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-primary, #e8e8e8);
+  overflow-wrap: anywhere;
+  max-height: 300px;
+  overflow: auto;
+}
+
+.streaming-body :deep(p) { margin: 0 0 6px; }
+.streaming-body :deep(p:last-child),
+.streaming-body :deep(ul:last-child),
+.streaming-body :deep(ol:last-child) { margin-bottom: 0; }
+.streaming-body :deep(ul),
+.streaming-body :deep(ol) { margin: 0 0 6px; padding-left: 18px; }
+.streaming-body :deep(code) {
+  background: rgb(255 255 255 / 8%);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+.streaming-body :deep(pre) {
+  white-space: pre-wrap;
+  background: rgb(255 255 255 / 6%);
+  border-radius: 6px;
+  padding: 8px;
+  overflow: auto;
+}
+
+.stop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  justify-self: start;
+  padding: 3px 10px;
+  border: 1px solid rgb(255 255 255 / 25%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 6%);
+  color: var(--text-secondary, #9d9d9d);
+  font-size: 11px;
+}
+
+.stop-btn:hover {
+  background: rgb(255 255 255 / 12%);
+  color: var(--text-primary, #e8e8e8);
 }
 
 .msg-content :deep(p) {

@@ -83,6 +83,10 @@ type QnAService struct {
 	// 检索融合退化为纯 BM25 + 向量 RRF，行为与 P1-3 结束态一致（红线 #1）。
 	reranker Reranker
 
+	// streamSink 流式增量事件出口（AnswerStream 用）。nil 时静默不发射（测试/降级）。
+	// 生产装配由 app 层注入 wailsTaskEmitter{}（与 task:progress 同款桥接）。
+	streamSink StreamEventSink
+
 	// vectorMu 只保护 vectorCache 与 buildLocks 的 map 操作本身。
 	// 构建/增量同步持 per-key 锁（buildLocks 按「工作区|模型」分锁）：
 	// 全局锁会让某个工作区首次建索引（分钟级 embed）卡死其它工作区的问答。
@@ -110,6 +114,12 @@ func NewQnAService() *QnAService {
 // embedder 为 nil 时回落到 NoopEmbedder（向量 leg 不可用，检索退化为纯 BM25）。
 // reranker 为 nil 时回落到 NoopReranker（重排不可用，检索退化为纯 RRF 融合）。
 func NewQnAServiceWithRegistry(fileService *FileService, indexes *SearchIndexRegistry, embedder Embedder, reranker Reranker) *QnAService {
+	return NewQnAServiceWithRegistryAndSink(fileService, indexes, embedder, reranker, nil)
+}
+
+// NewQnAServiceWithRegistryAndSink 在 WithRegistry 基础上注入流式事件出口。
+// sink 为 nil 时 AnswerStream 仍可用（返回最终结果），只是不发射增量事件。
+func NewQnAServiceWithRegistryAndSink(fileService *FileService, indexes *SearchIndexRegistry, embedder Embedder, reranker Reranker, sink StreamEventSink) *QnAService {
 	if embedder == nil {
 		embedder = &NoopEmbedder{}
 	}
@@ -122,6 +132,7 @@ func NewQnAServiceWithRegistry(fileService *FileService, indexes *SearchIndexReg
 		fileService:  fileService,
 		embedder:     embedder,
 		reranker:     reranker,
+		streamSink:   sink,
 		vectorCache:  make(map[string]*VectorStore),
 		vectorBuilds: make(map[string]*sync.Mutex),
 	}
@@ -210,9 +221,36 @@ func (s *QnAService) Answer(apiKey, baseURL, model, protocol, embBaseURL, embMod
 	}
 
 	embCfg := EmbeddingConfig{BaseURL: embBaseURL, Model: embModel, APIKey: embAPIKey}
-	scored := s.retrieveChunksHybrid(workspacePath, question, embCfg, rerankCfg, LLMEndpoint{
+	systemPrompt, citations, err := s.qnaAnswerContext(workspacePath, question, embCfg, rerankCfg, LLMEndpoint{
 		apiKey: apiKey, baseURL: baseURL, model: model, protocol: protocol,
 	})
+	if err != nil {
+		return nil, err
+	}
+	if len(citations) == 0 {
+		// 知识库中未检索到相关内容，直接返回提示而不调用 LLM
+		return &QnAResponse{
+			Answer:    "未在当前知识库中检索到与该问题相关的内容。请尝试换个问法，或先补充相关笔记。",
+			Citations: nil,
+		}, nil
+	}
+
+	answer, err := llmChatComplete(context.Background(), s.client, apiKey, baseURL, model, protocol, systemPrompt, question)
+	if err != nil {
+		return nil, err
+	}
+
+	return &QnAResponse{
+		Answer:    answer,
+		Citations: citations,
+	}, nil
+}
+
+// qnaAnswerContext 检索并组装回答上下文：返回 system prompt 与引用列表。
+// Answer 与 AnswerStream 共用，保证两条链路的检索与引用口径逐字节一致。
+// citations 为空表示未检索到相关内容（调用方返回固定提示，不调 LLM）。
+func (s *QnAService) qnaAnswerContext(workspacePath, question string, embCfg EmbeddingConfig, rerankCfg RerankConfig, llm LLMEndpoint) (string, []QnACitation, error) {
+	scored := s.retrieveChunksHybrid(workspacePath, question, embCfg, rerankCfg, llm)
 
 	// 组装上下文：按块累计，受总预算约束。
 	// 与旧实现的差别是「截断单位」——旧的是每篇砍到 2500 字（砍掉的是后半篇），
@@ -245,11 +283,7 @@ func (s *QnAService) Answer(apiKey, baseURL, model, protocol, embBaseURL, embMod
 	}
 
 	if len(citations) == 0 {
-		// 知识库中未检索到相关内容，直接返回提示而不调用 LLM
-		return &QnAResponse{
-			Answer:    "未在当前知识库中检索到与该问题相关的内容。请尝试换个问法，或先补充相关笔记。",
-			Citations: nil,
-		}, nil
+		return "", citations, nil
 	}
 
 	systemPrompt := "你是个人知识库问答助手。请仅依据下面提供的知识库片段回答用户问题，" +
@@ -259,12 +293,99 @@ func (s *QnAService) Answer(apiKey, baseURL, model, protocol, embBaseURL, embMod
 		"3. 如果片段中没有足够信息回答问题，请如实说明知识库中缺少相关内容；\n" +
 		"4. 使用 Markdown 输出，简洁准确，不要编造片段中不存在的内容。\n\n" +
 		"知识库片段：\n" + ctx.String()
+	return systemPrompt, citations, nil
+}
 
-	answer, err := llmChatComplete(context.Background(), s.client, apiKey, baseURL, model, protocol, systemPrompt, question)
+// ---------------------------------------------------------------------------
+// 流式问答（SSE + 事件推送）
+// ---------------------------------------------------------------------------
+
+// EventQnAStreamDelta 流式回答增量事件名（payload: *QnAStreamDelta）。
+// 前端按 requestID 路由到对应会话；最终结果以 AnswerStream 的返回值为权威
+// （promise resolve 时的整体替换），事件只承担"逐字上屏"。
+const EventQnAStreamDelta = "qna:delta"
+
+// QnAStreamDelta 是流式回答的一条增量。
+type QnAStreamDelta struct {
+	RequestID string `json:"requestID"`
+	Delta     string `json:"delta"`
+}
+
+// StreamEventSink 接收流式事件。与 TaskEmitter 同形（结构化类型），
+// app 层注入 wailsTaskEmitter{} 桥接到 Wails 前端事件。
+type StreamEventSink interface {
+	Emit(eventName string, data any)
+}
+
+// qnaStreamFlushInterval Go 侧增量发射节流：对齐 task:progress 的 100ms 先例
+// 取更短的 60ms，保证"逐字感"同时把事件量压到 ≈16/s。包级变量便于测试缩短。
+var qnaStreamFlushInterval = 60 * time.Millisecond
+
+// AnswerStream 与 Answer 同语义（检索 → LLM → 带引用回答），但 LLM 增量经
+// streamSink 以 qna:delta 事件推送（按 requestID 关联），最终结果随方法返回值
+// 一次性给出。ctx 首参由 Wails 注入：前端 promise.cancel() 会取消本调用并中断
+// SSE 读取。零命中路径与 Answer 相同（不调 LLM，无增量事件）。
+func (s *QnAService) AnswerStream(ctx context.Context, apiKey, baseURL, model, protocol, embBaseURL, embModel, embAPIKey string, rerankCfg RerankConfig, workspacePath, question, requestID string) (*QnAResponse, error) {
+	question = strings.TrimSpace(question)
+	if question == "" {
+		return nil, fmt.Errorf("问题不能为空")
+	}
+	if _, err := requireCredential(baseURL, apiKey); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(workspacePath) == "" {
+		return nil, fmt.Errorf("未选择工作区")
+	}
+	if strings.TrimSpace(requestID) == "" {
+		return nil, fmt.Errorf("缺少 requestID，无法关联流式增量")
+	}
+
+	embCfg := EmbeddingConfig{BaseURL: embBaseURL, Model: embModel, APIKey: embAPIKey}
+	systemPrompt, citations, err := s.qnaAnswerContext(workspacePath, question, embCfg, rerankCfg, LLMEndpoint{
+		apiKey: apiKey, baseURL: baseURL, model: model, protocol: protocol,
+	})
 	if err != nil {
 		return nil, err
 	}
+	if len(citations) == 0 {
+		return &QnAResponse{
+			Answer:    "未在当前知识库中检索到与该问题相关的内容。请尝试换个问法，或先补充相关笔记。",
+			Citations: nil,
+		}, nil
+	}
 
+	// Go 侧节流：delta 先进缓冲，首个立即发射（压首字延迟），此后满间隔批量发。
+	var (
+		mu        sync.Mutex
+		buf       strings.Builder
+		lastFlush time.Time
+	)
+	flush := func() {
+		mu.Lock()
+		pending := buf.String()
+		buf.Reset()
+		lastFlush = time.Now()
+		mu.Unlock()
+		if pending == "" || s.streamSink == nil {
+			return
+		}
+		s.streamSink.Emit(EventQnAStreamDelta, &QnAStreamDelta{RequestID: requestID, Delta: pending})
+	}
+	onDelta := func(delta string) {
+		mu.Lock()
+		buf.WriteString(delta)
+		due := lastFlush.IsZero() || time.Since(lastFlush) >= qnaStreamFlushInterval
+		mu.Unlock()
+		if due {
+			flush()
+		}
+	}
+
+	answer, err := llmChatStream(ctx, s.client, apiKey, baseURL, model, protocol, systemPrompt, question, onDelta)
+	if err != nil {
+		return nil, err
+	}
+	flush() // 发射 60ms 窗口内的残余增量
 	return &QnAResponse{
 		Answer:    answer,
 		Citations: citations,
