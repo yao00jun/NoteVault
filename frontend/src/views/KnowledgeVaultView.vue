@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import {
   Archive,
   ArrowUpRight,
@@ -28,7 +29,7 @@ import {
 } from '@lucide/vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { SPACE_DEFS, type SpaceKey } from '@/composables/useWorkbenchSpaces'
+import { SPACE_DEFS } from '@/composables/useWorkbenchSpaces'
 import { useToast } from '@/composables/useToast'
 import { collectionDateLabel, normalizedCollectionPath } from '@/utils/workbenchCollections'
 import '@/styles/workbench-collections.css'
@@ -40,6 +41,7 @@ const workspace = useWorkspaceStore()
 const router = useRouter()
 const route = useViewRoute('/vault')
 const toast = useToast()
+const { t } = useI18n()
 const search = ref('')
 const spaceFilter = ref('all')
 const pinnedOnly = ref(false)
@@ -48,64 +50,60 @@ const page = ref(1)
 const pageSize = ref(10)
 const pageSizes = [10, 20, 50]
 const folderFilter = ref('')
-const spaceCopy: Record<SpaceKey, { label: string; description: string }> = {
-  learning: { label: '学习', description: '把理解连成体系' },
-  projects: { label: '项目', description: '让经验回到实践' },
-  resources: { label: '资料收藏', description: '留住有价值的参考' },
-  inbox: { label: '收集箱', description: '为灵感留一个入口' },
-  daily: { label: '工作日志/日报', description: '回顾工作进展与积累' },
-}
 const spaces = computed(() =>
   SPACE_DEFS.map((space) => ({
     ...space,
-    ...spaceCopy[space.key],
+    label: t(`knowledge.vault.spaces.${space.key}.label`),
+    description: t(`knowledge.vault.spaces.${space.key}.description`),
     count: workbench.documents.filter((doc) =>
       normalizedCollectionPath(doc.path).startsWith(space.dir + '/')
     ).length,
   }))
 )
-const insights = [
+const insights = computed(() => [
   {
     id: 'graph',
-    title: '知识图谱',
-    description: '沿着双向链接，发现笔记之间的联系。',
+    title: t('knowledge.vault.insights.graph.title'),
+    description: t('knowledge.vault.insights.graph.description'),
     icon: GitGraph,
   },
   {
     id: 'compile',
-    title: 'AI 整理',
-    description: '把收集箱的碎片，整理为可复用的知识。',
+    title: t('knowledge.vault.insights.compile.title'),
+    description: t('knowledge.vault.insights.compile.description'),
     icon: Sparkles,
   },
   {
     id: 'bases',
-    title: '属性视图',
-    description: '按属性筛选、分组，从不同角度看资料。',
+    title: t('knowledge.vault.insights.bases.title'),
+    description: t('knowledge.vault.insights.bases.description'),
     icon: Table2,
   },
-]
-const tools = [
+])
+const tools = computed(() => [
   {
-    label: '标签树',
-    description: '从主题发现知识',
+    id: 'tags',
+    label: t('knowledge.vault.tools.tags.label'),
+    description: t('knowledge.vault.tools.tags.description'),
     icon: Tags,
     route: '/discover?tab=views&view=tags',
   },
-  { label: '语义问答', description: '围绕笔记提问', icon: Brain, route: '/discover?tab=qna' },
-  { label: '回顾与提醒', description: '统计、任务与提醒', icon: ListTodo, route: '/review' },
-  { label: '归档', description: '已经告一段落的资料', icon: Archive, route: '/archive' },
+  { id: 'qna', label: t('knowledge.vault.tools.qna.label'), description: t('knowledge.vault.tools.qna.description'), icon: Brain, route: '/discover?tab=qna' },
+  { id: 'review', label: t('knowledge.vault.tools.review.label'), description: t('knowledge.vault.tools.review.description'), icon: ListTodo, route: '/review' },
+  { id: 'archive', label: t('knowledge.vault.tools.archive.label'), description: t('knowledge.vault.tools.archive.description'), icon: Archive, route: '/archive' },
   {
-    label: '历史版本',
-    description: '找回笔记的旧版本',
+    id: 'history',
+    label: t('knowledge.vault.tools.history.label'),
+    description: t('knowledge.vault.tools.history.description'),
     icon: History,
     route: '/review?tab=versions',
   },
-  { label: '导入资料', description: '汇入已有的知识', icon: Import, route: '/import' },
-  { label: '白板', description: '展开思路与关系', icon: LayoutDashboard, route: '/canvas' },
-  { label: '插件', description: '扩展你的工作方式', icon: Puzzle, route: '/plugins' },
-  { label: '回收站', description: '恢复最近删除的资料', icon: Trash2, route: '/trash' },
-  { label: '设置', description: '剪藏、外观与偏好', icon: Settings, route: '/settings' },
-]
+  { id: 'import', label: t('knowledge.vault.tools.import.label'), description: t('knowledge.vault.tools.import.description'), icon: Import, route: '/import' },
+  { id: 'canvas', label: t('knowledge.vault.tools.canvas.label'), description: t('knowledge.vault.tools.canvas.description'), icon: LayoutDashboard, route: '/canvas' },
+  { id: 'plugins', label: t('knowledge.vault.tools.plugins.label'), description: t('knowledge.vault.tools.plugins.description'), icon: Puzzle, route: '/plugins' },
+  { id: 'trash', label: t('knowledge.vault.tools.trash.label'), description: t('knowledge.vault.tools.trash.description'), icon: Trash2, route: '/trash' },
+  { id: 'settings', label: t('knowledge.vault.tools.settings.label'), description: t('knowledge.vault.tools.settings.description'), icon: Settings, route: '/settings' },
+])
 const pinnedDocumentCount = computed(
   () => workbench.documents.filter((doc) => workspace.isPinned(doc.path)).length
 )
@@ -168,7 +166,7 @@ function openDocument(path: string) {
 }
 function newDocument() { window.dispatchEvent(new CustomEvent('notevault:new-file', { detail: { folder: folderFilter.value || (spaceFilter.value === 'all' ? 'Inbox' : spaceFilter.value) } })) }
 function togglePin(path: string, title: string) {
-  if (!workspace.togglePin(path, title)) toast.warning('固定区最多容纳 8 项，请先取消一个固定项。')
+  if (!workspace.togglePin(path, title)) toast.warning(t('common.pinLimit'))
 }
 function resetFilters() {
   search.value = ''
@@ -222,17 +220,17 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
       <header class="collection-hero">
         <div>
           <div class="collection-eyebrow">
-            <Library :size="15" /> KNOWLEDGE / 知识库
+            <Library :size="15" /> {{ t('knowledge.vault.eyebrow') }}
           </div>
-          <h1>知识库</h1>
+          <h1>{{ t('knowledge.vault.title') }}</h1>
           <p class="collection-subtitle">
-            管理文档、整理资料，让积累随时可用。
+            {{ t('knowledge.vault.subtitle') }}
           </p>
         </div>
         <div class="collection-actions">
           <button
             class="collection-icon-button"
-            aria-label="刷新知识库"
+            :aria-label="t('knowledge.vault.refreshAria')"
             type="button"
             :disabled="workbench.loading"
             @click="workbench.refresh()"
@@ -259,7 +257,7 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
           type="button"
           @click="workbench.refresh()"
         >
-          重试
+          {{ t('common.retry') }}
         </button>
       </div>
       <div
@@ -267,27 +265,27 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
         class="collection-empty collection-panel"
       >
         <Library :size="34" />
-        <h2>先打开一个工作区</h2>
-        <p>笔记、资料和灵感，会在这里连成你的知识库。</p>
+        <h2>{{ t('common.noWorkspaceTitle') }}</h2>
+        <p>{{ t('knowledge.vault.noWorkspaceDesc') }}</p>
         <button
           class="collection-button primary"
           type="button"
           @click="router.push('/')"
         >
-          选择工作区
+          {{ t('sidebar.selectWorkspace') }}
         </button>
       </div>
       <template v-else>
         <nav
           class="vault-space-filters"
-          aria-label="按知识空间筛选"
+          :aria-label="t('knowledge.vault.spaceFiltersAria')"
         >
           <button
             class="collection-button"
             :aria-pressed="spaceFilter === 'all'"
             @click="spaceFilter = 'all'; folderFilter = ''"
           >
-            全部 <small>{{ workbench.documents.length }}</small>
+            {{ t('knowledge.vault.all') }} <small>{{ workbench.documents.length }}</small>
           </button>
           <button
             v-for="space in spaces"
@@ -311,7 +309,7 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
         >
           <div class="collection-section-title">
             <h2 id="vault-documents-heading">
-              {{ pinnedOnly ? '固定文档' : folderFilter || '全部文档' }}
+              {{ pinnedOnly ? t('knowledge.vault.pinnedTitle') : folderFilter || t('knowledge.allDocs') }}
               <span class="collection-tab-count">{{ filteredDocuments.length }}</span>
             </h2>
             <button
@@ -319,7 +317,7 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
               type="button"
               @click="router.push('/discover?tab=search')"
             >
-              全文检索 <ArrowUpRight :size="13" />
+              {{ t('knowledge.vault.fullTextSearch') }} <ArrowUpRight :size="13" />
             </button>
           </div>
           <div class="vault-document-toolbar">
@@ -327,14 +325,14 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
               v-model="search"
               data-testid="vault-search"
               type="search"
-              aria-label="搜索文档名称或路径"
-              placeholder="搜索文档名称或路径…"
+              :aria-label="t('knowledge.vault.searchAria')"
+              :placeholder="t('knowledge.vault.searchPlaceholder')"
             ></label>
-            <label class="vault-inline-filter"><span class="vault-visually-hidden">文档空间</span><select
+            <label class="vault-inline-filter"><span class="vault-visually-hidden">{{ t('knowledge.vault.spaceLabel') }}</span><select
               v-model="spaceFilter"
-              aria-label="文档空间"
+              :aria-label="t('knowledge.vault.spaceLabel')"
             >
-              <option value="all">全部空间</option>
+              <option value="all">{{ t('knowledge.vault.allSpaces') }}</option>
               <option
                 v-for="space in spaces"
                 :key="space.key"
@@ -350,14 +348,14 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
               type="button"
               @click="pinnedOnly = !pinnedOnly"
             >
-              <Pin :size="13" /> 固定 {{ pinnedDocumentCount }}
+              <Pin :size="13" /> {{ t('knowledge.vault.pinCount', { n: pinnedDocumentCount }) }}
             </button>
-            <label class="vault-inline-filter"><span class="vault-visually-hidden">文档排序</span><select
+            <label class="vault-inline-filter"><span class="vault-visually-hidden">{{ t('knowledge.vault.sortLabel') }}</span><select
               v-model="sortOrder"
-              aria-label="文档排序"
+              :aria-label="t('knowledge.vault.sortLabel')"
             >
-              <option value="recent">最近更新</option>
-              <option value="title">文档名称</option>
+              <option value="recent">{{ t('knowledge.vault.sortRecent') }}</option>
+              <option value="title">{{ t('knowledge.vault.sortTitle') }}</option>
             </select></label>
           </div>
           <div class="collection-panel vault-document-panel">
@@ -369,7 +367,7 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
               <RefreshCw
                 :size="17"
                 class="collection-spin"
-              /> 正在整理文档索引…
+              /> {{ t('knowledge.vault.indexing') }}
             </div>
             <div
               v-else-if="displayedDocuments.length"
@@ -395,7 +393,7 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
                   class="collection-icon-button"
                   :class="{ pinned: workspace.isPinned(doc.path) }"
                   data-testid="document-pin"
-                  :aria-label="(workspace.isPinned(doc.path) ? '取消固定 ' : '固定 ') + doc.title"
+                  :aria-label="workspace.isPinned(doc.path) ? t('knowledge.vault.unpinAria', { name: doc.title }) : t('knowledge.vault.pinAria', { name: doc.title })"
                   :aria-pressed="workspace.isPinned(doc.path)"
                   type="button"
                   @click="togglePin(doc.path, doc.title)"
@@ -410,15 +408,15 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
             >
               <BookOpen :size="32" />
               <h3>
-                {{ workbench.documents.length ? '没有找到符合条件的文档' : '从一篇笔记开始积累' }}
+                {{ workbench.documents.length ? t('knowledge.vault.notFoundTitle') : t('knowledge.vault.emptyTitle') }}
               </h3>
               <p>
                 {{
                   pinnedOnly
-                    ? '给常用文档点一下固定，它也会出现在侧栏。'
+                    ? t('knowledge.vault.pinnedEmptyDesc')
                     : workbench.documents.length
-                      ? '试试其他关键词，或切换到全部空间。'
-                      : '新建笔记、导入资料或剪藏文章，它们都会汇集到对应的空间。'
+                      ? t('knowledge.vault.noMatchDesc')
+                      : t('knowledge.vault.emptyDesc')
                 }}
               </p>
               <button
@@ -427,52 +425,52 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
                 type="button"
                 @click="resetFilters"
               >
-                清除筛选
+                {{ t('knowledge.vault.clearFilters') }}
               </button><button
                 v-else
                 class="collection-button"
                 type="button"
                 @click="newDocument"
               >
-                新建第一篇文档 <ArrowUpRight :size="13" />
+                {{ t('knowledge.vault.createFirst') }} <ArrowUpRight :size="13" />
               </button>
             </div>
             <nav
               v-if="filteredDocuments.length"
               class="vault-pagination"
-              aria-label="文档分页"
+              :aria-label="t('knowledge.vault.paginationAria')"
             >
               <div
                 class="vault-pagination-status"
                 data-testid="vault-pagination-status"
                 role="status"
               >
-                <span>{{ pageStart + 1 }}–{{ pageStart + displayedDocuments.length }} / 共 {{ filteredDocuments.length }} 篇</span>
-                <span>第 {{ currentPage }} / {{ totalPages }} 页</span>
+                <span>{{ t('knowledge.vault.pageStatus', { from: pageStart + 1, to: pageStart + displayedDocuments.length, total: filteredDocuments.length }) }}</span>
+                <span>{{ t('knowledge.vault.pageOf', { page: currentPage, total: totalPages }) }}</span>
               </div>
               <div class="vault-pagination-actions">
                 <label class="vault-inline-filter vault-page-size">
-                  <span>每页</span>
+                  <span>{{ t('knowledge.vault.perPage') }}</span>
                   <select
                     v-model.number="pageSize"
-                    aria-label="每页文档数"
+                    :aria-label="t('knowledge.vault.pageSizeAria')"
                   >
                     <option
                       v-for="size in pageSizes"
                       :key="size"
                       :value="size"
-                    >{{ size }} 篇</option>
+                    >{{ t('knowledge.vault.perPageSize', { n: size }) }}</option>
                   </select>
                 </label>
                 <div class="vault-page-buttons">
                   <button
                     class="collection-button"
                     type="button"
-                    aria-label="上一页"
+                    :aria-label="t('knowledge.vault.prevPage')"
                     :disabled="currentPage === 1"
                     @click="page = currentPage - 1"
                   >
-                    <ChevronLeft :size="14" />上一页
+                    <ChevronLeft :size="14" />{{ t('knowledge.vault.prevPage') }}
                   </button>
                   <template
                     v-for="number in pageNumbers"
@@ -482,7 +480,7 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
                       v-if="typeof number === 'number'"
                       class="collection-button vault-page-number"
                       type="button"
-                      :aria-label="`第 ${number} 页`"
+                      :aria-label="t('knowledge.vault.pageN', { n: number })"
                       :aria-current="currentPage === number ? 'page' : undefined"
                       @click="page = number"
                     >
@@ -497,11 +495,11 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
                   <button
                     class="collection-button"
                     type="button"
-                    aria-label="下一页"
+                    :aria-label="t('knowledge.vault.nextPage')"
                     :disabled="currentPage === totalPages"
                     @click="page = currentPage + 1"
                   >
-                    下一页<ChevronRight :size="14" />
+                    {{ t('knowledge.vault.nextPage') }}<ChevronRight :size="14" />
                   </button>
                 </div>
               </div>
@@ -515,9 +513,9 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
         >
           <div class="collection-section-title">
             <h2 id="vault-insights-heading">
-              洞察与提炼
+              {{ t('knowledge.vault.insightsTitle') }}
             </h2>
-            <span>让积累产生新的联系</span>
+            <span>{{ t('knowledge.vault.insightsSubtitle') }}</span>
           </div>
           <div class="vault-insight-grid">
             <button
@@ -538,15 +536,15 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
 
         <details class="vault-tools">
           <summary>
-            <Wrench :size="15" /><span>更多工具</span><small>标签、归档与历史版本</small><ChevronRight :size="15" />
+            <Wrench :size="15" /><span>{{ t('knowledge.vault.moreTools') }}</span><small>{{ t('knowledge.vault.moreToolsHint') }}</small><ChevronRight :size="15" />
           </summary>
           <nav
             class="vault-tool-grid"
-            aria-label="知识库工具"
+            :aria-label="t('knowledge.vault.toolsAria')"
           >
             <button
               v-for="tool in tools"
-              :key="tool.label"
+              :key="tool.id"
               class="vault-tool"
               type="button"
               @click="router.push(tool.route)"

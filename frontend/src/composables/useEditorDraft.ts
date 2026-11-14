@@ -15,7 +15,7 @@ import { computed, ref, type ComputedRef, type Ref } from 'vue'
 import { Events } from '@wailsio/runtime'
 import { FileService } from '@/api'
 import { diffLines, type DiffRow } from '@/utils/textDiff'
-import { useI18n } from 'vue-i18n'
+import { i18n } from '@/i18n'
 import { useToast } from '@/composables/useToast'
 import { windowsWorkspace } from '@/utils/filePaths'
 
@@ -39,7 +39,7 @@ export function useEditorDraft(options: {
   /** 保存成功后的副作用（如标签缓存失效），失败不阻断保存 */
   onSaved?: () => Promise<void> | void
 }) {
-  const { t } = useI18n()
+  const t = i18n.global.t
   const toast = useToast()
   // A cached editor owns one workspace for its whole lifetime. A delayed
   // disposal or timer must never reinterpret its relative paths in another.
@@ -175,7 +175,7 @@ export function useEditorDraft(options: {
     } catch (e) {
       if (wsPath === options.workspacePath.value && options.tabs.value.includes(tab) && reloadVersions.get(tab) === version) {
         markConflict(tab.path)
-        saveErrors.value[tab.path] = `无法读取文件最新内容：${e instanceof Error ? e.message : String(e)}`
+        saveErrors.value[tab.path] = t('editor.draft.reloadFailed', { msg: e instanceof Error ? e.message : String(e) })
       }
       console.error('[conflict] reload failed:', e)
     }
@@ -191,10 +191,10 @@ export function useEditorDraft(options: {
   /** Flush and reserve every open file a backend Markdown operation may change. */
   async function withExternalFileChanges(paths: string[], operation: () => Promise<void>): Promise<void> {
     const wsPath = workspacePath()
-    if (!wsPath) throw new Error('工作区已变化，请重新打开文档')
-    if (isApplyingExternalChanges.value) throw new Error('上一项文档操作正在保存，请稍候')
+    if (!wsPath) throw new Error(t('editor.draft.workspaceChanged'))
+    if (isApplyingExternalChanges.value) throw new Error(t('editor.draft.previousSaving'))
     const affected = new Set(paths.map(externalPathKey))
-    if (!affected.size) throw new Error('没有需要更新的文档')
+    if (!affected.size) throw new Error(t('editor.draft.nothingToUpdate'))
     externalChangePaths.value = affected
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
     const originals = options.tabs.value.filter(tab => affected.has(externalPathKey(tab.path)))
@@ -209,23 +209,23 @@ export function useEditorDraft(options: {
         for (const aliases of identities.values()) {
           if (aliases.length > 1 && aliases.some(tab => tab.isDirty || pendingSaves.has(tab)) && aliases.some(tab => tab.content !== aliases[0]!.content)) {
             aliases.forEach(tab => markConflict(tab.path))
-            throw new Error('同一文件的多个标签页存在不同草稿，请先另存副本并处理冲突。')
+            throw new Error(t('editor.draft.multiTabDraftConflict'))
           }
         }
       }
       for (const tab of originals) {
         // A disk read begun before the reservation cannot replace newer content.
         reloadVersions.set(tab, (reloadVersions.get(tab) ?? 0) + 1)
-        if (conflictedPaths.value.has(tab.path)) throw new Error(`请先处理文档冲突：${tab.path}`)
+        if (conflictedPaths.value.has(tab.path)) throw new Error(t('editor.draft.conflictFirst', { path: tab.path }))
         if ((tab.isDirty || pendingSaves.has(tab)) && !await persistTab(options.tabs.value.indexOf(tab), true)) {
-          throw new Error(`文档保存未完成，请先处理草稿：${tab.path}`)
+          throw new Error(t('editor.draft.saveUnfinished', { path: tab.path }))
         }
       }
       if (workspacePath() !== wsPath || originals.some(tab => !options.tabs.value.includes(tab))) {
-        throw new Error('工作区或文档已变化，请重新打开沉淀窗口')
+        throw new Error(t('editor.draft.workspaceChangedDistill'))
       }
       if (originals.some(tab => tab.isDirty || conflictedPaths.value.has(tab.path))) {
-        throw new Error('文档仍有未保存的修改或冲突，请保存后重试')
+        throw new Error(t('editor.draft.unsavedOrConflict'))
       }
       started = true
       await operation()

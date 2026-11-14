@@ -179,6 +179,112 @@ func (s *ReportService) GenerateWeeklyReport(workspacePath string, ai WeeklyRepo
 	return result, nil
 }
 
+// ---------------------------------------------------------------------------
+// 今日 AI 简报（打开即今天）：把工作台快照（到期/阻塞任务、到期复习、今日
+// Agent 动态）喂给 LLM，输出 3-5 条"重点/风险/建议"。
+// 与周报"必出统计版"不同，简报的价值就在 AI 综合本身——AI 未配置或失败时
+// 返回错误由前端提示（工作台的确定性指标卡不受影响，符合"AI 可降级不阻断
+// 主链路"）。简报不落盘：它是当天的即时视图数据，由前端按 工作区+日期 缓存。
+// ---------------------------------------------------------------------------
+
+// DailyBriefingResult 今日简报结果。
+type DailyBriefingResult struct {
+	Date     string `json:"date"`
+	Briefing string `json:"briefing"` // Markdown 要点（"- " 开头的 3-5 行）
+	AIUsed   bool   `json:"aiUsed"`
+}
+
+// dailyBriefingLimits 控制喂给 LLM 的工作台数据体积。
+const (
+	dailyBriefingMaxTasks   = 12
+	dailyBriefingMaxEvents  = 8
+	dailyBriefingTaskRunes  = 120
+	dailyBriefingEventRunes = 700
+)
+
+// GenerateDailyBriefing 生成今日 AI 简报。
+func (s *ReportService) GenerateDailyBriefing(workspacePath, date string, ai WeeklyReportAIConfig) (*DailyBriefingResult, error) {
+	if s.todos == nil {
+		return nil, fmt.Errorf("缺少工作台服务，无法生成简报")
+	}
+	baseURL := strings.TrimSpace(ai.BaseURL)
+	model := strings.TrimSpace(ai.Model)
+	if baseURL == "" || model == "" {
+		return nil, fmt.Errorf("未配置 AI 端点，可在设置页配置后生成简报")
+	}
+	snapshot, err := s.todos.GetWorkbench(workspacePath, date)
+	if err != nil {
+		return nil, err
+	}
+
+	// 任务：阻塞优先，其后按到期升序；未到期靠后。
+	var open, blocked, due []*WorkbenchTask
+	for _, task := range snapshot.Tasks {
+		if task.Completed {
+			continue
+		}
+		open = append(open, task)
+		if strings.TrimSpace(task.Blocker) != "" {
+			blocked = append(blocked, task)
+		} else if task.Due != "" && task.Due <= date {
+			due = append(due, task)
+		}
+	}
+	var dueCards int
+	for _, card := range snapshot.Cards {
+		if card.Due != "" && card.Due <= date {
+			dueCards++
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("今日工作台数据（%s）：\n\n## 任务\n未完成 %d 条；今日到期/已逾期 %d 条；阻塞 %d 条\n",
+		date, len(open), len(due), len(blocked)))
+	listed := make(map[string]bool, dailyBriefingMaxTasks)
+	appendTask := func(label string, list []*WorkbenchTask) {
+		for _, task := range list {
+			if len(listed) >= dailyBriefingMaxTasks || listed[task.ID] {
+				continue
+			}
+			listed[task.ID] = true
+			line := fmt.Sprintf("- [%s] %s（项目：%s，到期：%s", task.Type, truncateRunes(task.Title, dailyBriefingTaskRunes), task.Project, task.Due)
+			if strings.TrimSpace(task.Blocker) != "" {
+				line += "，阻塞：" + truncateRunes(task.Blocker, 80)
+			}
+			sb.WriteString(line + "）\n")
+		}
+	}
+	appendTask("阻塞", blocked)
+	appendTask("到期", due)
+
+	sb.WriteString(fmt.Sprintf("\n## 复习\n到期题卡 %d 张\n", dueCards))
+	if len(snapshot.AgentEvents) > 0 {
+		sb.WriteString("\n## 今日 Agent 动态\n")
+		for i, event := range snapshot.AgentEvents {
+			if i >= dailyBriefingMaxEvents {
+				break
+			}
+			line := fmt.Sprintf("- %s [%s] %s", event.Time, event.Agent, strings.TrimSpace(event.Content))
+			sb.WriteString(truncateRunes(line, dailyBriefingEventRunes) + "\n")
+		}
+	}
+
+	systemPrompt := "你是开发者个人工作台的每日简报助手。根据用户给出的工作台数据（任务、到期复习、Agent 动态），用中文输出今日简报：\n" +
+		"1. 直接输出 3-5 条要点，每条一行以 \"- \" 开头，不要标题；\n" +
+		"2. 覆盖今日应优先处理的任务、风险或阻塞、值得趁热做的复习、Agent 已完成的工作；\n" +
+		"3. 只依据给出的数据，不编造；每条不超过 60 字。"
+	answer, aerr := llmChatComplete(context.Background(), s.client,
+		ai.APIKey, baseURL, model, ai.Protocol, systemPrompt, sb.String())
+	if aerr != nil {
+		return nil, fmt.Errorf("AI 简报生成失败：%w", aerr)
+	}
+	briefing := strings.TrimSpace(answer)
+	if briefing == "" {
+		return nil, fmt.Errorf("AI 未返回简报内容，请稍后重试")
+	}
+	return &DailyBriefingResult{Date: date, Briefing: briefing, AIUsed: true}, nil
+}
+
 // truncateRunes 按字符数截断（不切断 rune），超出部分以省略号结尾。
 func truncateRunes(s string, max int) string {
 	runes := []rune(strings.TrimSpace(s))

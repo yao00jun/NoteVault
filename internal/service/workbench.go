@@ -70,6 +70,9 @@ type InterviewCard struct {
 	Failures     int    `json:"failures"`
 	LastReviewed string `json:"lastReviewed"`
 	Weak         bool   `json:"weak"`
+	// Source 是蒸馏时的实战案例来源（srs JSON 的 source 字段，如 "Projects/商城"）；
+	// 手写卡片无此字段（空串）。
+	Source string `json:"source"`
 }
 
 type WorkbenchRadar struct {
@@ -77,17 +80,26 @@ type WorkbenchRadar struct {
 	Content string `json:"content"`
 }
 
+// WorkbenchAgentEvent 是 Agent 经 MCP append_worklog 写入的一条工作日志，
+// 来源文件 Daily/Agent/<date>.md（与人工日报隔离）。
+type WorkbenchAgentEvent struct {
+	Time    string `json:"time"`
+	Agent   string `json:"agent"`
+	Content string `json:"content"`
+}
+
 type WorkbenchSnapshot struct {
-	Date      string              `json:"date"`
-	Tasks     []*WorkbenchTask    `json:"tasks"`
-	Projects  []WorkbenchProject  `json:"projects"`
-	Books     []WorkbenchBook     `json:"books"`
-	Cards     []InterviewCard     `json:"cards"`
-	Progress  []WorkbenchProgress `json:"progress"`
-	Radar     WorkbenchRadar      `json:"radar"`
-	Documents []WorkbenchDocument `json:"documents"`
-	IndexedAt string              `json:"indexedAt"`
-	Warnings  []string            `json:"warnings"`
+	Date        string               `json:"date"`
+	Tasks       []*WorkbenchTask     `json:"tasks"`
+	Projects    []WorkbenchProject   `json:"projects"`
+	Books       []WorkbenchBook      `json:"books"`
+	Cards       []InterviewCard      `json:"cards"`
+	Progress    []WorkbenchProgress  `json:"progress"`
+	AgentEvents []WorkbenchAgentEvent `json:"agentEvents"`
+	Radar       WorkbenchRadar       `json:"radar"`
+	Documents   []WorkbenchDocument  `json:"documents"`
+	IndexedAt   string               `json:"indexedAt"`
+	Warnings    []string             `json:"warnings"`
 }
 
 // GetWorkbench derives every field from the current Markdown, without a cache or database.
@@ -103,7 +115,7 @@ func (s *TodoService) GetWorkbench(workspacePath, date string) (*WorkbenchSnapsh
 	}
 	snapshot := &WorkbenchSnapshot{
 		Date: date, Tasks: []*WorkbenchTask{}, Projects: []WorkbenchProject{}, Books: []WorkbenchBook{},
-		Cards: []InterviewCard{}, Progress: []WorkbenchProgress{}, Documents: []WorkbenchDocument{},
+		Cards: []InterviewCard{}, Progress: []WorkbenchProgress{}, AgentEvents: []WorkbenchAgentEvent{}, Documents: []WorkbenchDocument{},
 		Radar: WorkbenchRadar{Path: "Learning/技术雷达.md"}, IndexedAt: time.Now().Format(time.RFC3339Nano), Warnings: warnings,
 	}
 	for _, file := range files {
@@ -191,6 +203,7 @@ func (s *TodoService) GetWorkbench(workspacePath, date string) (*WorkbenchSnapsh
 		}
 		snapshot.Progress = append(snapshot.Progress, task.Progress...)
 	}
+	snapshot.AgentEvents = readWorkbenchAgentEvents(workspacePath, date)
 	sort.SliceStable(snapshot.Cards, func(i, j int) bool { return snapshot.Cards[i].Due < snapshot.Cards[j].Due })
 	sort.SliceStable(snapshot.Progress, func(i, j int) bool { return workbenchProgressBefore(snapshot.Progress[j], snapshot.Progress[i]) })
 	return snapshot, nil

@@ -74,18 +74,18 @@ async function loadDocContent() {
     if (path) {
       const editor = route.path === '/editor' && editorSession.workspacePath === workspacePath && editorSession.path === path ? getActiveEditor() : null
       content = editor ? editor.state.doc.toString() : await FileService.ReadFile(workspacePath, path)
-      content = `当前文档：${path}\n\n${content}`
+      content = t('copilot.ctxDoc', { path, content })
     } else if (page.value.section === 'projects') {
       const project = workbench.projects.find(item => item.folder === page.value.entityFolder)
       content = project ? projectSummaryContext(project, tasksForProject(project, workbench.tasks), project.notes, workbench.today)
-        : `项目组合：\n${workbench.projects.map(item => `${item.name} · ${item.status} · 下一步 ${item.nextStep || '未记录'}`).join('\n')}`
+        : t('copilot.ctxProjectPortfolio', { items: workbench.projects.map(item => `${item.name} · ${item.status} · ${t('copilot.ctxNextStep', { next: item.nextStep || t('copilot.ctxNotRecorded') })}`).join('\n') })
     } else if (page.value.section === 'learning') {
       const book = workbench.books.find(item => item.folder === page.value.entityFolder)
-      content = book ? `技术分册：${book.name}\n状态：${book.status}，用户记录的进度：${book.progress}%\n章节：\n${book.chapters.map(chapter => `${chapter.title} (${chapter.path})`).join('\n')}`
-        : `当前学习页面：${page.value.title}\n书架：${workbench.books.map(item => item.name).join('、')}\n待复习：${workbench.reviewQueue.length} 题`
+      content = book ? t('copilot.ctxBook', { name: book.name, status: book.status, progress: book.progress, chapters: book.chapters.map(chapter => `${chapter.title} (${chapter.path})`).join('\n') })
+        : t('copilot.ctxLearningPage', { title: page.value.title, books: workbench.books.map(item => item.name).join(t('common.listJoiner')), count: workbench.reviewQueue.length })
     } else if (page.value.section === 'today') {
-      content = `今日工作台 ${workbench.today}\n${workbench.todayTasks.map(task => `[${task.completed ? '完成' : '待办'}] [${task.type}] ${task.title}${task.blocker ? `（阻塞：${task.blocker}）` : ''}`).join('\n')}`
-    } else content = `当前位置：${page.value.title}\n当前工作区文档 ${workbench.documents.length} 篇，当前目录 ${page.value.folder || '全部空间'}。根据用户明确的问题检索知识库。`
+      content = t('copilot.ctxToday', { date: workbench.today, lines: workbench.todayTasks.map(task => `[${task.completed ? t('copilot.ctxTaskDone') : t('copilot.ctxTaskTodo')}] [${task.type}] ${task.title}${task.blocker ? t('copilot.ctxBlocked', { blocker: task.blocker }) : ''}`).join('\n') })
+    } else content = t('copilot.ctxLocation', { title: page.value.title, count: workbench.documents.length, folder: page.value.folder || t('copilot.ctxAllSpaces') })
     if (!isCurrent()) return
     docContent.value = content.length > CONTEXT_LIMIT ? `${content.slice(0, CONTEXT_LIMIT)}\n…` : content
     docContentLoaded.value = true
@@ -97,7 +97,14 @@ async function loadDocContent() {
 }
 
 const activeFileName = computed(() => {
-  if (activeRequest.value) return ({ 'daily-report': '今日日报', project: '项目进展', learning: '面试与学习' } as Record<string, string>)[activeRequest.value.source || ''] || '工作台上下文'
+  if (activeRequest.value) {
+    const labels: Record<string, string> = {
+      'daily-report': t('copilot.contextDailyReport'),
+      project: t('copilot.contextProject'),
+      learning: t('copilot.contextLearning'),
+    }
+    return labels[activeRequest.value.source || ''] || t('copilot.contextWorkbench')
+  }
   return page.value.title
 })
 
@@ -115,6 +122,7 @@ const {
   openCitation,
   renderMarkdown,
 } = useAIChat({
+  persistHistory: true,
   buildContext: async (force) => {
     if (activeRequest.value && (attachContext.value || force)) return activeRequest.value.context
     // 勾选「关联当前文档上下文」或快捷指令强制注入时，带上文档内容
@@ -325,7 +333,7 @@ onBeforeUnmount(() => {
         v-if="hasActiveDoc"
         class="context-name"
         :title="activeFileName"
-      >当前上下文: {{ activeFileName }}</span>
+      >{{ t('copilot.currentContext') }}: {{ activeFileName }}</span>
       <span
         v-else
         class="context-name"
@@ -344,8 +352,8 @@ onBeforeUnmount(() => {
         v-if="activeRequest"
         type="button"
         class="icon-btn"
-        aria-label="回到当前文档上下文"
-        title="回到当前文档上下文"
+        :aria-label="t('copilot.backToDocContext')"
+        :title="t('copilot.backToDocContext')"
         @click="activeRequest = null"
       >
         <X :size="12" />
@@ -442,7 +450,7 @@ onBeforeUnmount(() => {
               @click="applyToReport(msg.content)"
             >
               <FileText :size="13" />
-              <span>应用到日报</span>
+              <span>{{ t('copilot.applyToReport') }}</span>
             </button>
             <button
               type="button"
@@ -478,9 +486,9 @@ onBeforeUnmount(() => {
         :disabled="!workspaceStore.hasWorkspace"
         @click="createFromSources"
       >
-        <Inbox :size="14" />从资料创建
+        <Inbox :size="14" />{{ t('copilot.createFromSources') }}
       </button>
-      <span>目录、链接或文件 → 项目 / 技术分册</span>
+      <span>{{ t('copilot.sourceActionHint') }}</span>
     </div>
     <div class="copilot-input">
       <textarea

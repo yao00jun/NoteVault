@@ -15,14 +15,17 @@ import (
 )
 
 // DistillRequest turns a saved project note into portable learning Markdown.
+// RelatedProject 在来源为 Inbox/（剪藏等无项目归属文件）时必填；Projects 来源
+// 缺省时取来源所属项目，也可显式覆盖以沉淀到别的项目名下。
 type DistillRequest struct {
-	SourceFile   string `json:"sourceFile"`
-	TargetMode   string `json:"targetMode"`
-	TargetFolder string `json:"targetFolder"`
-	TargetTitle  string `json:"targetTitle"`
-	Question     string `json:"question"`
-	Answer       string `json:"answer"`
-	Summary      string `json:"summary"`
+	SourceFile     string `json:"sourceFile"`
+	TargetMode     string `json:"targetMode"`
+	TargetFolder   string `json:"targetFolder"`
+	TargetTitle    string `json:"targetTitle"`
+	Question       string `json:"question"`
+	Answer         string `json:"answer"`
+	Summary        string `json:"summary"`
+	RelatedProject string `json:"relatedProject"`
 }
 
 // DistillKnowledge appends linked learning assets without replacing project
@@ -57,7 +60,12 @@ func prepareWorkbenchDistill(workspacePath string, req DistillRequest, now time.
 		return nil, err
 	}
 	parts := strings.Split(source.relative, "/")
-	project, projectFolder := parts[1], strings.Join(parts[:2], "/")
+	// 生效项目 = RelatedProject（Inbox 来源必填；Projects 来源缺省取来源项目）
+	project := req.RelatedProject
+	projectFolder := "Projects/" + project
+	if strings.EqualFold(parts[0], "Projects") {
+		projectFolder = strings.Join(parts[:2], "/")
+	}
 	id := workbenchDistillID(req)
 	marker := "<!-- notevault-distill: v1:" + id + " -->"
 	completed := hasWorkbenchDistillMarker(target.before, marker, false)
@@ -192,8 +200,22 @@ func normalizeWorkbenchDistill(req DistillRequest) (DistillRequest, error) {
 	}
 	sourceParts := strings.Split(req.SourceFile, "/")
 	ext := strings.ToLower(path.Ext(req.SourceFile))
-	if len(sourceParts) < 3 || !strings.EqualFold(sourceParts[0], "Projects") || (ext != ".md" && ext != ".markdown") {
-		return req, fmt.Errorf("知识来源必须是 Projects/<项目>/ 下的 Markdown 文件")
+	isProjectSource := len(sourceParts) >= 3 && strings.EqualFold(sourceParts[0], "Projects")
+	isInboxSource := len(sourceParts) == 2 && strings.EqualFold(sourceParts[0], "Inbox")
+	if (!isProjectSource && !isInboxSource) || (ext != ".md" && ext != ".markdown") {
+		return req, fmt.Errorf("知识来源必须是 Projects/<项目>/ 或 Inbox/ 下的 Markdown 文件")
+	}
+	// 生效项目：显式 RelatedProject 优先，否则 Projects 来源取其所属项目；
+	// Inbox 来源没有归属项目，必须显式指定。
+	req.RelatedProject = strings.TrimSpace(req.RelatedProject)
+	if req.RelatedProject != "" && !workbenchDistillFilename(req.RelatedProject) {
+		return req, fmt.Errorf("关联项目名不合法：%s", req.RelatedProject)
+	}
+	if isInboxSource && req.RelatedProject == "" {
+		return req, fmt.Errorf("Inbox 来源需要指定关联项目")
+	}
+	if req.RelatedProject == "" {
+		req.RelatedProject = sourceParts[1]
 	}
 	targetParts := strings.Split(req.TargetFolder, "/")
 	if len(targetParts) != 2 || !strings.EqualFold(targetParts[0], "Learning") {
@@ -264,7 +286,18 @@ func workbenchDistillFilename(name string) bool {
 }
 
 func workbenchDistillID(req DistillRequest) string {
-	data, _ := json.Marshal(req)
+	// 兼容性红线：v1 标识只对蒸馏内容七元组做哈希，不含 RelatedProject——
+	// 否则任何新增字段都会让既有笔记里的 marker 全部失效，重试时重复沉淀。
+	identity := struct {
+		SourceFile   string `json:"sourceFile"`
+		TargetMode   string `json:"targetMode"`
+		TargetFolder string `json:"targetFolder"`
+		TargetTitle  string `json:"targetTitle"`
+		Question     string `json:"question"`
+		Answer       string `json:"answer"`
+		Summary      string `json:"summary"`
+	}{req.SourceFile, req.TargetMode, req.TargetFolder, req.TargetTitle, req.Question, req.Answer, req.Summary}
+	data, _ := json.Marshal(identity)
 	digest := sha256.Sum256(append([]byte("notevault-distill:v1\n"), data...))
 	return hex.EncodeToString(digest[:])
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Check, Copy, FileText, RefreshCw, Save, Sparkles, Undo2, X } from '@lucide/vue'
 import { WorkbenchService } from '@/api'
 import { useWorkbenchStore } from '@/stores/workbench'
@@ -12,6 +13,7 @@ const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 const workspace = useWorkspaceStore()
 const workbench = useWorkbenchStore()
+const { t } = useI18n()
 const draft = ref('')
 const author = ref('')
 const team = ref('')
@@ -72,7 +74,7 @@ function persist(): Promise<void> {
       }
       if (path === workspace.currentWorkspace?.path) workspace.incrementFileTreeVersion()
     } catch (cause) {
-      if (currentSession === session) error.value = `保存失败：${cause instanceof Error ? cause.message : String(cause)}`
+      if (currentSession === session) error.value = t('workbench.report.saveFailed', { msg: cause instanceof Error ? cause.message : String(cause) })
       throw cause
     } finally {
       revision.pending--
@@ -84,7 +86,7 @@ function persist(): Promise<void> {
 
 async function loadReport() {
   const path = workspace.currentWorkspace?.path
-  if (!path) { error.value = '请先打开工作区'; return }
+  if (!path) { error.value = t('workbench.report.needWorkspace'); return }
   if (keepOnOpen && path === sessionPath) { keepOnOpen = false; return }
   // A failed save stays editable when the same dialog is reopened.
   if (loaded.value && sessionPath === path && day.value === workbench.today && (dirty.value || saving.value)) return
@@ -113,7 +115,7 @@ async function loadReport() {
     await nextTick()
     textarea.value?.focus()
   } catch (cause) {
-    if (request === generation && !error.value) error.value = `日报读取失败：${cause instanceof Error ? cause.message : String(cause)}`
+    if (request === generation && !error.value) error.value = t('workbench.report.loadFailed', { msg: cause instanceof Error ? cause.message : String(cause) })
   } finally {
     if (request === generation) loading.value = false
   }
@@ -161,7 +163,7 @@ async function copyReport() {
     copied.value = true
     clearTimeout(copiedTimer)
     copiedTimer = setTimeout(() => { copied.value = false }, 2200)
-  } catch (cause) { error.value = `复制失败，请选中正文手动复制：${cause instanceof Error ? cause.message : String(cause)}` }
+  } catch (cause) { error.value = t('workbench.report.copyFailed', { msg: cause instanceof Error ? cause.message : String(cause) }) }
 }
 function updateSubject() {
   try { localStorage.setItem(profileKey(), JSON.stringify({ author: author.value, team: team.value })) } catch { /* Preference only. */ }
@@ -194,7 +196,7 @@ async function reloadArchive() {
     draft.value = stored
     error.value = ''
   } catch (cause) {
-    if (currentSession === session && request === generation) error.value = `重新读取失败：${cause instanceof Error ? cause.message : String(cause)}`
+    if (currentSession === session && request === generation) error.value = t('workbench.report.reloadFailed', { msg: cause instanceof Error ? cause.message : String(cause) })
   } finally {
     if (currentSession === session && request === generation) loading.value = false
   }
@@ -208,7 +210,7 @@ async function polish() {
   if (currentSession !== session) return
   requestCopilot({
     source: 'daily-report', workspacePath: path, context: draft.value,
-    prompt: '请将这份日报润色为简洁、严谨的企业邮件。保持主题、今日完成、进行中、阻塞与求助、明日计划五段结构，保留任务编号和所有事实。不要虚构进度、成果、时间或人员。只输出可直接复制的纯文本邮件正文。',
+    prompt: t('workbench.report.polishPrompt'),
     onApply: (content) => {
       if (workspace.currentWorkspace?.path !== path || sessionPath !== path || day.value !== date) return
       generation++
@@ -250,30 +252,30 @@ onBeforeUnmount(() => {
           <div>
             <span class="report-mark"><FileText :size="20" /></span><div>
               <h2 id="daily-report-title">
-                今天的邮件日报
-              </h2><p>{{ day }} · 汇总任务、进展与卡点</p>
+                {{ t('workbench.report.title') }}
+              </h2><p>{{ day }} · {{ t('workbench.report.subtitle') }}</p>
             </div>
           </div><button
             type="button"
             data-testid="close-report"
             class="icon-button"
-            aria-label="关闭日报"
+            :aria-label="t('workbench.report.closeAria')"
             @click="close"
           >
             <X :size="18" />
           </button>
         </header>
         <div class="report-profile">
-          <label>姓名<input
+          <label>{{ t('workbench.report.authorLabel') }}<input
             v-model="author"
             type="text"
-            placeholder="可选"
+            :placeholder="t('workbench.report.authorPlaceholder')"
             :disabled="!loaded"
             @change="updateSubject"
-          ></label><label>团队<input
+          ></label><label>{{ t('workbench.report.teamLabel') }}<input
             v-model="team"
             type="text"
-            placeholder="可选，如全栈研发组"
+            :placeholder="t('workbench.report.teamPlaceholder')"
             :disabled="!loaded"
             @change="updateSubject"
           ></label><button
@@ -282,7 +284,7 @@ onBeforeUnmount(() => {
             :disabled="!loaded || loading || saving"
             @click="regenerate"
           >
-            <RefreshCw :size="13" />重新汇总
+            <RefreshCw :size="13" />{{ t('workbench.report.regenerate') }}
           </button>
         </div>
         <p
@@ -295,7 +297,7 @@ onBeforeUnmount(() => {
             type="button"
             @click="persist().catch(() => undefined)"
           >
-            重试保存
+            {{ t('workbench.report.retrySave') }}
           </button><button
             v-if="loaded"
             type="button"
@@ -303,13 +305,13 @@ onBeforeUnmount(() => {
             :disabled="saving || loading"
             @click="reloadArchive"
           >
-            重新读取归档（保留草稿）
+            {{ t('workbench.report.reloadArchive') }}
           </button><button
             v-if="!loaded"
             type="button"
             @click="loadReport"
           >
-            重新读取
+            {{ t('workbench.report.reload') }}
           </button>
         </p>
         <p
@@ -317,14 +319,14 @@ onBeforeUnmount(() => {
           class="report-loading"
           role="status"
         >
-          正在整理今天的进展…
+          {{ t('workbench.report.loading') }}
         </p>
         <textarea
           v-if="loaded"
           ref="textarea"
           v-model="draft"
           class="report-draft"
-          aria-label="日报正文"
+          :aria-label="t('workbench.report.bodyAria')"
           spellcheck="false"
         />
         <div
@@ -337,12 +339,12 @@ onBeforeUnmount(() => {
           /><Check
             v-else
             :size="12"
-          />{{ saving ? '正在保存…' : !loaded ? '等待载入' : dirty ? '有未保存的修改' : '已归档保存' }}</span><span>{{ archivePath }}</span><button
+          />{{ saving ? t('workbench.report.saving') : !loaded ? t('workbench.report.waiting') : dirty ? t('workbench.report.unsaved') : t('workbench.report.archived') }}</span><span>{{ archivePath }}</span><button
             v-if="previousDraft"
             type="button"
             @click="undo"
           >
-            <Undo2 :size="12" />恢复上一稿
+            <Undo2 :size="12" />{{ t('workbench.report.undo') }}
           </button>
         </div>
         <footer class="report-footer">
@@ -353,7 +355,7 @@ onBeforeUnmount(() => {
             :disabled="!loaded || saving || !draft.trim()"
             @click="polish"
           >
-            <Sparkles :size="15" />AI 润色为邮件体
+            <Sparkles :size="15" />{{ t('workbench.report.polish') }}
           </button><div>
             <button
               type="button"
@@ -361,7 +363,7 @@ onBeforeUnmount(() => {
               :disabled="!loaded || saving"
               @click="persist().catch(() => undefined)"
             >
-              <Save :size="14" />归档保存
+              <Save :size="14" />{{ t('workbench.report.archiveSave') }}
             </button><button
               type="button"
               class="copy-button"
@@ -375,7 +377,7 @@ onBeforeUnmount(() => {
               /><Copy
                 v-else
                 :size="15"
-              />{{ copied ? '已复制' : '一键复制纯文本' }}
+              />{{ copied ? t('workbench.report.copied') : t('workbench.report.copyAll') }}
             </button>
           </div>
         </footer>

@@ -15,6 +15,13 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * GenerateDailyBriefing 生成今日 AI 简报。
+ */
+export function GenerateDailyBriefing(workspacePath: string, date: string, ai: $models.WeeklyReportAIConfig): $CancellablePromise<$models.DailyBriefingResult | null> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.ReportService.GenerateDailyBriefing", workspacePath, date, ai);
+}
+
+/**
  * GenerateWeeklyReport 生成本周（ISO 周）知识周报并写入 Reports/ 目录。
  * 周报已存在时覆盖重写（重复点击生成是正常操作，不是冲突）。
  */

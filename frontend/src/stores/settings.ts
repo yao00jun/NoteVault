@@ -74,6 +74,10 @@ const defaultSettings: AppSettings = {
     sentryDSN: '',
     enableLocalLog: true,
   },
+  // P1：MCP 接入导出配置的写入开关（仅影响设置页导出的命令/JSON 片段）
+  mcp: {
+    enableWrite: false,
+  },
 }
 
 function loadSettings(): AppSettings {
@@ -112,6 +116,7 @@ function loadSettings(): AppSettings {
         },
         trash: { ...defaultSettings.trash, ...(stored.trash ?? {}) },
         errorReport: { ...defaultSettings.errorReport, ...(stored.errorReport ?? {}) },
+        mcp: { ...defaultSettings.mcp, ...(stored.mcp ?? {}) },
         toolbar: {
           ...defaultSettings.toolbar,
           ...(stored.toolbar ?? {}),

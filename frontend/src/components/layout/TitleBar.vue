@@ -124,7 +124,7 @@ async function requestExit() {
 
 async function confirmExit() {
   if (!await flushOpenEditor()) {
-    toast.warning('草稿保存失败或存在外部冲突，请处理后再退出。')
+    toast.warning(t('titlebar.exitDraftConflict'))
     showExitConfirm.value = false
     return
   }

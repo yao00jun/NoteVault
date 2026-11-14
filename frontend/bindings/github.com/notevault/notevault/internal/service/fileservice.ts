@@ -79,6 +79,16 @@ export function ReadFile(workspacePath: string, relativePath: string): $Cancella
 }
 
 /**
+ * ReadImageBinary 读取工作区内的图片，返回 base64 data URL。
+ * 
+ * 预览运行在应用内嵌 origin 上，`![](assets/x.png)` 的相对路径命不中工作区文件；
+ * 由后端读出并以 data: 形式交给前端水合 <img>（CSP img-src 已放行 data:）。
+ */
+export function ReadImageBinary(workspacePath: string, relativePath: string): $CancellablePromise<string> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.FileService.ReadImageBinary", workspacePath, relativePath);
+}
+
+/**
  * RenameFile 重命名文件或文件夹
  * workspacePath: 工作区根目录
  * oldRelativePath: 旧的相对路径

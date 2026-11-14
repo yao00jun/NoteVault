@@ -154,6 +154,10 @@ export interface AppSettings {
     sentryDSN: string
     enableLocalLog: boolean
   }
+  /** MCP 接入：导出配置时是否附带 --enable-write（仅影响导出片段，实际开关在 MCP 二进制启动参数） */
+  mcp: {
+    enableWrite: boolean
+  }
 }
 
 export interface SearchResult {

@@ -104,6 +104,12 @@ const visibleItems = computed<ToolbarItem[]>(() => {
   return out
 })
 
+// ===== 工具栏按钮显示文本 =====
+/** 按钮显示文本：静态字形（label）优先；无字形时回退到 i18n 名称（如「表格」按钮无字形） */
+function buttonText(btn: ToolbarItem): string {
+  return btn.label ?? (btn.i18nKey ? t(btn.i18nKey) : '')
+}
+
 // ===== “更多”下拉 =====
 const showMore = ref(false)
 
@@ -178,8 +184,8 @@ defineExpose({
       type="button"
       class="tb-btn tb-distill"
       data-testid="markdown-distill"
-      title="沉淀为知识"
-      aria-label="沉淀为知识"
+      :title="t('editor.toolbar.distill')"
+      :aria-label="t('editor.toolbar.distill')"
       :disabled="isDistilling"
       @click="emit('distill')"
     >
@@ -196,7 +202,7 @@ defineExpose({
         for="nv-color-picker"
         :title="t(btn.i18nKey || btn.id || '')"
       >
-        {{ btn.label }}
+        {{ buttonText(btn) }}
       </label>
       <label
         v-else-if="btn.type === 'bg'"
@@ -204,7 +210,7 @@ defineExpose({
         for="nv-bg-picker"
         :title="t(btn.i18nKey || btn.id || '')"
       >
-        {{ btn.label }}
+        {{ buttonText(btn) }}
       </label>
       <button
         v-else
@@ -214,7 +220,7 @@ defineExpose({
         :title="t(btn.i18nKey || btn.id || '')"
         @click="onButtonClick(btn, $event)"
       >
-        {{ btn.label }}
+        {{ buttonText(btn) }}
       </button>
     </template>
 
@@ -236,7 +242,7 @@ defineExpose({
         />
       </div>
       <label class="tb-color-custom">
-        自定义…
+        {{ t('editor.toolbar.customColor') }}
         <input
           ref="customColorRef"
           type="color"

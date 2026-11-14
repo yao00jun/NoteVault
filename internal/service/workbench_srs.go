@@ -22,6 +22,8 @@ func workbenchCardState(raw string) (InterviewCard, error) {
 		LastReviewed        string `json:"lastReviewed"`
 		LastReviewedSnake   string `json:"last_reviewed"`
 		Weak                bool   `json:"weak"`
+		// Source 是蒸馏时写入的实战案例来源（如 "Projects/商城"），P2 起解析给 UI 溯源。
+		Source string `json:"source"`
 	}
 	if err := json.Unmarshal([]byte(raw), &state); err != nil {
 		return InterviewCard{}, err
@@ -46,7 +48,8 @@ func workbenchCardState(raw string) (InterviewCard, error) {
 		failures = 1
 	}
 	return InterviewCard{Level: state.Level, Interval: max(0, state.Interval), Due: state.Due,
-		Reps: max(0, state.Reps), Failures: failures, LastReviewed: state.LastReviewed, Weak: state.Weak || failures >= 2}, nil
+		Reps: max(0, state.Reps), Failures: failures, LastReviewed: state.LastReviewed, Weak: state.Weak || failures >= 2,
+		Source: state.Source}, nil
 }
 
 func parseWorkbenchCards(file workbenchFile) ([]InterviewCard, []string) {

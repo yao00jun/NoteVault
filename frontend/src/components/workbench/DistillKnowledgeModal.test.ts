@@ -21,7 +21,8 @@ vi.mock('@/api', () => ({
 
 const source: DistillationSource = { workspacePath: '/vault/a', path: 'Projects/物流中台/Kafka排查.md', title: 'Kafka排查', content: '---\ntags: [Go]\n---\n# Kafka排查\n\n限制并发并观测队列长度。' }
 const snapshot: WorkbenchSnapshot = {
-  date: '2026-09-09', tasks: [], projects: [], cards: [], progress: [], warnings: [], indexedAt: '', radar: { path: '', content: '' },
+  date: '2026-09-09', tasks: [], cards: [], progress: [], agentEvents: [], warnings: [], indexedAt: '', radar: { path: '', content: '' },
+  projects: [{ name: '商城', path: 'Projects/商城/project.md', folder: 'Projects/商城', status: '进行中', nextStep: '', techStack: [], taskIds: [], notes: [], modifiedAt: '' }],
   books: [{ name: 'Go进阶', path: 'Learning/Go/book.md', folder: 'Learning/Go', status: '在学', progress: 0, projects: [], chapters: [], noteCount: 0, reviewCount: 0 }],
   documents: [{ path: 'Learning/面试宝典/Go面试真题.md', title: 'Go面试真题', modifiedAt: '' }],
 }
@@ -169,7 +170,7 @@ describe('DistillKnowledgeModal', () => {
     expect(wrapper.emitted('saved')).toBeUndefined()
   })
 
-  it('previews an AI draft and only replaces editable fields after explicit application', async () => {
+  it('renders AI drafts for review and submits the included card without touching manual fields', async () => {
     useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
     const { wrapper, persist } = await mountModal()
     await wrapper.get('[data-testid="distill-summary"]').setValue('My draft')
@@ -178,10 +179,13 @@ describe('DistillKnowledgeModal', () => {
     expect(api.answer).toHaveBeenCalledTimes(1)
     expect(api.answer.mock.calls[0]?.at(-1)).toContain('限制并发并观测队列长度')
     expect((wrapper.get('[data-testid="distill-summary"]').element as HTMLTextAreaElement).value).toBe('My draft')
-    expect(wrapper.get('[data-testid="distill-ai-draft"]').text()).toContain('协程泄漏排查')
-    await wrapper.get('[data-testid="distill-apply-ai"]').trigger('click')
-    expect((wrapper.get('[data-testid="distill-summary"]').element as HTMLTextAreaElement).value).toBe('1. 观察指标\n2. 限制并发')
-    expect(persist).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="distill-ai-drafts"]').text()).toContain('协程泄漏排查')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(persist).toHaveBeenCalledTimes(1)
+    expect(persist.mock.calls[0]?.[0].targetTitle).toBe('协程泄漏排查')
+    expect(persist.mock.calls[0]?.[0].summary).toBe('1. 观察指标\n2. 限制并发')
+    expect(wrapper.emitted('close')).toHaveLength(1)
   })
 
   it('keeps manual input entered while an AI request is in flight', async () => {
@@ -195,7 +199,70 @@ describe('DistillKnowledgeModal', () => {
     finish({ answer: '{"summary":"AI conclusion"}', citations: [] })
     await flushPromises()
     expect((wrapper.get('[data-testid="distill-summary"]').element as HTMLTextAreaElement).value).toBe('New manual conclusion')
-    expect(wrapper.get('[data-testid="distill-ai-draft"]').text()).toContain('AI conclusion')
+    expect(wrapper.get('[data-testid="distill-ai-drafts"]').text()).toContain('AI conclusion')
+  })
+
+  it('submits checked AI drafts, merging duplicate book titles', async () => {
+    useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
+    api.answer.mockResolvedValue({ answer: '```json\n[{"title":"卡一","summary":"要点一"},{"title":"卡一","summary":"重复标题"},{"title":"卡二","summary":"要点二"}]\n```', citations: [] })
+    const { wrapper, persist } = await mountModal()
+    await wrapper.get('[data-testid="distill-ai"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('AI 草稿（3 张）')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(persist).toHaveBeenCalledTimes(2)
+    expect(persist.mock.calls.map(call => call[0].targetTitle)).toEqual(['卡一', '卡二'])
+    expect(wrapper.emitted('saved')?.[0]).toEqual(['Learning/Go/卡一.md'])
+  })
+
+  it('keeps an unchecked AI draft out of the submission loop', async () => {
+    useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
+    api.answer.mockResolvedValue({ answer: '[{"title":"卡一","summary":"要点一"},{"title":"卡二","summary":"要点二"}]', citations: [] })
+    const { wrapper, persist } = await mountModal()
+    await wrapper.get('[data-testid="distill-ai"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="distill-draft-include-1"]').setValue(false)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(persist).toHaveBeenCalledTimes(1)
+    expect(persist.mock.calls[0]?.[0].targetTitle).toBe('卡一')
+  })
+
+  it('loops interview draft cards into the shared topic file', async () => {
+    useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
+    api.answer.mockResolvedValue({ answer: '[{"question":"Q1","answer":"A1"},{"question":"Q2","answer":"A2"}]', citations: [] })
+    const { wrapper, persist } = await mountModal()
+    await wrapper.get('[data-testid="distill-mode-interview"]').trigger('click')
+    await wrapper.get('[data-testid="distill-topic"]').setValue('架构与中间件.md')
+    await wrapper.get('[data-testid="distill-ai"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('AI 草稿（2 张）')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(persist).toHaveBeenCalledTimes(2)
+    expect(persist.mock.calls.every(call => call[0].targetTitle === '架构与中间件')).toBe(true)
+    expect(persist.mock.calls.map(call => call[0].question)).toEqual(['Q1', 'Q2'])
+  })
+
+  it('requires a related project for Inbox sources and passes it through', async () => {
+    const inboxSource: DistillationSource = { workspacePath: '/vault/a', path: 'Inbox/会议纪要.md', title: '会议纪要', content: '# 会议纪要\n\n关键决定与结论。' }
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/editor', component: { template: '<div />' } }] })
+    await router.push('/editor')
+    const persist = vi.fn<(request: DistillRequest) => Promise<void>>().mockResolvedValue(undefined)
+    const wrapper = mount(DistillKnowledgeModal, { props: { source: inboxSource, persist }, attachTo: document.body, global: { plugins: [pinia, router, i18n], stubs: { teleport: true } } })
+    wrappers.push(wrapper)
+    await flushPromises()
+    expect(wrapper.get('[data-testid="distill-submit"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="distill-related-project"]').setValue('商城')
+    expect(wrapper.find('option[value="商城"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="distill-submit"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(persist).toHaveBeenCalledTimes(1)
+    expect(persist.mock.calls[0]?.[0].sourceFile).toBe('Inbox/会议纪要.md')
+    expect(persist.mock.calls[0]?.[0].relatedProject).toBe('商城')
+    expect(wrapper.emitted('saved')?.[0]).toEqual(['Learning/Go/会议纪要.md'])
   })
 
   it('keeps the manual draft when AI returns unusable content', async () => {

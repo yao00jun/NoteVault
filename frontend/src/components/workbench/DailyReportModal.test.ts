@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { i18n } from '@/i18n'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type { CopilotRequest } from '@/composables/useCopilotRequest'
 
@@ -34,7 +35,7 @@ beforeEach(() => {
 afterEach(() => { wrapper?.unmount(); disposePinia(pinia); vi.useRealTimers() })
 async function render() {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/editor', component: { template: '<div />' } }] })
-  wrapper = mount(DailyReportModal, { props: { visible: true }, global: { plugins: [pinia, router], stubs: { Teleport: true } } })
+  wrapper = mount(DailyReportModal, { props: { visible: true }, global: { plugins: [pinia, router, i18n], stubs: { Teleport: true } } })
   await flushPromises()
 }
 

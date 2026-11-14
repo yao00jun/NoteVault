@@ -18,7 +18,7 @@ const {
   onKeydown,
   openCitation,
   renderMarkdown,
-} = useAIChat()
+} = useAIChat({ persistHistory: true })
 
 const messagesRef = ref<HTMLElement | null>(null)
 

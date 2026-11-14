@@ -2,6 +2,7 @@
 import { useViewRoute } from '@/composables/useViewRoute'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import {
   ArrowUpRight,
   BookOpen,
@@ -39,13 +40,14 @@ const workspace = useWorkspaceStore()
 const route = useViewRoute('/learning')
 const router = useRouter()
 const toast = useToast()
+const { t } = useI18n()
 const bookSearch = ref('')
 const bookStatus = ref('all')
 const tabs = [
-  { id: 'books', label: '技术书架', icon: BookOpen },
-  { id: 'review', label: '每日复习', icon: Brain },
-  { id: 'weak', label: '核心薄弱点', icon: Star },
-  { id: 'radar', label: '技术雷达', icon: Radar },
+  { id: 'books', icon: BookOpen },
+  { id: 'review', icon: Brain },
+  { id: 'weak', icon: Star },
+  { id: 'radar', icon: Radar },
 ]
 const activeTab = computed(() =>
   tabs.some((tab) => tab.id === route.query.tab) ? String(route.query.tab) : 'books'
@@ -94,7 +96,7 @@ async function openAttachment(path: string) {
   const workspacePath = workspace.currentWorkspace?.path
   if (!workspacePath) return
   try { await AppService.OpenWorkspaceAttachment(workspacePath, path) }
-  catch (error) { toast.error(`无法打开原始资料：${error instanceof Error ? error.message : String(error)}`) }
+  catch (error) { toast.error(t('learning.openSourceFailed', { msg: error instanceof Error ? error.message : String(error) })) }
 }
 
 function extractBookPDFs() {
@@ -142,20 +144,19 @@ function openDocument(path: string) {
   void router.push({ path: '/editor', query: { file: path } })
 }
 function togglePin(path: string, title: string) {
-  if (!workspace.togglePin(path, title)) toast.warning('固定区最多容纳 8 项，请先取消一个固定项。')
+  if (!workspace.togglePin(path, title)) toast.warning(t('common.pinLimit'))
 }
 function explainCard(card: InterviewCard) {
   requestCopilot({
     source: 'learning',
     workspacePath: workspace.currentWorkspace?.path,
-    prompt:
-      '请用一个贴近工程实践的例子解释这道题的底层原理，指出容易混淆的地方，再给我一道追问题检验理解。',
+    prompt: t('learning.explainPrompt'),
     context: [
-      '# 面试题：' + card.question,
-      '来源：' + card.filePath,
-      '## 已有答案',
+      t('learning.ctxQuestion', { question: card.question }),
+      t('learning.ctxSource', { path: card.filePath }),
+      t('learning.ctxAnswerHeader'),
       card.answer,
-      '自评：' + card.level + '；连续不会次数：' + card.failures,
+      t('learning.ctxSelfRating', { level: card.level, failures: card.failures }),
     ].join('\n'),
   })
 }
@@ -165,12 +166,12 @@ function planBookStudy() {
   requestCopilot({
     source: 'learning',
     workspacePath: workspace.currentWorkspace?.path,
-    prompt: '请根据这个技术分册的章节和关联项目，整理下一次学习的重点与可执行的实践建议。',
+    prompt: t('learning.planPrompt'),
     context: [
-      '# 技术分册：' + book.name,
-      '研读进度：' + bookProgress(book) + '%',
-      '关联项目：' + book.projects.join('、'),
-      '## 章节',
+      t('learning.ctxBook', { name: book.name }),
+      t('learning.ctxProgress', { progress: bookProgress(book) }),
+      t('learning.ctxProjects', { projects: book.projects.join(t('common.listJoiner')) }),
+      t('learning.ctxChaptersHeader'),
       ...chapters.value.map((chapter) => '- ' + chapter.title + ' (' + chapter.path + ')'),
     ].join('\n'),
   })
@@ -190,14 +191,14 @@ watch(
       <header class="collection-hero">
         <div>
           <div class="collection-eyebrow">
-            <GraduationCap :size="16" /> LEARNING / 学习
+            <GraduationCap :size="16" /> {{ t('learning.eyebrow') }}
           </div>
-          <h1>{{ selectedBook?.name || '技术书架' }}</h1>
+          <h1>{{ selectedBook?.name || t('learning.title') }}</h1>
           <p class="collection-subtitle">
             {{
               selectedBook
-                ? '把章节里的理解，带回项目里的实践。'
-                : '按章节积累知识，用短时复习把理解留得更久。'
+                ? t('learning.subtitleBook')
+                : t('learning.subtitleEmpty')
             }}
           </p>
         </div>
@@ -208,21 +209,21 @@ watch(
               data-testid="create-collection"
               @click="requestSourceImport({ kind: 'book', sourceType: 'empty' })"
             >
-              新建技术分册
+              {{ t('learning.createBook') }}
             </button>
             <button
               class="collection-button"
               data-testid="import-collection"
               @click="requestSourceImport({ kind: 'book', sourceType: 'folder', targetFolder: selectedBook?.folder, name: selectedBook?.name })"
             >
-              {{ selectedBook ? '添加资料' : '从资料创建' }}
+              {{ selectedBook ? t('learning.addMaterials') : t('learning.createFromSources') }}
             </button>
           </template>
           <template v-if="selectedBook">
             <button
               class="collection-icon-button"
               :class="{ pinned: workspace.isPinned(selectedBook.path) }"
-              :aria-label="workspace.isPinned(selectedBook.path) ? '取消固定分册' : '固定分册'"
+              :aria-label="workspace.isPinned(selectedBook.path) ? t('learning.unpinBook') : t('learning.pinBook')"
               :aria-pressed="workspace.isPinned(selectedBook.path)"
               type="button"
               @click="togglePin(selectedBook.path, selectedBook.name)"
@@ -234,23 +235,23 @@ watch(
               type="button"
               @click="openDocument(selectedBook.path)"
             >
-              <FileText :size="14" /> 分册文档
+              <FileText :size="14" /> {{ t('learning.bookDoc') }}
             </button>
             <button
               class="collection-button primary"
               type="button"
               data-testid="book-plan-study"
               :disabled="!chapters.length"
-              :title="chapters.length ? '梳理章节学习重点' : '先提取正文或添加章节笔记'"
+              :title="chapters.length ? t('learning.planTitleReady') : t('learning.planTitleNeedChapters')"
               @click="planBookStudy"
             >
-              <Sparkles :size="14" /> 梳理学习重点
+              <Sparkles :size="14" /> {{ t('learning.planStudy') }}
             </button>
           </template>
           <template v-else>
             <button
               class="collection-icon-button"
-              aria-label="刷新学习资料"
+              :aria-label="t('learning.refreshAria')"
               type="button"
               :disabled="workbench.loading"
               @click="workbench.refresh()"
@@ -265,7 +266,7 @@ watch(
               type="button"
               @click="router.push({ path: '/editor', query: { folder: 'Learning' } })"
             >
-              打开学习空间 <ArrowUpRight :size="14" />
+              {{ t('learning.openSpace') }} <ArrowUpRight :size="14" />
             </button>
           </template>
         </div>
@@ -281,7 +282,7 @@ watch(
           type="button"
           @click="workbench.refresh()"
         >
-          重试
+          {{ t('common.retry') }}
         </button>
       </div>
       <div
@@ -289,14 +290,14 @@ watch(
         class="collection-empty collection-panel"
       >
         <BookOpen :size="34" />
-        <h2>先打开一个工作区</h2>
-        <p>技术分册与面试题卡会在这里准备好。</p>
+        <h2>{{ t('common.noWorkspaceTitle') }}</h2>
+        <p>{{ t('learning.noWorkspaceDesc') }}</p>
         <button
           class="collection-button primary"
           type="button"
           @click="router.push('/')"
         >
-          选择工作区
+          {{ t('sidebar.selectWorkspace') }}
         </button>
       </div>
       <template v-else>
@@ -319,12 +320,12 @@ watch(
             <span class="collection-status">{{ bookState(selectedBook) }}</span>
             <h2>{{ selectedBook.name }}</h2>
             <div class="learning-progress-label">
-              <span>研读进度</span><strong>{{ bookProgress(selectedBook) }}%</strong>
+              <span>{{ t('learning.progressLabel') }}</span><strong>{{ bookProgress(selectedBook) }}%</strong>
             </div>
             <div
               class="learning-progress"
               role="progressbar"
-              :aria-label="selectedBook.name + '研读进度'"
+              :aria-label="t('learning.progressAria', { name: selectedBook.name })"
               :aria-valuenow="bookProgress(selectedBook)"
               aria-valuemin="0"
               aria-valuemax="100"
@@ -332,10 +333,10 @@ watch(
               <span :style="{ width: bookProgress(selectedBook) + '%' }" />
             </div>
             <div class="learning-book-numbers">
-              <span><strong>{{ selectedBook.noteCount }}</strong> 篇笔记</span><span><strong>{{ selectedBook.reviewCount }}</strong> 题待复习</span>
+              <span><strong>{{ selectedBook.noteCount }}</strong>{{ t('learning.noteCount') }}</span><span><strong>{{ selectedBook.reviewCount }}</strong>{{ t('learning.reviewCount') }}</span>
             </div>
             <div class="learning-related-projects">
-              <h3>关联项目</h3>
+              <h3>{{ t('learning.relatedProjects') }}</h3>
               <button
                 v-for="name in selectedBook.projects"
                 :key="name"
@@ -346,7 +347,7 @@ watch(
                 {{ name }}<ArrowUpRight :size="13" />
               </button>
               <p v-if="!selectedBook.projects.length">
-                还没有关联项目
+                {{ t('learning.noRelatedProjects') }}
               </p>
             </div>
             <button
@@ -354,21 +355,21 @@ watch(
               type="button"
               @click="switchTab('review')"
             >
-              <Brain :size="15" /> 开始今日复习
+              <Brain :size="15" /> {{ t('learning.startReview') }}
             </button>
           </aside>
           <div class="learning-book-content">
             <section class="collection-panel learning-chapters">
               <div class="collection-section-title">
                 <h2>
-                  章节与笔记 <span class="collection-tab-count">{{ chapters.length }}</span>
+                  {{ t('learning.chaptersTitle') }} <span class="collection-tab-count">{{ chapters.length }}</span>
                 </h2>
                 <button
                   class="collection-button subtle"
                   type="button"
                   @click="router.push({ path: '/editor', query: { folder: selectedBook.folder } })"
                 >
-                  打开目录 <ArrowUpRight :size="13" />
+                  {{ t('learning.openFolder') }} <ArrowUpRight :size="13" />
                 </button>
               </div>
               <div
@@ -396,7 +397,7 @@ watch(
                     class="collection-icon-button"
                     :class="{ pinned: workspace.isPinned(chapter.path) }"
                     :aria-label="
-                      (workspace.isPinned(chapter.path) ? '取消固定 ' : '固定 ') + chapter.title
+                      workspace.isPinned(chapter.path) ? t('learning.unpinAria', { name: chapter.title }) : t('learning.pinAria', { name: chapter.title })
                     "
                     :aria-pressed="workspace.isPinned(chapter.path)"
                     type="button"
@@ -411,8 +412,8 @@ watch(
                 class="collection-empty"
               >
                 <FileText :size="30" />
-                <h3>{{ attachments.length ? `已保存 ${attachments.length} 份原始资料` : '从第一篇章节笔记开始' }}</h3>
-                <p>{{ attachments.length ? '尚未生成章节正文。可在下方打开原文件，或提取 PDF 正文。' : '分册目录中的笔记会按章节顺序列在这里。' }}</p>
+                <h3>{{ attachments.length ? t('learning.sourcesSaved', { n: attachments.length }) : t('learning.chaptersEmptyTitle') }}</h3>
+                <p>{{ attachments.length ? t('learning.chaptersEmptyDesc') : t('learning.chaptersListDesc') }}</p>
               </div>
             </section>
             <section
@@ -421,7 +422,7 @@ watch(
               data-testid="book-sources"
             >
               <div class="collection-section-title">
-                <h2>原始资料 <span class="collection-tab-count">{{ attachments.length }}</span></h2>
+                <h2>{{ t('learning.sourcesTitle') }} <span class="collection-tab-count">{{ attachments.length }}</span></h2>
                 <button
                   v-if="hasPDFs"
                   class="collection-button"
@@ -429,7 +430,7 @@ watch(
                   data-testid="book-extract-pdfs"
                   @click="extractBookPDFs"
                 >
-                  <RefreshCw :size="14" />提取并优化 PDF 排版
+                  <RefreshCw :size="14" />{{ t('learning.extractPdfs') }}
                 </button>
               </div>
               <div
@@ -443,7 +444,7 @@ watch(
                 >
                   <FileText :size="20" />
                   <div class="learning-source-copy">
-                    <strong>{{ attachment.name }}</strong><small>{{ attachment.notePath ? '已有可读正文' : '原文件已保存 · 尚未提取正文' }} · {{ Math.max(1, Math.round(attachment.size / 1024)) }} KB</small>
+                    <strong>{{ attachment.name }}</strong><small>{{ attachment.notePath ? t('learning.hasText') : t('learning.noText') }} · {{ Math.max(1, Math.round(attachment.size / 1024)) }} KB</small>
                   </div>
                   <div class="learning-source-actions">
                     <button
@@ -453,7 +454,7 @@ watch(
                       data-testid="book-source-note"
                       @click="openDocument(attachment.notePath)"
                     >
-                      阅读正文
+                      {{ t('learning.readText') }}
                     </button>
                     <button
                       class="collection-button subtle"
@@ -461,7 +462,7 @@ watch(
                       data-testid="book-open-attachment"
                       @click="openAttachment(attachment.path)"
                     >
-                      打开原文件<ArrowUpRight :size="13" />
+                      {{ t('learning.openSource') }}<ArrowUpRight :size="13" />
                     </button>
                   </div>
                 </div>
@@ -474,7 +475,7 @@ watch(
                   data-testid="book-study-plan"
                   @click="openDocument(selectedBook.studyPlanPath)"
                 >
-                  <Sparkles :size="14" />AI 整理建议（待确认）
+                  <Sparkles :size="14" />{{ t('learning.aiPlan') }}
                 </button>
                 <button
                   v-if="selectedBook.sourceRecordsPath"
@@ -483,7 +484,7 @@ watch(
                   data-testid="book-source-records"
                   @click="openDocument(selectedBook.sourceRecordsPath)"
                 >
-                  查看导入记录
+                  {{ t('learning.sourceRecords') }}
                 </button>
               </div>
             </section>
@@ -492,21 +493,21 @@ watch(
         <template v-else>
           <div class="collection-metrics">
             <div class="collection-metric">
-              <strong>{{ workbench.books.length }}</strong> 个技术分册
+              <strong>{{ workbench.books.length }}</strong>{{ t('learning.metricBooks') }}
             </div>
             <div class="collection-metric">
-              <strong>{{ noteCount }}</strong> 篇笔记
+              <strong>{{ noteCount }}</strong>{{ t('learning.noteCount') }}
             </div>
             <div class="collection-metric">
-              <strong>{{ reviewedCount }}/{{ reviewTarget }}</strong> 今日复习
+              <strong>{{ reviewedCount }}/{{ reviewTarget }}</strong> {{ t('learning.metricReview') }}
             </div>
             <div class="collection-metric">
-              <strong>{{ weakCards.length }}</strong> 个薄弱点
+              <strong>{{ weakCards.length }}</strong>{{ t('learning.metricWeak') }}
             </div>
           </div>
           <nav
             class="collection-tabs"
-            aria-label="学习工作区"
+            :aria-label="t('learning.navAria')"
           >
             <button
               v-for="tab in tabs"
@@ -521,7 +522,7 @@ watch(
               <component
                 :is="tab.icon"
                 :size="15"
-              />{{ tab.label
+              />{{ t('learning.tab.' + tab.id)
               }}<span
                 v-if="tab.id === 'weak' && weakCards.length"
                 class="collection-tab-count"
@@ -540,12 +541,12 @@ watch(
             >
               <span class="learning-review-symbol"><Brain :size="23" /></span>
               <div>
-                <h2>{{ reviewComplete ? '今天的复习已完成' : '给记忆留十分钟' }}</h2>
+                <h2>{{ reviewComplete ? t('learning.reviewDoneTitle') : t('learning.reviewTodoTitle') }}</h2>
                 <p>
                   {{
                     reviewComplete
-                      ? '让知识慢慢变成直觉，明天继续。'
-                      : '今日最多 5 道题，先回想，再核对答案。'
+                      ? t('learning.reviewDoneDesc')
+                      : t('learning.reviewTodoDesc')
                   }}
                 </p>
               </div>
@@ -554,18 +555,18 @@ watch(
                 type="button"
                 @click="switchTab('review')"
               >
-                {{ reviewComplete ? '查看复习' : '开始复习' }}<ChevronRight :size="14" />
+                {{ reviewComplete ? t('learning.viewReview') : t('learning.beginReview') }}<ChevronRight :size="14" />
               </button>
             </div>
             <div class="collection-filters">
               <label class="collection-search"><Search :size="15" /><input
                 v-model="bookSearch"
                 type="search"
-                aria-label="搜索技术分册"
-                placeholder="搜索分册或关联项目…"
+                :aria-label="t('learning.searchAria')"
+                :placeholder="t('learning.searchPlaceholder')"
               ></label>
-              <label class="collection-filter">研读状态<select v-model="bookStatus">
-                <option value="all">全部分册</option>
+              <label class="collection-filter">{{ t('learning.statusFilter') }}<select v-model="bookStatus">
+                <option value="all">{{ t('learning.allBooks') }}</option>
                 <option value="待读">待读</option>
                 <option value="在学">在学</option>
                 <option value="已沉淀">已沉淀</option>
@@ -575,7 +576,7 @@ watch(
               v-if="workbench.loading && !workbench.books.length"
               class="collection-grid"
               role="status"
-              aria-label="正在读取技术分册"
+              :aria-label="t('learning.loadingAria')"
             >
               <div
                 v-for="n in 3"
@@ -602,14 +603,14 @@ watch(
                     <component
                       :is="bookIcon(book)"
                       :size="29"
-                    /><span><small>技术分册 / {{ String(index + 1).padStart(2, '0') }}</small>
+                    /><span><small>{{ t('learning.bookIndex', { n: String(index + 1).padStart(2, '0') }) }}</small>
                       <h2>{{ book.name }}</h2></span>
                   </button>
                   <button
                     class="collection-icon-button"
                     :class="{ pinned: workspace.isPinned(book.path) }"
                     :aria-label="
-                      (workspace.isPinned(book.path) ? '取消固定 ' : '固定 ') + book.name
+                      workspace.isPinned(book.path) ? t('learning.unpinAria', { name: book.name }) : t('learning.pinAria', { name: book.name })
                     "
                     :aria-pressed="workspace.isPinned(book.path)"
                     type="button"
@@ -625,7 +626,7 @@ watch(
                   <div
                     class="learning-progress"
                     role="progressbar"
-                    :aria-label="book.name + '研读进度'"
+                    :aria-label="t('learning.progressAria', { name: book.name })"
                     :aria-valuenow="bookProgress(book)"
                     aria-valuemin="0"
                     aria-valuemax="100"
@@ -633,7 +634,7 @@ watch(
                     <span :style="{ width: bookProgress(book) + '%' }" />
                   </div>
                   <div class="learning-book-numbers">
-                    <span><FileText :size="12" />{{ book.noteCount }} 篇笔记</span><span><Brain :size="12" />{{ book.reviewCount }} 题待复习</span>
+                    <span><FileText :size="12" />{{ book.noteCount }}{{ t('learning.noteCount') }}</span><span><Brain :size="12" />{{ book.reviewCount }}{{ t('learning.reviewCount') }}</span>
                   </div>
                   <div class="collection-tags learning-book-project-tags">
                     <button
@@ -647,15 +648,15 @@ watch(
                     </button><span
                       v-if="!book.projects.length"
                       class="learning-unlinked"
-                    >尚未关联项目</span>
+                    >{{ t('learning.notLinked') }}</span>
                   </div>
                 </div>
                 <div class="collection-card-footer">
-                  <span>{{ book.chapters.length }} 个章节</span><button
+                  <span>{{ t('learning.chapterCount', { n: book.chapters.length }) }}</span><button
                     type="button"
                     @click="selectBook(book)"
                   >
-                    继续阅读 <ChevronRight :size="14" />
+                    {{ t('learning.continueReading') }} <ChevronRight :size="14" />
                   </button>
                 </div>
               </article>
@@ -665,12 +666,12 @@ watch(
               class="collection-empty collection-panel"
             >
               <BookOpen :size="34" />
-              <h2>{{ workbench.books.length ? '没有找到这个分册' : '为下一项技术留一个位置' }}</h2>
+              <h2>{{ workbench.books.length ? t('learning.notFoundTitle') : t('learning.emptyTitle') }}</h2>
               <p>
                 {{
                   workbench.books.length
-                    ? '换一个名称或研读状态试试。'
-                    : '在学习空间建立技术分册，章节笔记、关联项目和研读进度会整理在这里。'
+                    ? t('learning.notFoundDesc')
+                    : t('learning.emptyDesc')
                 }}
               </p>
               <button
@@ -678,7 +679,7 @@ watch(
                 class="collection-button primary"
                 @click="requestSourceImport({ kind: 'book', sourceType: 'folder' })"
               >
-                从资料建立第一本书
+                {{ t('learning.createFirstBook') }}
               </button>
             </div>
           </template>
@@ -687,11 +688,11 @@ watch(
             class="learning-review-section"
           >
             <div class="collection-section-title">
-              <h2><Brain :size="18" /> 今天，巩固一点</h2>
-              <span>{{ reviewedCount }}/{{ reviewTarget }} 已复习</span>
+              <h2><Brain :size="18" /> {{ t('learning.reviewSectionTitle') }}</h2>
+              <span>{{ t('learning.reviewedProgress', { done: reviewedCount, target: reviewTarget }) }}</span>
             </div>
             <p class="learning-section-intro">
-              先用自己的话回想答案，再按实际掌握程度自评。掌握后 7 天、模糊后 3 天、不会则明天再见。
+              {{ t('learning.reviewIntro') }}
             </p>
             <InterviewReview :limit="5" />
           </section>
@@ -700,11 +701,11 @@ watch(
             data-testid="weak-card-list"
           >
             <div class="collection-section-title">
-              <h2><Star :size="17" /> 核心薄弱点专题</h2>
-              <span>{{ weakCards.length }} 道题值得再深入一点</span>
+              <h2><Star :size="17" /> {{ t('learning.weakTitle') }}</h2>
+              <span>{{ t('learning.weakCount', { n: weakCards.length }) }}</span>
             </div>
             <p class="learning-section-intro">
-              连续两次评为「不会」的题目会汇集在这里。回到原始笔记，或借助追问把关键概念弄清楚。
+              {{ t('learning.weakIntro') }}
             </p>
             <section
               v-for="group in weakGroups"
@@ -722,27 +723,27 @@ watch(
                 <div class="learning-weak-title">
                   <Star :size="16" />
                   <h3>{{ card.question }}</h3>
-                  <span>连续 {{ card.failures }} 次不会</span>
+                  <span>{{ t('learning.failCount', { n: card.failures }) }}</span>
                 </div>
                 <details class="learning-weak-answer">
-                  <summary>回看答案</summary>
-                  <div>{{ card.answer || '这道题还没有记录答案，打开原始笔记补充。' }}</div>
+                  <summary>{{ t('learning.reviewAnswer') }}</summary>
+                  <div>{{ card.answer || t('learning.noAnswer') }}</div>
                 </details>
                 <div class="learning-weak-footer">
-                  <span>下次复习 {{ card.due || '待安排' }}</span>
+                  <span>{{ t('learning.nextReview', { date: card.due || t('learning.unscheduled') }) }}</span>
                   <div class="collection-actions">
                     <button
                       class="collection-button subtle"
                       type="button"
                       @click="openDocument(card.filePath)"
                     >
-                      打开笔记 <ArrowUpRight :size="13" />
+                      {{ t('learning.openNote') }} <ArrowUpRight :size="13" />
                     </button><button
                       class="collection-button"
                       type="button"
                       @click="explainCard(card)"
                     >
-                      <Sparkles :size="14" /> 解释与追问
+                      <Sparkles :size="14" /> {{ t('learning.explain') }}
                     </button>
                   </div>
                 </div>
@@ -753,14 +754,14 @@ watch(
               class="collection-empty collection-panel"
             >
               <CheckCircle2 :size="32" />
-              <h3>暂时没有需要特别关注的题目</h3>
-              <p>保持诚实自评，复习会自动把精力带回最需要的地方。</p>
+              <h3>{{ t('learning.weakEmptyTitle') }}</h3>
+              <p>{{ t('learning.weakEmptyDesc') }}</p>
               <button
                 class="collection-button"
                 type="button"
                 @click="switchTab('review')"
               >
-                继续今日复习 <ChevronRight :size="14" />
+                {{ t('learning.continueReview') }} <ChevronRight :size="14" />
               </button>
             </div>
           </section>
@@ -769,7 +770,7 @@ watch(
             data-testid="technology-radar"
           >
             <div class="collection-section-title">
-              <h2><Radar :size="18" /> 技术雷达</h2>
+              <h2><Radar :size="18" /> {{ t('learning.radarTitle') }}</h2>
               <button
                 class="collection-button"
                 type="button"
@@ -779,31 +780,31 @@ watch(
                     : router.push({ path: '/editor', query: { folder: 'Learning' } })
                 "
               >
-                <FileText :size="14" />{{ radarDocumentExists ? '编辑决策笔记' : '打开学习空间' }}
+                <FileText :size="14" />{{ radarDocumentExists ? t('learning.editRadar') : t('learning.openSpace') }}
               </button>
             </div>
             <p class="learning-section-intro">
-              从评估到采用，把每一次技术选择的理由留下来。
+              {{ t('learning.radarIntro') }}
             </p>
             <div class="learning-radar-layout">
               <figure
                 class="learning-radar-map"
-                aria-label="四环技术雷达，从内向外为采用推荐、尝试中、评估中、放弃废弃"
+                :aria-label="t('learning.radarMapAria')"
               >
                 <div class="learning-radar-circle radar-hold">
-                  <span>放弃废弃</span>
+                  <span>{{ t('learning.radarHold') }}</span>
                 </div>
                 <div class="learning-radar-circle radar-assess">
-                  <span>评估中</span>
+                  <span>{{ t('learning.radarAssess') }}</span>
                 </div>
                 <div class="learning-radar-circle radar-trial">
-                  <span>尝试中</span>
+                  <span>{{ t('learning.radarTrial') }}</span>
                 </div>
                 <div class="learning-radar-circle radar-adopt">
-                  <span>采用推荐</span>
+                  <span>{{ t('learning.radarAdopt') }}</span>
                 </div>
                 <div class="learning-radar-center">
-                  <strong>{{ radarEntryCount }}</strong><small>项决策</small>
+                  <strong>{{ radarEntryCount }}</strong><small>{{ t('learning.radarDecisions') }}</small>
                 </div>
               </figure>
               <div class="learning-radar-groups">
@@ -825,14 +826,14 @@ watch(
                       v-for="(entry, index) in group.entries"
                       :key="index"
                     >
-                      <strong>{{ entry.name }}</strong><span>{{ entry.reason || '尚未记录决策理由' }}</span>
+                      <strong>{{ entry.name }}</strong><span>{{ entry.reason || t('learning.noReason') }}</span>
                     </li>
                   </ul>
                   <div
                     v-else
                     class="learning-radar-empty"
                   >
-                    还没有记录
+                    {{ t('learning.noEntries') }}
                   </div>
                 </section>
               </div>
@@ -841,7 +842,7 @@ watch(
               v-if="!workbench.radar.content.trim()"
               class="learning-radar-hint"
             >
-              在技术雷达笔记中，以「评估中」「尝试中」「采用推荐」「放弃废弃」分节记录技术与选择理由。
+              {{ t('learning.radarHint') }}
             </p>
           </section>
         </template>

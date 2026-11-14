@@ -8,6 +8,8 @@ export interface DistillRequest {
   question: string
   answer: string
   summary: string
+  /** Inbox 来源必填：蒸馏产物归属的项目名（后端 normalize 校验）。 */
+  relatedProject?: string
 }
 
 export interface WorkbenchDocument {
@@ -96,6 +98,15 @@ export interface InterviewCard {
   failures: number
   lastReviewed: string
   weak: boolean
+  /** 蒸馏来源（如 "Projects/商城"），手写卡为空串。 */
+  source: string
+}
+
+/** Agent 经 MCP append_worklog 写入的一条工作日志（Daily/Agent/<date>.md）。 */
+export interface WorkbenchAgentEvent {
+  time: string
+  agent: string
+  content: string
 }
 
 export interface WorkbenchSnapshot {
@@ -105,6 +116,7 @@ export interface WorkbenchSnapshot {
   books: WorkbenchBook[]
   cards: InterviewCard[]
   progress: WorkbenchProgress[]
+  agentEvents: WorkbenchAgentEvent[]
   radar: { path: string; content: string }
   documents: WorkbenchDocument[]
   indexedAt: string

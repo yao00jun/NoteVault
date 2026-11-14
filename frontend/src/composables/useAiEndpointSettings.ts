@@ -7,12 +7,12 @@
  */
 import { LLMConfigService, LLMEndpointPreset, LLMProbeResult, RerankProbeResult, EmbeddingProbeResult } from '@/api'
 import { ref } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { i18n } from '@/i18n'
 import { useSettingsStore } from '@/stores/settings'
 import type { RerankProvider } from '@/api'
 
 export function useAiEndpointSettings() {
-  const { t } = useI18n()
+  const t = i18n.global.t
   const settingsStore = useSettingsStore()
 
   // --- P1-6 端点预设与连通性自检 ---
@@ -35,17 +35,17 @@ export function useAiEndpointSettings() {
   const rerankPresets = [
     {
       id: 'siliconflow',
-      label: '硅基流动 SiliconFlow',
+      label: t('settings.embedding.providerSiliconflow'),
       baseURL: 'https://api.siliconflow.cn/v1',
       model: 'BAAI/bge-reranker-v2-m3',
-      hint: '国内低延迟、有免费额度；rerank 走 /v1/rerank，与 Cohere 同格式，复用 cohere 路径',
+      hint: t('settings.rerank.presetSiliconflowHint'),
     },
     {
       id: 'cohere',
       label: 'Cohere',
       baseURL: 'https://api.cohere.ai/v1',
       model: 'rerank-multilingual-v3.0',
-      hint: 'Cohere /rerank 原生端点，rerank-multilingual-v3.0 支持中文',
+      hint: t('settings.rerank.presetCohereHint'),
     },
   ]
   function applyRerankPreset(id: string) {
@@ -65,21 +65,21 @@ export function useAiEndpointSettings() {
       label: 'Ollama',
       baseURL: 'http://localhost:11434/v1',
       model: 'bge-m3',
-      hint: '本机运行 bge-m3，免 API Key，首次加载模型需要几十秒',
+      hint: t('settings.embedding.presetOllamaHint'),
     },
     {
       id: 'siliconflow',
-      label: '硅基流动 SiliconFlow',
+      label: t('settings.embedding.providerSiliconflow'),
       baseURL: 'https://api.siliconflow.cn/v1',
       model: 'BAAI/bge-m3',
-      hint: '国内低延迟、有免费额度；Embedding 走 /v1/embeddings，与 OpenAI 同格式，需填写 API Key',
+      hint: t('settings.embedding.presetSiliconflowHint'),
     },
     {
       id: 'cohere',
       label: 'Cohere',
       baseURL: 'https://api.cohere.ai/compatibility/v1',
       model: 'embed-multilingual-v3.0',
-      hint: 'Cohere 兼容端点（/compatibility/v1/embeddings），需填写 API Key；embed-multilingual-v3.0 支持中文',
+      hint: t('settings.embedding.presetCohereHint'),
     },
   ]
   function applyEmbeddingPreset(id: string) {
@@ -215,6 +215,5 @@ export function useAiEndpointSettings() {
     probeRerankEndpoint,
     probeEmbeddingEndpoint,
     useModel,
-    t,
   }
 }

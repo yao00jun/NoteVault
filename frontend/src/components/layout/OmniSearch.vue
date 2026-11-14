@@ -10,11 +10,13 @@
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { marked } from 'marked'
 import { Search, MessageCircle, X, FileText, ArrowRight } from '@lucide/vue'
 import { SearchService, QnAService } from '@/api'
 import type { QnACitation, RerankProvider } from '@/api'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
+import { sanitizeHtml } from '@/utils/sanitize'
 import { isImeComposing } from '@/utils/ime'
 
 const { t } = useI18n()
@@ -39,6 +41,8 @@ interface OmniResult {
 const results = ref<OmniResult[]>([])
 const searching = ref(false)
 const answer = ref('')
+/** 回答渲染为 Markdown（与抽屉/QnA 全页同款管线）；模型输出同样必须清洗后上屏 */
+const answerHtml = computed(() => answer.value ? sanitizeHtml(marked.parse(answer.value, { async: false }) as string) : '')
 // P3-9：用完整 QnACitation（含 heading），引用才能跳到具体章节
 const citations = ref<QnACitation[]>([])
 const asking = ref(false)
@@ -289,9 +293,8 @@ defineExpose({ switchMode })
             v-else
             class="omni-answer"
             data-testid="omni-answer"
-          >
-            {{ answer }}
-          </div>
+            v-html="answerHtml"
+          />
           <div
             v-if="citations.length > 0"
             class="omni-citations"
@@ -454,8 +457,15 @@ defineExpose({ switchMode })
   font-size: var(--text-sm);
   line-height: 1.7;
   color: var(--text-primary);
-  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
+.omni-answer :deep(p) { margin: 0 0 var(--space-2); }
+.omni-answer :deep(ul), .omni-answer :deep(ol) { margin: 0 0 var(--space-2); padding-left: 18px; }
+.omni-answer :deep(p:last-child), .omni-answer :deep(ul:last-child), .omni-answer :deep(ol:last-child) { margin-bottom: 0; }
+.omni-answer :deep(code) { background: var(--bg-hover); border-radius: 4px; padding: 1px 5px; font-size: calc(var(--text-sm) - 1px); }
+.omni-answer :deep(pre) { white-space: pre-wrap; background: var(--bg-hover); border-radius: 6px; padding: var(--space-2); overflow: auto; }
+.omni-answer :deep(pre code) { background: none; padding: 0; }
+.omni-answer :deep(h1), .omni-answer :deep(h2), .omni-answer :deep(h3), .omni-answer :deep(h4) { margin: var(--space-2) 0 var(--space-1); font-size: var(--text-sm); font-weight: 600; }
 .omni-citations {
   padding: var(--space-2) var(--space-3) var(--space-3);
   border-top: 1px solid var(--border);

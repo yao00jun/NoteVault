@@ -255,6 +255,19 @@ export interface CompileResult {
 }
 
 /**
+ * DailyBriefingResult 今日简报结果。
+ */
+export interface DailyBriefingResult {
+    "date": string;
+
+    /**
+     * Markdown 要点（"- " 开头的 3-5 行）
+     */
+    "briefing": string;
+    "aiUsed": boolean;
+}
+
+/**
  * DayActivity 是某一天的笔记改动量（报表热力图的最小单元）。
  */
 export interface DayActivity {
@@ -294,6 +307,8 @@ export interface DiffOp {
 
 /**
  * DistillRequest turns a saved project note into portable learning Markdown.
+ * RelatedProject 在来源为 Inbox/（剪藏等无项目归属文件）时必填；Projects 来源
+ * 缺省时取来源所属项目，也可显式覆盖以沉淀到别的项目名下。
  */
 export interface DistillRequest {
     "sourceFile": string;
@@ -303,6 +318,7 @@ export interface DistillRequest {
     "question": string;
     "answer": string;
     "summary": string;
+    "relatedProject": string;
 }
 
 /**
@@ -492,6 +508,12 @@ export interface InterviewCard {
     "failures": number;
     "lastReviewed": string;
     "weak": boolean;
+
+    /**
+     * Source 是蒸馏时的实战案例来源（srs JSON 的 source 字段，如 "Projects/商城"）；
+     * 手写卡片无此字段（空串）。
+     */
+    "source": string;
 }
 
 /**
@@ -1182,6 +1204,16 @@ export interface WeeklyReportResult {
     "message": string;
 }
 
+/**
+ * WorkbenchAgentEvent 是 Agent 经 MCP append_worklog 写入的一条工作日志，
+ * 来源文件 Daily/Agent/<date>.md（与人工日报隔离）。
+ */
+export interface WorkbenchAgentEvent {
+    "time": string;
+    "agent": string;
+    "content": string;
+}
+
 export interface WorkbenchAttachment {
     "path": string;
     "name": string;
@@ -1245,6 +1277,7 @@ export interface WorkbenchSnapshot {
     "books": WorkbenchBook[] | null;
     "cards": InterviewCard[] | null;
     "progress": WorkbenchProgress[] | null;
+    "agentEvents": WorkbenchAgentEvent[] | null;
     "radar": WorkbenchRadar;
     "documents": WorkbenchDocument[] | null;
     "indexedAt": string;

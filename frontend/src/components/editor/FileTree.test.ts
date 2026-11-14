@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
-import { mount, enableAutoUnmount } from '@vue/test-utils'
+import { mount, enableAutoUnmount, config } from '@vue/test-utils'
 import { afterEach } from 'vitest'
 import { nextTick } from 'vue'
+import { i18n } from '@/i18n'
 import FileTree from './FileTree.vue'
 import type { FileNode } from './FileTree.vue'
+
+// WorkflowTreeItem uses vue-i18n composition API; every mount below needs the plugin.
+config.global.plugins = [i18n]
 
 enableAutoUnmount(afterEach)
 

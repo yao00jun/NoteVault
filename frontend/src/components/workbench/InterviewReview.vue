@@ -1,21 +1,23 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
-import { BookOpen, CheckCircle2, Eye, Sparkles, ArrowUpRight, Star } from '@lucide/vue'
+import { BookOpen, CheckCircle2, Eye, Sparkles, ArrowUpRight, Star, FolderOpen } from '@lucide/vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { requestCopilot } from '@/composables/useCopilotRequest'
 
 withDefaults(defineProps<{ compact?: boolean; limit?: number }>(), { compact: false, limit: 5 })
+const { t } = useI18n()
 const store = useWorkbenchStore()
 const workspace = useWorkspaceStore()
 const router = useRouter()
 const revealed = ref(false)
 const error = ref('')
 const card = computed(() => store.reviewQueue[0])
-const answer = computed(() => sanitizeHtml(marked.parse(card.value?.answer || '这道题还没有答案，打开笔记补充你的理解。', { async: false }) as string))
+const answer = computed(() => sanitizeHtml(marked.parse(card.value?.answer || t('workbench.interview.emptyAnswer'), { async: false }) as string))
 const completed = computed(() => store.reviewedToday > 0 && store.reviewedToday >= store.reviewTarget)
 watch(() => card.value?.id, () => { revealed.value = false; error.value = '' })
 
@@ -31,7 +33,7 @@ function openNote() {
 }
 function askAI() {
   if (!card.value) return
-  requestCopilot({ prompt: '请解释这道面试题的底层原理，举一个实际开发中的例子，并提出一道追问题。', context: `${card.value.question}\n\n${card.value.answer}`, source: 'learning', workspacePath: workspace.currentWorkspace?.path })
+  requestCopilot({ prompt: t('workbench.interview.askPrompt'), context: `${card.value.question}\n\n${card.value.answer}`, source: 'learning', workspacePath: workspace.currentWorkspace?.path })
 }
 </script>
 
@@ -39,11 +41,11 @@ function askAI() {
   <section
     class="interview-review"
     :class="{ compact }"
-    aria-label="今日面试复习"
+    :aria-label="t('workbench.interview.ariaLabel')"
   >
     <header class="review-header">
-      <div><BookOpen :size="16" /><h3>每日五题</h3></div>
-      <span class="review-count">{{ Math.min(store.reviewedToday, store.reviewTarget) }} / {{ store.reviewTarget }} 已复习</span>
+      <div><BookOpen :size="16" /><h3>{{ t('workbench.interview.title') }}</h3></div>
+      <span class="review-count">{{ t('workbench.interview.reviewedCount', { done: Math.min(store.reviewedToday, store.reviewTarget), target: store.reviewTarget }) }}</span>
     </header>
     <div class="review-track">
       <span :style="{ width: `${store.reviewTarget ? Math.min(100, store.reviewedToday / store.reviewTarget * 100) : 0}%` }" />
@@ -53,10 +55,18 @@ function askAI() {
       class="question-card"
     >
       <div class="question-meta">
-        <span>先回想，再看答案</span><span
-          v-if="card.weak"
-          class="weak"
-        ><Star :size="11" />核心薄弱点</span>
+        <span>{{ t('workbench.interview.recallHint') }}</span>
+        <span class="meta-tags">
+          <span
+            v-if="card.source"
+            class="source-chip"
+            :title="card.source"
+          ><FolderOpen :size="11" />{{ card.source.replace(/^Projects\//, '') }}</span>
+          <span
+            v-if="card.weak"
+            class="weak"
+          ><Star :size="11" />{{ t('workbench.interview.weakPoint') }}</span>
+        </span>
       </div>
       <h4>{{ card.question }}</h4>
       <button
@@ -66,7 +76,7 @@ function askAI() {
         data-testid="reveal-answer"
         @click="revealed = true"
       >
-        <Eye :size="14" />显示答案
+        <Eye :size="14" />{{ t('workbench.interview.showAnswer') }}
       </button>
       <div
         v-if="revealed"
@@ -84,7 +94,7 @@ function askAI() {
           data-testid="rate-failed"
           @click="rate('不会')"
         >
-          完全不会<small>1 天后复习</small>
+          {{ t('workbench.interview.rateFailed') }}<small>{{ t('workbench.interview.rateFailedHint') }}</small>
         </button>
         <button
           type="button"
@@ -93,7 +103,7 @@ function askAI() {
           data-testid="rate-vague"
           @click="rate('模糊')"
         >
-          有些模糊<small>3 天后复习</small>
+          {{ t('workbench.interview.rateVague') }}<small>{{ t('workbench.interview.rateVagueHint') }}</small>
         </button>
         <button
           type="button"
@@ -102,7 +112,7 @@ function askAI() {
           data-testid="rate-mastered"
           @click="rate('掌握')"
         >
-          熟练掌握<small>7 天后复习</small>
+          {{ t('workbench.interview.rateMastered') }}<small>{{ t('workbench.interview.rateMasteredHint') }}</small>
         </button>
       </div>
       <p
@@ -117,12 +127,12 @@ function askAI() {
           type="button"
           @click="openNote"
         >
-          打开笔记<ArrowUpRight :size="12" />
+          {{ t('workbench.interview.openNote') }}<ArrowUpRight :size="12" />
         </button><button
           type="button"
           @click="askAI"
         >
-          <Sparkles :size="12" />向 Copilot 追问
+          <Sparkles :size="12" />{{ t('workbench.interview.askCopilot') }}
         </button>
       </footer>
     </div>
@@ -132,8 +142,8 @@ function askAI() {
       :class="{ finished: completed }"
     >
       <CheckCircle2 :size="28" />
-      <h4>{{ completed ? '今日复习已完成' : '今天没有到期题目' }}</h4>
-      <p>{{ completed ? '保持每天一点积累，明天继续。' : '面试宝典中到期的题卡会出现在这里。' }}</p>
+      <h4>{{ completed ? t('workbench.interview.doneTitle') : t('workbench.interview.emptyTitle') }}</h4>
+      <p>{{ completed ? t('workbench.interview.doneDesc') : t('workbench.interview.emptyDesc') }}</p>
     </div>
   </section>
 </template>
@@ -148,6 +158,8 @@ function askAI() {
 .review-track span { display: block; height: 100%; background: #65a687; transition: width .3s; }
 .question-card { padding: 20px; }
 .question-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--text-muted); font-size: 11px; }
+.question-meta .meta-tags { display: inline-flex; align-items: center; gap: 6px; }
+.question-meta .source-chip { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 4px; padding: 1px 6px; }
 .question-meta .weak { color: #c19242; display: inline-flex; align-items: center; gap: 3px; }
 .question-card h4 { font-size: 17px; font-weight: 550; line-height: 1.7; margin: 13px 0 20px; color: var(--text-primary); overflow-wrap: anywhere; }
 .compact .question-card h4 { font-size: 15px; }

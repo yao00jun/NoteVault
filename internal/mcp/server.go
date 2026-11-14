@@ -5,16 +5,18 @@
 //     与项目「只依赖 wails/v3 + golang.org/x/sys」的策略保持一致。
 //   - 纯 CLI：本包与 cmd/notevault-mcp 只依赖 internal/service（不引 wails），
 //     因此编译产物是干净的命令行进程，可被 Claude Code / Codex 等作为子进程拉起。
-//   - 默认只读：6 个 tool 里 5 个只读；唯独 create_note 受 --enable-write 门控，
+//   - 默认只读：11 个 tool 里 5 个只读；6 个写工具受 --enable-write 门控，
 //     未开开关时调用会明确报错，绝不触碰任何文件（含 .notevault 缓存）。
 package mcp
 
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/notevault/notevault/internal/service"
 )
@@ -282,6 +284,43 @@ func (s *Server) toolDefs() []map[string]any {
 				},
 			},
 		},
+		{
+			"name":        "append_worklog",
+			"description": "Append one entry to today's agent work log at Daily/Agent/<YYYY-MM-DD>.md (the file renders on the app's Today page as agent activity). DISABLED unless --enable-write.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []any{"content"},
+				"properties": map[string]any{
+					"content": map[string]any{"type": "string", "description": "Single-line summary of what was done, e.g. 'fixed the flaky sidebar test'."},
+					"agent":   map[string]any{"type": "string", "description": "Optional agent name shown in brackets, e.g. 'claude-code'."},
+				},
+			},
+		},
+		{
+			"name":        "record_decision",
+			"description": "Append a dated decision line under the '## 资料与决策' heading of Projects/<project>/project.md (the heading is created at the end of the file if missing). DISABLED unless --enable-write.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []any{"project", "content"},
+				"properties": map[string]any{
+					"project": map[string]any{"type": "string", "description": "Project folder name under Projects/, e.g. 'notevault'."},
+					"content": map[string]any{"type": "string", "description": "Single-line decision summary."},
+				},
+			},
+		},
+		{
+			"name":        "update_project_status",
+			"description": "Update the status (and optionally next_step) frontmatter field of Projects/<project>/project.md. When the project folder exists but project.md is missing, a minimal archive file is created. DISABLED unless --enable-write.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []any{"project", "status"},
+				"properties": map[string]any{
+					"project":   map[string]any{"type": "string", "description": "Project folder name under Projects/."},
+					"status":    map[string]any{"type": "string", "description": "New status value, e.g. '进行中' or '已完成'."},
+					"next_step": map[string]any{"type": "string", "description": "Optional next action, stored as the nextStep frontmatter field."},
+				},
+			},
+		},
 	}
 }
 
@@ -289,15 +328,26 @@ type toolHandler func(args map[string]any) (string, error)
 
 func (s *Server) toolHandlers() map[string]toolHandler {
 	return map[string]toolHandler{
-		"list_notes":    s.listNotes,
-		"read_note":     s.readNote,
-		"search_notes":  s.searchNotes,
-		"get_tags":      s.getTags,
-		"get_backlinks": s.getBacklinks,
-		"create_note":   s.createNote,
-		"append_note":   s.appendNote,
-		"patch_note":    s.patchNote,
+		"list_notes":            s.listNotes,
+		"read_note":             s.readNote,
+		"search_notes":          s.searchNotes,
+		"get_tags":              s.getTags,
+		"get_backlinks":         s.getBacklinks,
+		"create_note":           s.createNote,
+		"append_note":           s.appendNote,
+		"patch_note":            s.patchNote,
+		"append_worklog":        s.appendWorklog,
+		"record_decision":       s.recordDecision,
+		"update_project_status": s.updateProjectStatus,
 	}
+}
+
+// requireWrite 是所有写工具的统一门控：--enable-write 未开启时明确拒绝。
+func (s *Server) requireWrite(action string) error {
+	if !s.enableWrite {
+		return fmt.Errorf("write operations are disabled; restart the server with --enable-write to %s", action)
+	}
+	return nil
 }
 
 // ---- tool 实现（复用 internal/service） ----
@@ -414,8 +464,8 @@ func (s *Server) getBacklinks(args map[string]any) (string, error) {
 }
 
 func (s *Server) createNote(args map[string]any) (string, error) {
-	if !s.enableWrite {
-		return "", fmt.Errorf("write operations are disabled; restart the server with --enable-write to create notes")
+	if err := s.requireWrite("create notes"); err != nil {
+		return "", err
 	}
 	p := getString(args, "path", "")
 	if p == "" {
@@ -456,8 +506,8 @@ func (s *Server) snapshotBeforeWrite(relPath string) (string, error) {
 
 // appendNote 追加内容：可选 heading 定位，文件不存在自动创建（写前快照）
 func (s *Server) appendNote(args map[string]any) (string, error) {
-	if !s.enableWrite {
-		return "", fmt.Errorf("write operations are disabled; restart the server with --enable-write to append notes")
+	if err := s.requireWrite("append notes"); err != nil {
+		return "", err
 	}
 	p := getString(args, "path", "")
 	content := getString(args, "content", "")
@@ -533,8 +583,8 @@ func appendUnderHeading(doc, heading, content string) (string, error) {
 
 // patchNote 精准替换：target_chunk 必须唯一匹配，避免误伤
 func (s *Server) patchNote(args map[string]any) (string, error) {
-	if !s.enableWrite {
-		return "", fmt.Errorf("write operations are disabled; restart the server with --enable-write to patch notes")
+	if err := s.requireWrite("patch notes"); err != nil {
+		return "", err
 	}
 	p := getString(args, "path", "")
 	target := getString(args, "target_chunk", "")
@@ -569,7 +619,256 @@ func (s *Server) patchNote(args map[string]any) (string, error) {
 	return fmt.Sprintf("Patched %s", p), nil
 }
 
+// appendWorklog 追加一条 Agent 工作日志：落 Daily/Agent/<当日>.md，
+// 行格式 `- 15:04 [agent] 内容`（agent 省略则无方括号段）。
+// 与人工日报（Daily/Reports/…-日报.md）完全隔离，互不覆盖。
+func (s *Server) appendWorklog(args map[string]any) (string, error) {
+	if err := s.requireWrite("append the agent work log"); err != nil {
+		return "", err
+	}
+	content, err := singleLine(getString(args, "content", ""))
+	if err != nil {
+		return "", err
+	}
+	agent := strings.TrimSpace(getString(args, "agent", ""))
+	if strings.ContainsAny(agent, "\r\n\x00") {
+		return "", fmt.Errorf("agent must be a single line")
+	}
+
+	now := time.Now()
+	date := now.Format("2006-01-02")
+	rel := "Daily/Agent/" + date + ".md"
+	line := "- " + now.Format("15:04")
+	if agent != "" {
+		line += " [" + agent + "]"
+	}
+	line += " " + content
+
+	snapshotID, err := s.snapshotBeforeWrite(rel)
+	if err != nil {
+		return "", fmt.Errorf("pre-write snapshot failed: %w", err)
+	}
+	full, err := s.fileSvc.ReadFile(s.workspacePath, rel)
+	if err != nil {
+		// 当日日志尚不存在：建文件并写入标题 + 首条
+		created := fmt.Sprintf("# Agent 工作日志 %s\n\n%s\n", date, line)
+		if _, cerr := s.fileSvc.CreateFile(s.workspacePath, rel, created); cerr != nil {
+			return "", cerr
+		}
+		return fmt.Sprintf("Created %s (new file, no prior snapshot)", rel), nil
+	}
+	updated := strings.TrimRight(full, "\n") + "\n" + line + "\n"
+	if err := s.fileSvc.SaveFile(s.workspacePath, rel, updated); err != nil {
+		return "", err
+	}
+	if snapshotID != "" {
+		return fmt.Sprintf("Appended to %s (snapshot: %s)", rel, snapshotID), nil
+	}
+	return fmt.Sprintf("Appended to %s", rel), nil
+}
+
+// recordDecision 把决策记录追加到 Projects/<project>/project.md 的
+// 「## 资料与决策」章节下（标题缺失时在文末补建），行前缀日期。
+func (s *Server) recordDecision(args map[string]any) (string, error) {
+	if err := s.requireWrite("record decisions"); err != nil {
+		return "", err
+	}
+	content, err := singleLine(getString(args, "content", ""))
+	if err != nil {
+		return "", err
+	}
+	rel, err := projectNoteRel(getString(args, "project", ""))
+	if err != nil {
+		return "", err
+	}
+
+	snapshotID, err := s.snapshotBeforeWrite(rel)
+	if err != nil {
+		return "", fmt.Errorf("pre-write snapshot failed: %w", err)
+	}
+	full, err := s.fileSvc.ReadFile(s.workspacePath, rel)
+	if err != nil {
+		return "", fmt.Errorf("project not found: %s (project.md does not exist)", rel)
+	}
+	line := "- " + time.Now().Format("2006-01-02") + " · " + content
+	updated, err := appendUnderSectionEnd(full, "资料与决策", line)
+	if err != nil {
+		return "", err
+	}
+	if err := s.fileSvc.SaveFile(s.workspacePath, rel, updated); err != nil {
+		return "", err
+	}
+	if snapshotID != "" {
+		return fmt.Sprintf("Recorded decision in %s (snapshot: %s)", rel, snapshotID), nil
+	}
+	return fmt.Sprintf("Recorded decision in %s", rel), nil
+}
+
+// updateProjectStatus 补丁式更新 project.md frontmatter 的 status / nextStep；
+// 项目目录存在但 project.md 缺失时创建最小档案，目录不存在时报错。
+func (s *Server) updateProjectStatus(args map[string]any) (string, error) {
+	if err := s.requireWrite("update project status"); err != nil {
+		return "", err
+	}
+	project := getString(args, "project", "")
+	rel, err := projectNoteRel(project)
+	if err != nil {
+		return "", err
+	}
+	status, err := singleLine(getString(args, "status", ""))
+	if err != nil {
+		return "", err
+	}
+	nextStep := strings.TrimSpace(getString(args, "next_step", ""))
+	if nextStep != "" {
+		if nextStep, err = singleLine(nextStep); err != nil {
+			return "", err
+		}
+	}
+
+	snapshotID, err := s.snapshotBeforeWrite(rel)
+	if err != nil {
+		return "", fmt.Errorf("pre-write snapshot failed: %w", err)
+	}
+	full, err := s.fileSvc.ReadFile(s.workspacePath, rel)
+	if err != nil {
+		// 区分「目录存在但档案缺失」与「项目不存在」
+		dir := filepath.Join(s.workspacePath, "Projects", project)
+		if info, serr := os.Stat(dir); serr != nil || !info.IsDir() {
+			return "", fmt.Errorf("project not found: Projects/%s", project)
+		}
+		created := fmt.Sprintf("---\nname: %s\nstatus: %s\n---\n\n", project, status)
+		if nextStep != "" {
+			created = fmt.Sprintf("---\nname: %s\nstatus: %s\nnextStep: %s\n---\n\n", project, status, nextStep)
+		}
+		if _, cerr := s.fileSvc.CreateFile(s.workspacePath, rel, created); cerr != nil {
+			return "", cerr
+		}
+		return fmt.Sprintf("Created %s (new file, no prior snapshot): status=%s", rel, status), nil
+	}
+	updated, err := setFrontmatterField(full, "status", []string{"status", "状态"}, status)
+	if err != nil {
+		return "", err
+	}
+	if nextStep != "" {
+		updated, err = setFrontmatterField(updated, "nextStep", []string{"nextStep", "next_step", "下一步", "下一步行动"}, nextStep)
+		if err != nil {
+			return "", err
+		}
+	}
+	if err := s.fileSvc.SaveFile(s.workspacePath, rel, updated); err != nil {
+		return "", err
+	}
+	result := fmt.Sprintf("Updated %s: status=%s", rel, status)
+	if nextStep != "" {
+		result += fmt.Sprintf(", nextStep=%s", nextStep)
+	}
+	if snapshotID != "" {
+		result += fmt.Sprintf(" (snapshot: %s)", snapshotID)
+	}
+	return result, nil
+}
+
 // ---- 内部辅助 ----
+
+// singleLine 校验单行内容：拒绝换行/空字节与空串（写工作日志、决策、状态字段都用单行）。
+func singleLine(value string) (string, error) {
+	if strings.ContainsAny(value, "\r\n\x00") {
+		return "", fmt.Errorf("content must be a single line; call the tool once per line")
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("content must not be empty")
+	}
+	return value, nil
+}
+
+// projectNoteRel 校验项目名为单段路径，返回其 project.md 的相对路径。
+func projectNoteRel(project string) (string, error) {
+	project = strings.TrimSpace(strings.Trim(project, "/"))
+	if project == "" || project == "." || project == ".." ||
+		strings.ContainsAny(project, "/\\:") || strings.ContainsAny(project, "\r\n\x00") {
+		return "", fmt.Errorf("invalid project name %q; expected a single folder name under Projects/", project)
+	}
+	return "Projects/" + project + "/project.md", nil
+}
+
+// appendUnderSectionEnd 把一行追加到指定章节内容的末尾（下一个标题之前、
+// 跳过章节尾部空行），保持章节内按时间正序；标题不存在时在文末补建「## <heading>」。
+func appendUnderSectionEnd(doc, heading, line string) (string, error) {
+	lines := strings.Split(doc, "\n")
+	headingIdx := -1
+	for i, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if strings.HasPrefix(trimmed, "#") && strings.Contains(strings.TrimLeft(trimmed, "#"), heading) {
+			headingIdx = i
+			break
+		}
+	}
+	if headingIdx < 0 {
+		trimmedDoc := strings.TrimRight(doc, "\n")
+		if trimmedDoc == "" {
+			return "# " + heading + "\n\n" + line + "\n", nil
+		}
+		return trimmedDoc + "\n\n## " + heading + "\n\n" + line + "\n", nil
+	}
+	end := len(lines)
+	for i := headingIdx + 1; i < len(lines); i++ {
+		if strings.HasPrefix(strings.TrimSpace(lines[i]), "#") {
+			end = i
+			break
+		}
+	}
+	insertAt := end
+	for insertAt > headingIdx+1 && strings.TrimSpace(lines[insertAt-1]) == "" {
+		insertAt--
+	}
+	out := make([]string, 0, len(lines)+1)
+	out = append(out, lines[:insertAt]...)
+	out = append(out, line)
+	out = append(out, lines[insertAt:]...)
+	return strings.Join(out, "\n"), nil
+}
+
+// setFrontmatterField 在 YAML frontmatter 中更新（或插入）一个键值：
+// 键匹配大小写不敏感并兼容别名；文件没有 frontmatter 时在文件头创建一个。
+func setFrontmatterField(doc, canonical string, aliases []string, value string) (string, error) {
+	lines := strings.Split(doc, "\n")
+	if strings.TrimSpace(lines[0]) != "---" {
+		block := []string{"---", canonical + ": " + value, "---", ""}
+		return strings.Join(append(block, lines...), "\n"), nil
+	}
+	end := -1
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "---" {
+			end = i
+			break
+		}
+	}
+	if end < 0 {
+		return "", fmt.Errorf("malformed frontmatter in project.md (missing closing ---)")
+	}
+	for i := 1; i < end; i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		colon := strings.Index(trimmed, ":")
+		if colon <= 0 {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(trimmed[:colon]))
+		for _, alias := range aliases {
+			if key == strings.ToLower(alias) {
+				lines[i] = trimmed[:colon] + ": " + value
+				return strings.Join(lines, "\n"), nil
+			}
+		}
+	}
+	// 字段缺失：插入到 frontmatter 末尾（闭合 --- 之前）
+	out := make([]string, 0, len(lines)+1)
+	out = append(out, lines[:end]...)
+	out = append(out, canonical+": "+value)
+	out = append(out, lines[end:]...)
+	return strings.Join(out, "\n"), nil
+}
 
 // resolveNode 把用户输入解析成图谱节点 ID（即相对路径）。
 // 匹配优先级：精确 path > 精确 title（大小写不敏感）> 文件名 base。

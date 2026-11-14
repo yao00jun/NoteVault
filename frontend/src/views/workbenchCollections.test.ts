@@ -4,6 +4,7 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { reactive, defineComponent, h, onUnmounted } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { i18n } from '@/i18n'
 import type { Component } from 'vue'
 import type {
   InterviewCard,
@@ -78,7 +79,7 @@ function book(name: string, projects: string[]): WorkbenchBook {
     reviewCount: 1,
   }
 }
-function card(id: string, weak: boolean): InterviewCard {
+function card(id: string, weak: boolean, values: Partial<InterviewCard> = {}): InterviewCard {
   return {
     id,
     filePath: 'Learning/面试宝典/Go.md',
@@ -93,6 +94,8 @@ function card(id: string, weak: boolean): InterviewCard {
     failures: weak ? 2 : 1,
     lastReviewed: '',
     weak,
+    source: '',
+    ...values,
   }
 }
 
@@ -184,7 +187,7 @@ async function renderView(component: Component, path: string) {
   })
   await router.push(path)
   await router.isReady()
-  const wrapper = mount(component, { global: { plugins: [pinia, router] } })
+  const wrapper = mount(component, { global: { plugins: [pinia, router, i18n] } })
   await flushPromises()
   return { wrapper, router, workspace }
 }
@@ -221,6 +224,27 @@ describe('ProjectsView', () => {
     await wrapper.get('[data-testid="project-open-document"]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/editor')
+  })
+
+  it('shows distilled review cards with due counts on the technology tab', async () => {
+    harness.state.cards = [
+      card('Goroutine 泄漏', true, { source: 'Projects/商城' }),
+      card('Channel 缓冲', false, { source: 'Projects/物流' }),
+    ]
+    const { wrapper, router } = await renderView(
+      ProjectsView,
+      '/projects?project=Projects/商城/project.md'
+    )
+    await wrapper.get('[data-testid="project-tab-technology"]').trigger('click')
+    const block = wrapper.get('[data-testid="project-review-cards"]')
+    expect(block.text()).toContain('Goroutine 泄漏')
+    expect(block.text()).not.toContain('Channel 缓冲')
+    expect(block.text()).toContain('1 张卡片 · 1 张待复习')
+    expect(wrapper.get('[data-testid="project-detail-content"] h2').text()).toContain('1')
+    await wrapper.get('[data-testid="project-review-cards-go"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/learning')
+    expect(router.currentRoute.value.query.tab).toBe('review')
   })
 })
 

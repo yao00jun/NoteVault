@@ -4,6 +4,7 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { reactive } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { i18n } from '@/i18n'
 import { useWorkspaceStore } from '@/stores/workspace'
 import LearningView from './LearningView.vue'
 
@@ -30,7 +31,7 @@ async function render() {
   const router = createRouter({ history: createMemoryHistory(), routes: ['/learning', '/editor', '/projects'].map(path => ({ path, component: { template: '<div />' } })) })
   await router.push({ path: '/learning', query: { book: `${folder}/book.md` } })
   await router.isReady()
-  const wrapper = mount(LearningView, { global: { plugins: [router] } })
+  const wrapper = mount(LearningView, { global: { plugins: [router, i18n] } })
   await flushPromises()
   return { wrapper, router }
 }

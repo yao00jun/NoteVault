@@ -503,7 +503,7 @@ if (typeof window !== 'undefined') {
             class="graph-node"
             role="button"
             tabindex="0"
-            :aria-label="'打开 ' + node.title"
+            :aria-label="t('graph.openNodeAria', { title: node.title })"
             :class="{ dim: !isNodeActive(node.id), unresolved: !node.resolved }"
             style="cursor: pointer"
             @mousedown="onNodeMouseDown($event, node.id)"

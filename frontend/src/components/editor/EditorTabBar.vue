@@ -5,7 +5,7 @@
  */
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { isProjectMarkdown } from '@/utils/distillKnowledge'
+import { isDistillableSource } from '@/utils/distillKnowledge'
 import {
   FileText,
   Plus,
@@ -81,7 +81,7 @@ const compileTooltip = computed(() => {
     <button
       class="tab-back"
       data-testid="editor-tree-toggle"
-      :title="treeOpen ? '收起侧边栏 (Ctrl+B)' : '展开侧边栏 (Ctrl+B)'"
+      :title="treeOpen ? t('editor.tabbar.collapseSidebar') : t('editor.tabbar.expandSidebar')"
       :aria-pressed="treeOpen"
       @click="emit('toggle-tree')"
     >
@@ -132,15 +132,15 @@ const compileTooltip = computed(() => {
     <!-- 右侧工具栏 -->
     <div class="tab-tools">
       <button
-        v-if="activeTab && isProjectMarkdown(activeTab.path)"
+        v-if="activeTab && isDistillableSource(activeTab.path)"
         type="button"
         class="distill-btn"
         data-testid="editor-distill"
-        title="把项目经验沉淀为技术笔记或面试题卡"
+        :title="t('editor.tabbar.distillHint')"
         :disabled="isDistilling || isSaving"
         @click="emit('distill')"
       >
-        <Zap :size="14" /><span>沉淀为知识</span>
+        <Zap :size="14" /><span>{{ t('editor.tabbar.distill') }}</span>
       </button>
       <span
         v-if="isSaving"

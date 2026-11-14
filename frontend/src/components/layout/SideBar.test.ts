@@ -415,7 +415,7 @@ describe('SideBar', () => {
     await nextTick()
     expect(wrapper.get('[data-testid="sidebar-index-status"]').text()).toContain('更新索引')
     resolveSnapshot({
-      date: '2026-09-08', tasks: [], projects: [], books: [], cards: [], progress: [],
+      date: '2026-09-08', tasks: [], projects: [], books: [], cards: [], progress: [], agentEvents: [],
       radar: { path: '', content: '' }, documents: [], indexedAt: '2026-09-08T08:00:00Z', warnings: [],
     })
     await flushPromises()

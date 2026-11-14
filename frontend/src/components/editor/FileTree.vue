@@ -6,6 +6,7 @@
 -->
 <script setup lang="ts">
 import { computed, ref, watch, toRef } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   ChevronRight,
   ChevronDown,
@@ -38,6 +39,8 @@ export interface FileNode {
 }
 
 defineOptions({ name: 'FileTree' })
+
+const { t } = useI18n()
 
 const props = withDefaults(
   defineProps<{
@@ -167,39 +170,39 @@ const menuItems = computed(() => {
   const target = node?.isDir ? node.path : parentPath
   const parentOf = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '')
   const items: Array<{ key: string; label: string; icon: any; danger?: boolean; dividerBefore?: boolean; action: () => void }> = [
-    { key: 'new-file', label: '新建文档', icon: FileText, action: () => handleNewFile(target) },
-    { key: 'new-folder', label: '新建文件夹', icon: Folder, action: () => handleNewFolder(target) },
+    { key: 'new-file', label: t('editor.tree.newFile'), icon: FileText, action: () => handleNewFile(target) },
+    { key: 'new-folder', label: t('editor.tree.newFolder'), icon: Folder, action: () => handleNewFolder(target) },
   ]
   if (node?.isDir) {
     // Mybase 式「添加兄弟项」：在目录的同级创建
     items.push(
-      { key: 'new-sibling-file', label: '新建兄弟文档', icon: FileText, action: () => handleNewFile(parentOf(node.path)) },
-      { key: 'new-sibling-folder', label: '新建兄弟文件夹', icon: Folder, action: () => handleNewFolder(parentOf(node.path)) },
+      { key: 'new-sibling-file', label: t('editor.tree.newSiblingFile'), icon: FileText, action: () => handleNewFile(parentOf(node.path)) },
+      { key: 'new-sibling-folder', label: t('editor.tree.newSiblingFolder'), icon: Folder, action: () => handleNewFolder(parentOf(node.path)) },
     )
   }
   if (node) {
     items.push(
-      { key: 'rename', label: '重命名', icon: MoreVertical, dividerBefore: true, action: () => handleRename(node) },
+      { key: 'rename', label: t('editor.tree.rename'), icon: MoreVertical, dividerBefore: true, action: () => handleRename(node) },
     )
     if (!node.isDir) {
       items.push(
-        { key: 'copy', label: '复制', icon: Copy, action: () => handleCopy(node) },
+        { key: 'copy', label: t('editor.tree.copy'), icon: Copy, action: () => handleCopy(node) },
       )
     }
     if (!node.isDir) {
       items.push(
-        { key: 'export-md', label: '导出为 Markdown', icon: Download, dividerBefore: true, action: () => handleExportMarkdown(node) },
-        { key: 'export-html', label: '导出为 HTML', icon: Download, action: () => handleExportHTML(node) },
+        { key: 'export-md', label: t('editor.tree.exportMd'), icon: Download, dividerBefore: true, action: () => handleExportMarkdown(node) },
+        { key: 'export-html', label: t('editor.tree.exportHtml'), icon: Download, action: () => handleExportHTML(node) },
       )
     }
     if (!node.isDir) {
       items.push(
-        { key: 'archive', label: '归档', icon: Archive, dividerBefore: true, action: () => handleArchive(node) },
-        { key: 'trash', label: '移动到回收站', icon: Trash2, action: () => handleTrash(node) },
+        { key: 'archive', label: t('editor.tree.archive'), icon: Archive, dividerBefore: true, action: () => handleArchive(node) },
+        { key: 'trash', label: t('editor.tree.moveToTrash'), icon: Trash2, action: () => handleTrash(node) },
       )
     }
     items.push(
-      { key: 'delete', label: '永久删除', icon: null, danger: true, dividerBefore: node.isDir, action: () => handleDelete(node) },
+      { key: 'delete', label: t('editor.tree.deleteForever'), icon: null, danger: true, dividerBefore: node.isDir, action: () => handleDelete(node) },
     )
   }
   return items
@@ -216,15 +219,15 @@ const menuItems = computed(() => {
           v-model="searchQuery"
           type="text"
           class="tree-search-input"
-          placeholder="过滤文档..."
-          aria-label="过滤文档"
+          :placeholder="t('editor.tree.filterPlaceholder')"
+          :aria-label="t('editor.tree.filterAria')"
         >
-        <button v-if="searchQuery" class="search-clear-btn" title="清空" @click="clearSearch">
+        <button v-if="searchQuery" class="search-clear-btn" :title="t('editor.tree.clearSearch')" @click="clearSearch">
           <X :size="12" />
         </button>
       </div>
       <div class="tree-actions">
-        <button class="tree-action-btn" title="全部折叠" @click="collapseAll">
+        <button class="tree-action-btn" :title="t('editor.tree.collapseAll')" @click="collapseAll">
           <ChevronsDownUp :size="14" />
         </button>
       </div>
@@ -262,7 +265,7 @@ const menuItems = computed(() => {
             <ChevronDown v-else :size="14" />
           </span>
           <span class="node-icon"><FolderCog :size="15" /></span>
-          <span class="node-name system-name">系统与模板</span>
+          <span class="node-name system-name">{{ t('editor.tree.systemSection') }}</span>
           <span class="system-badge">{{ systemNodes.length }}</span>
         </div>
 

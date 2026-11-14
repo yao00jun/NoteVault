@@ -10,6 +10,7 @@
 import { EditorSelection } from '@codemirror/state'
 import { undo, redo, indentMore, indentLess } from '@codemirror/commands'
 import type { EditorView } from '@codemirror/view'
+import { i18n } from '@/i18n'
 
 /** 用 before/after 包裹选区；无选区时插入占位并把光标置于中间 */
 export function wrapSelection(view: EditorView, before: string, after: string = before): void {
@@ -125,7 +126,7 @@ export function insertBlock(view: EditorView, before: string, after: string): vo
   const { state } = view
   const spec = state.changeByRange((range) => {
     const sel = state.sliceDoc(range.from, range.to)
-    const inner = sel || '代码'
+    const inner = sel || i18n.global.t('editor.commands.codePlaceholder')
     const text = before + inner + after
     return {
       changes: { from: range.from, to: range.to, insert: text },
@@ -152,7 +153,7 @@ export function insertCallout(view: EditorView, type: string): void {
   const typeName = (type || 'note').toLowerCase()
   const spec = state.changeByRange((range) => {
     const sel = state.sliceDoc(range.from, range.to)
-    const body = sel ? sel : '在此输入内容'
+    const body = sel ? sel : i18n.global.t('editor.commands.calloutBody')
     const bodyLines = body.split('\n').map((l) => '> ' + l).join('\n')
     const text = `> [!${typeName}]\n${bodyLines}\n`
     return {
@@ -162,6 +163,21 @@ export function insertCallout(view: EditorView, type: string): void {
   })
   view.dispatch({ ...spec, userEvent: 'input' })
   view.focus()
+}
+
+/**
+ * 生成 3 列表格模板（withCells=true 时数据行填占位单元格）。
+ * 表头/单元格文案走 i18n；竖线与分隔行是 Markdown 表格语法符号，
+ * 保留在代码侧拼接，避免进入消息文案（vue-i18n 会把 | 当复数分隔符）。
+ */
+function tableTemplate(withCells: boolean): string {
+  const t = i18n.global.t
+  const col = (n: number) => t('editor.commands.tableCol', { n })
+  const head = `| ${col(1)} | ${col(2)} | ${col(3)} |`
+  const sep = '| --- | --- | --- |'
+  if (!withCells) return `${head}\n${sep}\n|  |  |  |\n`
+  const cell = t('editor.commands.tableCell')
+  return `${head}\n${sep}\n| ${cell} | ${cell} | ${cell} |\n`
 }
 
 /** 工具栏命令分发：id 与 toolbarButtons.ts 的 TOOLBAR_ITEMS 一一对应 */
@@ -193,7 +209,7 @@ export function applyFormat(view: EditorView, id: string): void {
     case 'image': wrapSelection(view, '![', '](url)'); break
     case 'codeblock': insertBlock(view, '```\n', '\n```\n'); break
     case 'table':
-      insertText(view, '| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| 单元格 | 单元格 | 单元格 |\n')
+      insertText(view, tableTemplate(true))
       break
     case 'hr': insertText(view, '\n---\n'); break
     // 表格编辑（P2-6）：光标不在表格内时，table-insert 插入空表，其余无操作
@@ -285,7 +301,7 @@ function replaceTable(view: EditorView, table: TableInfo, newRows: string[][]): 
 
 /** 插入 3×3 空表到光标处 */
 export function insertTable(view: EditorView): void {
-  const text = '| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n|  |  |  |\n'
+  const text = tableTemplate(false)
   const { state } = view
   const spec = state.changeByRange((range) => ({
     changes: { from: range.from, insert: text },

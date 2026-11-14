@@ -2,9 +2,11 @@
 import { useViewRoute } from '@/composables/useViewRoute'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import {
   AlertTriangle,
   ArrowUpRight,
+  BookMarked,
   BookOpen,
   CheckCircle2,
   ChevronRight,
@@ -45,6 +47,7 @@ const workspace = useWorkspaceStore()
 const router = useRouter()
 const route = useViewRoute('/projects')
 const toast = useToast()
+const { t } = useI18n()
 const search = ref('')
 const statusFilter = ref('all')
 const typeFilter = ref('all')
@@ -58,10 +61,10 @@ const addingTask = ref(false)
 const taskError = ref('')
 
 const tabs = [
-  { id: 'tasks', label: '任务清单', icon: ListTodo },
-  { id: 'notes', label: '项目笔记', icon: FileText },
-  { id: 'architecture', label: '架构总结', icon: Layers },
-  { id: 'technology', label: '关联技术', icon: Code2 },
+  { id: 'tasks', icon: ListTodo },
+  { id: 'notes', icon: FileText },
+  { id: 'architecture', icon: Layers },
+  { id: 'technology', icon: Code2 },
 ]
 const selectedProject = computed(() => {
   const query = route.query.project
@@ -166,6 +169,15 @@ const relatedBooks = computed(() => {
       )
   )
 })
+// 蒸馏卡片的 source 恰为 WorkbenchProject.folder（"Projects/<名>"），据此关联到本项目。
+const projectReviewCards = computed(() => {
+  const project = selectedProject.value
+  if (!project) return []
+  return workbench.cards.filter((card) => card.source === project.folder)
+})
+const projectDueReviewCards = computed(() =>
+  projectReviewCards.value.filter((card) => card.due && card.due <= workbench.today)
+)
 
 function selectProject(project: WorkbenchProject) {
   detailTab.value = 'tasks'
@@ -179,7 +191,7 @@ function openDocument(path: string) {
   void router.push({ path: '/editor', query: { file: path } })
 }
 function togglePin(path: string, title: string) {
-  if (!workspace.togglePin(path, title)) toast.warning('固定区最多容纳 8 项，请先取消一个固定项。')
+  if (!workspace.togglePin(path, title)) toast.warning(t('common.pinLimit'))
 }
 function openBlocker(task: WorkbenchTask) {
   const project = workbench.projects.find((item) => tasksForProject(item, [task]).length > 0)
@@ -192,8 +204,7 @@ function summarizeProject() {
   requestCopilot({
     source: 'project',
     workspacePath: workspace.currentWorkspace?.path,
-    prompt:
-      '请提炼这个项目近一周的研发进展、当前卡点与下一步行动。以提供的记录为依据，区分已完成和计划中的工作。',
+    prompt: t('projects.summaryPrompt'),
     context: projectSummaryContext(project, selectedTasks.value, projectNotes.value, workbench.today),
   })
 }
@@ -235,14 +246,14 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
       <header class="collection-hero">
         <div>
           <div class="collection-eyebrow">
-            <Rocket :size="15" /> PROJECTS / 项目
+            <Rocket :size="15" /> {{ t('projects.eyebrow') }}
           </div>
-          <h1>{{ selectedProject?.name || '每个项目，都有下一步。' }}</h1>
+          <h1>{{ selectedProject?.name || t('projects.title') }}</h1>
           <p class="collection-subtitle">
             {{
               selectedProject
-                ? selectedProject.nextStep || '打开项目文档，记下下一步行动。'
-                : '把并行工作放在一起，让进展、卡点与下一步清晰可见。'
+                ? selectedProject.nextStep || t('projects.detailSubtitle')
+                : t('projects.subtitle')
             }}
           </p>
         </div>
@@ -253,14 +264,14 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
               data-testid="create-collection"
               @click="requestSourceImport({ kind: 'project', sourceType: 'empty' })"
             >
-              新建项目
+              {{ t('projects.createProject') }}
             </button>
             <button
               class="collection-button"
               data-testid="import-collection"
               @click="requestSourceImport({ kind: 'project', sourceType: 'folder', targetFolder: selectedProject?.folder, name: selectedProject?.name })"
             >
-              {{ selectedProject ? '添加资料' : '从资料创建' }}
+              {{ selectedProject ? t('projects.addMaterials') : t('projects.createFromSources') }}
             </button>
           </template>
           <template v-if="selectedProject">
@@ -268,7 +279,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
               class="collection-icon-button"
               :class="{ pinned: workspace.isPinned(selectedProject.path) }"
               type="button"
-              :aria-label="workspace.isPinned(selectedProject.path) ? '取消固定项目' : '固定项目'"
+              :aria-label="workspace.isPinned(selectedProject.path) ? t('projects.unpinProject') : t('projects.pinProject')"
               :aria-pressed="workspace.isPinned(selectedProject.path)"
               @click="togglePin(selectedProject.path, selectedProject.name)"
             >
@@ -280,7 +291,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
               type="button"
               @click="openDocument(selectedProject.path)"
             >
-              <FileText :size="15" /> 项目文档
+              <FileText :size="15" /> {{ t('projects.projectDoc') }}
             </button>
             <button
               class="collection-button primary"
@@ -288,7 +299,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
               type="button"
               @click="summarizeProject"
             >
-              <Sparkles :size="15" /> 提炼本周进展
+              <Sparkles :size="15" /> {{ t('projects.aiSummary') }}
             </button>
           </template>
           <button
@@ -301,7 +312,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
             <RefreshCw
               :size="14"
               :class="{ 'collection-spin': workbench.loading }"
-            /> 刷新
+            /> {{ t('projects.refresh') }}
           </button>
         </div>
       </header>
@@ -317,7 +328,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
           type="button"
           @click="workbench.refresh()"
         >
-          重试
+          {{ t('common.retry') }}
         </button>
       </div>
       <div
@@ -325,14 +336,14 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
         class="collection-empty collection-panel"
       >
         <Rocket :size="34" />
-        <h2>先打开一个工作区</h2>
-        <p>项目、任务和研发笔记会在这里汇合。</p>
+        <h2>{{ t('common.noWorkspaceTitle') }}</h2>
+        <p>{{ t('projects.noWorkspaceDesc') }}</p>
         <button
           class="collection-button primary"
           type="button"
           @click="router.push('/')"
         >
-          选择工作区
+          {{ t('sidebar.selectWorkspace') }}
         </button>
       </div>
       <template v-else>
@@ -345,19 +356,19 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
           class="collection-metrics"
         >
           <div class="collection-metric">
-            <strong>{{ workbench.projects.length }}</strong> 个项目
+            <strong>{{ workbench.projects.length }}</strong>{{ t('projects.metricProjects') }}
           </div>
           <div class="collection-metric">
-            <strong>{{ activeProjects }}</strong> 个进行中
+            <strong>{{ activeProjects }}</strong>{{ t('projects.metricActive') }}
           </div>
           <div class="collection-metric">
-            <strong>{{ openTaskCount }}</strong> 项待办
+            <strong>{{ openTaskCount }}</strong>{{ t('projects.metricTasks') }}
           </div>
           <div
             class="collection-metric"
             :class="{ attention: workbench.blockers.length }"
           >
-            <strong>{{ workbench.blockers.length }}</strong> 个卡点
+            <strong>{{ workbench.blockers.length }}</strong>{{ t('projects.metricBlockers') }}
           </div>
         </div>
         <section
@@ -369,9 +380,9 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
           <div class="project-blockers-heading">
             <AlertTriangle :size="18" />
             <h2 id="project-blockers-title">
-              全局卡点
+              {{ t('projects.globalBlockers') }}
             </h2>
-            <span>{{ workbench.blockers.length }} 项待协调</span>
+            <span>{{ t('projects.blockerCount', { n: workbench.blockers.length }) }}</span>
           </div>
           <button
             v-for="task in workbench.blockers"
@@ -384,9 +395,9 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
               class="collection-type"
               :data-type="task.type"
             >{{
-              task.type === 'todo' ? '待办' : task.type
+              task.type === 'todo' ? t('projects.typeTodo') : task.type
             }}</span>
-            <span class="project-blocker-copy"><strong>{{ task.project || '未归属项目' }} · {{ task.title }}</strong><small>{{ task.blocker || '这项任务已标记为阻塞，需要协调处理。' }}</small></span>
+            <span class="project-blocker-copy"><strong>{{ task.project || t('projects.noProject') }} · {{ task.title }}</strong><small>{{ task.blocker || t('projects.noBlockerDesc') }}</small></span>
             <ChevronRight :size="16" />
           </button>
         </section>
@@ -394,7 +405,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
         <nav
           v-if="selectedProject"
           class="collection-tabs"
-          aria-label="项目详情"
+          :aria-label="t('projects.navAria')"
         >
           <button
             v-for="tab in tabs"
@@ -409,7 +420,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
             <component
               :is="tab.icon"
               :size="15"
-            />{{ tab.label }}
+            />{{ t('projects.tab.' + tab.id) }}
           </button>
         </nav>
 
@@ -422,18 +433,18 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
             class="collection-search"
           ><Search :size="16" /><input
             v-model="search"
-            aria-label="搜索项目"
-            placeholder="搜索项目或技术栈…"
+            :aria-label="t('projects.searchAria')"
+            :placeholder="t('projects.searchPlaceholder')"
             type="search"
           ></label>
           <label
             v-if="!selectedProject"
             class="collection-filter"
-          >项目状态<select
+          >{{ t('projects.statusFilter') }}<select
             v-model="statusFilter"
             data-testid="project-status-filter"
           >
-            <option value="all">全部状态</option>
+            <option value="all">{{ t('projects.allStatuses') }}</option>
             <option
               v-for="status in statusOptions"
               :key="status"
@@ -442,24 +453,24 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
               {{ status }}
             </option>
           </select></label>
-          <label class="collection-filter">任务类型<select
+          <label class="collection-filter">{{ t('projects.typeFilter') }}<select
             v-model="typeFilter"
             data-testid="project-type-filter"
           >
-            <option value="all">全部任务</option>
-            <option value="US">US · 用户故事</option>
-            <option value="DTS">DTS · 问题单</option>
-            <option value="额外">额外 · 临时任务</option>
-            <option value="todo">普通待办</option>
+            <option value="all">{{ t('projects.allTasks') }}</option>
+            <option value="US">{{ t('projects.typeUS') }}</option>
+            <option value="DTS">{{ t('projects.typeDTS') }}</option>
+            <option value="额外">{{ t('projects.typeExtra') }}</option>
+            <option value="todo">{{ t('projects.typePlain') }}</option>
           </select></label>
-          <label class="collection-filter">时间范围<select
+          <label class="collection-filter">{{ t('projects.periodFilter') }}<select
             v-model="periodFilter"
             data-testid="project-period-filter"
           >
-            <option value="all">全部时间</option>
-            <option value="today">今日</option>
-            <option value="week">本周</option>
-            <option value="overdue">已逾期</option>
+            <option value="all">{{ t('projects.periodAll') }}</option>
+            <option value="today">{{ t('projects.periodToday') }}</option>
+            <option value="week">{{ t('projects.periodWeek') }}</option>
+            <option value="overdue">{{ t('projects.periodOverdue') }}</option>
           </select></label>
         </div>
 
@@ -467,7 +478,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
           v-if="workbench.loading && !workbench.projects.length"
           class="collection-grid"
           role="status"
-          aria-label="正在读取项目"
+          :aria-label="t('projects.loadingAria')"
         >
           <div
             v-for="n in 3"
@@ -482,14 +493,14 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
           <template v-if="detailTab === 'tasks'">
             <div class="collection-section-title">
               <h2>
-                任务清单 <span class="collection-tab-count">{{ displayedTasks.length }}</span>
+                {{ t('projects.tab.tasks') }} <span class="collection-tab-count">{{ displayedTasks.length }}</span>
               </h2>
               <button
                 class="collection-button"
                 type="button"
                 @click="showTaskForm = !showTaskForm"
               >
-                <Plus :size="14" /> 添加任务
+                <Plus :size="14" /> {{ t('projects.addTask') }}
               </button>
             </div>
             <form
@@ -497,20 +508,20 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
               class="project-task-form collection-panel"
               @submit.prevent="addTask"
             >
-              <label class="collection-field project-task-title">任务内容<input
+              <label class="collection-field project-task-title">{{ t('projects.taskContent') }}<input
                 v-model="taskTitle"
-                placeholder="下一件要完成的事"
+                :placeholder="t('projects.taskPlaceholder')"
                 required
                 maxlength="500"
                 autofocus
               ></label>
-              <label class="collection-field">类型<select v-model="taskKind">
-                <option value="US">US · 用户故事</option>
-                <option value="DTS">DTS · 问题单</option>
-                <option value="额外">额外 · 临时任务</option>
-                <option value="todo">普通待办</option>
+              <label class="collection-field">{{ t('projects.kindLabel') }}<select v-model="taskKind">
+                <option value="US">{{ t('projects.typeUS') }}</option>
+                <option value="DTS">{{ t('projects.typeDTS') }}</option>
+                <option value="额外">{{ t('projects.typeExtra') }}</option>
+                <option value="todo">{{ t('projects.typePlain') }}</option>
               </select></label>
-              <label class="collection-field">截止日期<input
+              <label class="collection-field">{{ t('projects.dueLabel') }}<input
                 v-model="taskDue"
                 type="date"
               ></label>
@@ -520,10 +531,10 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
                   type="submit"
                   :disabled="addingTask || workbench.busy || !taskTitle.trim()"
                 >
-                  {{ addingTask ? '添加中…' : '添加' }}
+                  {{ addingTask ? t('projects.adding') : t('projects.add') }}
                 </button><button
                   class="collection-icon-button"
-                  aria-label="取消添加任务"
+                  :aria-label="t('projects.cancelAddAria')"
                   type="button"
                   @click="resetTaskForm"
                 >
@@ -553,25 +564,25 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
               class="collection-empty collection-panel"
             >
               <CheckCircle2 :size="30" />
-              <h3>{{ selectedTasks.length ? '这个筛选下没有任务' : '下一步，从一个任务开始' }}</h3>
+              <h3>{{ selectedTasks.length ? t('projects.tasksEmptyTitle') : t('projects.tasksStartTitle') }}</h3>
               <p>
                 {{
                   selectedTasks.length
-                    ? '调整任务类型或时间范围，查看其他工作。'
-                    : '添加用户故事、问题单或临时任务，让项目开始向前走。'
+                    ? t('projects.tasksEmptyDesc')
+                    : t('projects.tasksStartDesc')
                 }}
               </p>
             </div>
           </template>
           <template v-else-if="detailTab === 'notes' || detailTab === 'architecture'">
             <div class="collection-section-title">
-              <h2>{{ detailTab === 'architecture' ? '架构与设计决策' : '项目笔记' }}</h2>
+              <h2>{{ detailTab === 'architecture' ? t('projects.architectureTitle') : t('projects.tab.notes') }}</h2>
               <button
                 class="collection-button subtle"
                 type="button"
                 @click="router.push({ path: '/editor', query: { folder: selectedProject.folder } })"
               >
-                打开项目目录 <ArrowUpRight :size="14" />
+                {{ t('projects.openFolder') }} <ArrowUpRight :size="14" />
               </button>
             </div>
             <div class="collection-panel">
@@ -597,7 +608,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
                   <button
                     class="collection-icon-button"
                     :class="{ pinned: workspace.isPinned(doc.path) }"
-                    :aria-label="(workspace.isPinned(doc.path) ? '取消固定 ' : '固定 ') + doc.title"
+                    :aria-label="workspace.isPinned(doc.path) ? t('projects.unpinAria', { name: doc.title }) : t('projects.pinAria', { name: doc.title })"
                     :aria-pressed="workspace.isPinned(doc.path)"
                     type="button"
                     @click="togglePin(doc.path, doc.title)"
@@ -612,13 +623,13 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
               >
                 <Layers :size="30" />
                 <h3>
-                  {{ detailTab === 'architecture' ? '留下架构取舍的理由' : '记录让经验可复用' }}
+                  {{ detailTab === 'architecture' ? t('projects.architectureEmptyTitle') : t('projects.notesEmptyTitle') }}
                 </h3>
                 <p>
                   {{
                     detailTab === 'architecture'
-                      ? '项目目录中的架构、Architecture 或 ADR 笔记会汇集在这里。'
-                      : '在项目目录添加联调记录、排查过程或复盘笔记，即可在这里继续阅读。'
+                      ? t('projects.architectureEmptyDesc')
+                      : t('projects.notesEmptyDesc')
                   }}
                 </p>
               </div>
@@ -626,13 +637,15 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
           </template>
           <template v-else>
             <div class="collection-section-title">
-              <h2>正在使用的技术</h2>
+              <h2>
+                {{ t('projects.techTitle') }} <span class="collection-tab-count">{{ projectReviewCards.length }}</span>
+              </h2>
               <button
                 class="collection-button subtle"
                 type="button"
                 @click="router.push('/learning')"
               >
-                前往技术书架 <ArrowUpRight :size="14" />
+                {{ t('projects.goBookshelf') }} <ArrowUpRight :size="14" />
               </button>
             </div>
             <div class="collection-tags project-technology-tags">
@@ -643,7 +656,41 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
               ><Code2 :size="13" />{{ tech }}</span><span
                 v-if="!selectedProject.techStack.length"
                 class="collection-subtitle"
-              >还没有记录项目技术栈。</span>
+              >{{ t('projects.noTechStack') }}</span>
+            </div>
+            <div
+              v-if="projectReviewCards.length"
+              class="collection-panel project-review-cards"
+              data-testid="project-review-cards"
+            >
+              <div class="project-review-cards-head">
+                <strong><BookMarked :size="15" />{{ t('projects.reviewCardsTitle') }}</strong>
+                <span class="project-review-cards-meta">{{ t('projects.reviewCardsMeta', { total: projectReviewCards.length, due: projectDueReviewCards.length }) }}</span>
+                <button
+                  class="collection-button subtle"
+                  type="button"
+                  data-testid="project-review-cards-go"
+                  @click="router.push({ path: '/learning', query: { tab: 'review' } })"
+                >
+                  {{ t('projects.reviewCardsGo') }} <ArrowUpRight :size="14" />
+                </button>
+              </div>
+              <ul class="project-review-cards-list">
+                <li
+                  v-for="card in projectReviewCards.slice(0, 3)"
+                  :key="card.id"
+                >
+                  <span class="project-review-question">{{ card.question }}</span>
+                  <span
+                    v-if="card.due && card.due <= workbench.today"
+                    class="project-review-due"
+                  >{{ t('projects.reviewDue') }}</span>
+                </li>
+              </ul>
+              <small
+                v-if="projectReviewCards.length > 3"
+                class="project-review-cards-more"
+              >{{ t('projects.reviewCardsMore', { count: projectReviewCards.length - 3 }) }}</small>
             </div>
             <div class="collection-grid">
               <button
@@ -653,7 +700,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
                 type="button"
                 @click="router.push({ path: '/learning', query: { book: book.path } })"
               >
-                <BookOpen :size="25" /><span><strong>{{ book.name }}</strong><small>{{ book.noteCount }} 篇笔记 · {{ book.progress }}% 研读进度</small></span><ChevronRight :size="16" />
+                <BookOpen :size="25" /><span><strong>{{ book.name }}</strong><small>{{ t('projects.bookMeta', { n: book.noteCount, progress: book.progress }) }}</small></span><ChevronRight :size="16" />
               </button>
             </div>
             <div
@@ -661,8 +708,8 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
               class="collection-empty collection-panel"
             >
               <BookOpen :size="30" />
-              <h3>连接实践与学习</h3>
-              <p>技术分册关联这个项目后，项目里的技术问题和学习笔记就能在这里相遇。</p>
+              <h3>{{ t('projects.connectTitle') }}</h3>
+              <p>{{ t('projects.connectDesc') }}</p>
             </div>
           </template>
         </section>
@@ -692,8 +739,9 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
                 class="collection-icon-button"
                 :class="{ pinned: workspace.isPinned(card.project.path) }"
                 :aria-label="
-                  (workspace.isPinned(card.project.path) ? '取消固定 ' : '固定 ') +
-                    card.project.name
+                  workspace.isPinned(card.project.path)
+                    ? t('projects.unpinAria', { name: card.project.name })
+                    : t('projects.pinAria', { name: card.project.name })
                 "
                 :aria-pressed="workspace.isPinned(card.project.path)"
                 type="button"
@@ -704,7 +752,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
             </div>
             <div class="collection-card-body">
               <p class="project-next-step">
-                <span>下一步</span>{{ card.project.nextStep || '打开项目文档，记录下一步行动' }}
+                <span>{{ t('projects.nextStepLabel') }}</span>{{ card.project.nextStep || t('projects.nextStepEmpty') }}
               </p>
               <div class="collection-tags">
                 <span
@@ -716,7 +764,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
                 }}</span>
               </div>
               <div class="project-card-counts">
-                <span><ListTodo :size="13" />{{ card.done }}/{{ card.tasks.length }} 已完成</span><span>今日待办 {{ card.todayCount }}</span>
+                <span><ListTodo :size="13" />{{ t('projects.doneCount', { done: card.done, total: card.tasks.length }) }}</span><span>{{ t('projects.todayCount', { n: card.todayCount }) }}</span>
               </div>
               <div class="project-preview-list">
                 <button
@@ -731,7 +779,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
                     class="collection-type"
                     :data-type="task.type"
                   >{{
-                    task.type === 'todo' ? '待办' : task.type
+                    task.type === 'todo' ? t('projects.typeTodo') : task.type
                   }}</span><span>{{ task.title }}</span><CheckCircle2
                     v-if="task.completed"
                     :size="13"
@@ -743,7 +791,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
                 <span
                   v-if="!card.visibleTasks.length"
                   class="project-no-tasks"
-                >暂无任务，先记下下一步。</span>
+                >{{ t('projects.noTasks') }}</span>
               </div>
             </div>
             <div class="collection-card-footer">
@@ -751,7 +799,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
                 type="button"
                 @click="selectProject(card.project)"
               >
-                查看项目 <ChevronRight :size="14" />
+                {{ t('projects.viewProject') }} <ChevronRight :size="14" />
               </button>
             </div>
           </article>
@@ -761,12 +809,12 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
           class="collection-empty collection-panel"
         >
           <Rocket :size="34" />
-          <h2>{{ workbench.projects.length ? '没有符合筛选的项目' : '让项目从想法走向完成' }}</h2>
+          <h2>{{ workbench.projects.length ? t('projects.notFoundTitle') : t('projects.emptyTitle') }}</h2>
           <p>
             {{
               workbench.projects.length
-                ? '试着调整状态、任务类型或时间范围。'
-                : '在项目空间建立项目文档，记录状态、下一步与技术栈，这里会自动整理为项目看板。'
+                ? t('projects.notFoundDesc')
+                : t('projects.emptyDesc')
             }}
           </p>
           <button
@@ -775,7 +823,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
             type="button"
             @click="requestSourceImport({ kind: 'project', sourceType: 'empty' })"
           >
-            创建第一个项目 <Plus :size="14" />
+            {{ t('projects.createFirst') }} <Plus :size="14" />
           </button>
         </div>
       </template>
@@ -975,6 +1023,58 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
 }
 .project-related-book:hover {
   border-color: var(--border-accent);
+}
+.project-review-cards {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.project-review-cards-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.project-review-cards-head strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.project-review-cards-meta {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.project-review-cards-head .collection-button {
+  margin-left: auto;
+}
+.project-review-cards-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+.project-review-cards-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+.project-review-question {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.project-review-due {
+  flex-shrink: 0;
+  color: #c96963;
+  font-size: 11px;
+}
+.project-review-cards-more {
+  color: var(--text-muted);
+  font-size: 11px;
 }
 @media (max-width: 560px) {
   .project-blockers {

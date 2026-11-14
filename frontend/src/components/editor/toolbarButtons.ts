@@ -1,6 +1,7 @@
 // 编辑区格式工具栏按钮定义（MarkdownEditor 与 SettingsView 共用）
 export interface ToolbarItem {
   id: string
+  /** 按钮字形（静态符号，如 'B'、'H1'）；无字形按钮（如表格）由消费端经 i18nKey 解析显示文本 */
   label?: string
   cls?: string
   /** 按钮名称的 i18n key（如 'toolbar.bold'） */
@@ -46,7 +47,7 @@ export const TOOLBAR_ITEMS: ToolbarItem[] = [
   { id: 'link', label: '🔗', i18nKey: 'toolbar.link' },
   { id: 'image', label: '🖼', i18nKey: 'toolbar.image' },
   { id: 'codeblock', label: '```', cls: 'tb-mono', i18nKey: 'toolbar.codeblock' },
-  { id: 'table', label: '表格', i18nKey: 'toolbar.table' },
+  { id: 'table', i18nKey: 'toolbar.table' },
   { id: 'hr', label: '―', i18nKey: 'toolbar.hr' },
   { id: 'more', label: '⋯', i18nKey: 'toolbar.more', type: 'more' },
 ]

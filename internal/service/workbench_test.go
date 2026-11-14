@@ -161,6 +161,29 @@ func workbenchSnapshot(t *testing.T, service *TodoService, root, date string) *W
 	return snapshot
 }
 
+func TestWorkbenchSnapshotIncludesAgentEventsFromDailyAgentLog(t *testing.T) {
+	root := t.TempDir()
+	date := "2026-11-09"
+	workbenchWrite(t, root, "Daily/Agent/2026-11-09.md", "# Agent 工作日志 2026-11-09\n\n- 09:12 [claude-code] 修复导航测试\n- 10:30 重构 settings store\n- 这行不是日志格式\n")
+	snapshot := workbenchSnapshot(t, NewTodoService(), root, date)
+	events := snapshot.AgentEvents
+	if len(events) != 2 {
+		t.Fatalf("AgentEvents = %d 条, want 2: %+v", len(events), events)
+	}
+	if events[0].Time != "09:12" || events[0].Agent != "claude-code" || events[0].Content != "修复导航测试" {
+		t.Errorf("第一条解析错误: %+v", events[0])
+	}
+	if events[1].Time != "10:30" || events[1].Agent != "" || events[1].Content != "重构 settings store" {
+		t.Errorf("第二条（无 agent 名）解析错误: %+v", events[1])
+	}
+
+	// 文件缺失 → 空数组而非 null（前端直接 .map 安全）
+	empty := workbenchSnapshot(t, NewTodoService(), t.TempDir(), date)
+	if empty.AgentEvents == nil || len(empty.AgentEvents) != 0 {
+		t.Errorf("无日志时 AgentEvents 应为空数组: %+v", empty.AgentEvents)
+	}
+}
+
 func TestWorkbenchSnapshotProjectsBooksAndInterviewCards(t *testing.T) {
 	root := t.TempDir()
 	workbenchWrite(t, root, "Projects/商城/project.md", "---\n名称: 商城重构\n状态: 进行中\n下一步: 联调订单\n关联技术: [Java, Vue3]\n---\n# 商城\n")

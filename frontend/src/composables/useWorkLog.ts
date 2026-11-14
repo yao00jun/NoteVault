@@ -1,6 +1,7 @@
 import { onScopeDispose, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { WorkbenchService } from '@/api/workbench'
+import { i18n } from '@/i18n'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { localDateKey } from '@/utils/workbench'
 import { useToast } from './useToast'
@@ -32,7 +33,7 @@ export function useWorkLog() {
       const content = await WorkbenchService.ReadDailyReport(workspacePath, date)
       if (!current()) return false
       if (!content.trim()) {
-        toast.info('今日工作日志尚未生成，已打开日报生成器。')
+        toast.info(i18n.global.t('workbench.log.notGenerated'))
         window.dispatchEvent(new CustomEvent('notevault:daily-report'))
         return false
       }
@@ -41,7 +42,7 @@ export function useWorkLog() {
       await router.push({ path: '/editor', query: { file: filePath } })
       return true
     } catch (cause) {
-      if (current()) toast.error(`读取工作日志失败：${cause instanceof Error ? cause.message : String(cause)}`)
+      if (current()) toast.error(i18n.global.t('workbench.log.readFailed', { msg: cause instanceof Error ? cause.message : String(cause) }))
       return false
     }
   }

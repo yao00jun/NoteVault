@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   ChevronRight,
   FileText,
@@ -13,6 +14,8 @@ import {
 import { normalizeNotePath } from '@/utils/navigation'
 import { normalizeFolderDisplayPath } from '@/utils/folderDisplayNames'
 import type { FileNode } from '@/components/editor/FileTree.vue'
+
+const { t } = useI18n()
 
 /** 目录徽章用：递归统计子树内的 Markdown 笔记数（不含子目录与 .md 以外文件） */
 function countNotesRecursive(children?: FileNode[]): number {
@@ -164,7 +167,7 @@ const displayName = computed(() => {
     >
       <button
         class="chevron-btn node-toggle"
-        :aria-label="isExpanded ? '收起目录' : '展开目录'"
+        :aria-label="isExpanded ? t('workflowTree.collapseFolder') : t('workflowTree.expandFolder')"
         @click.stop="emit('toggle-dir', node)"
       >
         <ChevronRight
@@ -185,7 +188,7 @@ const displayName = computed(() => {
       >{{ childCount }}</span>
       <button
         class="quick-add-btn"
-        title="在当前目录新建文档"
+        :title="t('workflowTree.quickAdd')"
         @click.stop="emit('quick-add', node)"
       >
         <Plus :size="12" />

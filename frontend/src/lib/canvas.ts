@@ -11,6 +11,7 @@ import type {
   CanvasNodeColor,
   CanvasNodeSide,
 } from '@/types'
+import { i18n } from '@/i18n'
 
 /** 后端 GetFileTree 返回节点的精简形状（与 bindings FileNode 对齐） */
 export interface RawFileNode {
@@ -86,7 +87,7 @@ export function parseCanvas(raw: string): CanvasData {
   try {
     obj = JSON.parse(raw)
   } catch (e) {
-    throw new Error(`画布文件不是合法 JSON：${(e as Error).message}`, { cause: e })
+    throw new Error(i18n.global.t('canvas.invalidJson', { msg: (e as Error).message }), { cause: e })
   }
   const nodesRaw = Array.isArray(obj?.nodes) ? obj.nodes : []
   const edgesRaw = Array.isArray(obj?.edges) ? obj.edges : []

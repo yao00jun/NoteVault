@@ -1,4 +1,5 @@
 import type { InterviewCard, WorkbenchTask } from '@/api/workbench'
+import { i18n } from '@/i18n'
 
 /** Use the user's calendar day, never UTC's date (which changes at 08:00 in China). */
 export function localDateKey(now = new Date()): string {
@@ -67,7 +68,7 @@ export function buildDailyReport({ date, author = '', team = '', tasks }: Report
   const blocked = tasks.filter(task => !task.completed && (task.blocker || task.status === 'blocked'))
   const plan = tasks.filter(task => !task.completed && (task.due === tomorrow || task.date === tomorrow || today.includes(task)))
   const [year, month, day] = date.split('-').map(Number)
-  const subject = [author.trim(), `${year}年${month}月${day}日`, team.trim()].filter(Boolean).join(' - ')
+  const subject = [author.trim(), i18n.global.t('workbench.report.dateTitle', { year, month, day }), team.trim()].filter(Boolean).join(' - ')
 
   const label = (task: WorkbenchTask) => {
     const project = task.project ? `[${task.project}]` : ''
@@ -76,14 +77,17 @@ export function buildDailyReport({ date, author = '', team = '', tasks }: Report
   }
   const withProgress = (task: WorkbenchTask) => {
     const notes = task.progress.filter(entry => entry.at.slice(0, 10) === date).map(entry => plainReportText(entry.note))
-    return [label(task), ...notes].join('；')
+    return [label(task), ...notes].join(i18n.global.t('workbench.report.clauseJoiner'))
   }
-  const section = (title: string, lines: string[]) => `${title}：\n${lines.length ? lines.map((line, index) => `${index + 1}. ${line}`).join('\n') : '暂无'}`
+  const section = (title: string, lines: string[]) => i18n.global.t('workbench.report.sectionFormat', {
+    title,
+    items: lines.length ? lines.map((line, index) => `${index + 1}. ${line}`).join('\n') : i18n.global.t('workbench.report.none'),
+  })
   return [
-    `主题：【日报】${subject}`,
-    section('今日完成', done.map(withProgress)),
-    section('进行中', active.map(withProgress)),
-    section('阻塞与求助', blocked.map(task => `${label(task)}；${plainReportText(task.blocker) || '待协调解决'}`)),
-    section('明日计划', plan.map(label)),
+    i18n.global.t('workbench.report.subjectLine', { subject }),
+    section(i18n.global.t('workbench.report.sectionDone'), done.map(withProgress)),
+    section(i18n.global.t('workbench.report.sectionActive'), active.map(withProgress)),
+    section(i18n.global.t('workbench.report.sectionBlocked'), blocked.map(task => `${label(task)}${i18n.global.t('workbench.report.clauseJoiner')}${plainReportText(task.blocker) || i18n.global.t('workbench.report.noBlockerNote')}`)),
+    section(i18n.global.t('workbench.report.sectionPlan'), plan.map(label)),
   ].join('\n\n')
 }

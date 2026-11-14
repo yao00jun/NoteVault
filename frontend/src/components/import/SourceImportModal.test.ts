@@ -4,6 +4,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, disposePinia, setActivePinia, type Pinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { nextTick } from 'vue'
+import { i18n } from '@/i18n'
 import type { SourceImportOpenRequest, SourceImportRequest } from '@/api/sourceImport'
 import type { Workspace } from '@/types'
 
@@ -38,7 +39,7 @@ async function mountModal(request?: SourceImportOpenRequest, hasWorkspace = true
   if (hasWorkspace) workspace.setCurrentWorkspace(vault)
   const router = createRouter({ history: createMemoryHistory(), routes: ['/today', '/projects', '/learning', '/editor'].map(path => ({ path, component: { template: '<div />' } })) })
   await router.push('/today')
-  const wrapper = mount(SourceImportModal, { props: { open: true, request }, attachTo: document.body, global: { plugins: [pinia, router], stubs: { teleport: true } } })
+  const wrapper = mount(SourceImportModal, { props: { open: true, request }, attachTo: document.body, global: { plugins: [pinia, router, i18n], stubs: { teleport: true } } })
   wrappers.push(wrapper)
   await flushPromises()
   return { wrapper, workspace, router, intake: useSourceImport() }

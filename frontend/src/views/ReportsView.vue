@@ -142,8 +142,8 @@ async function generateReview() {
     reviewOk.value = result.aiUsed || result.summarized > 0
     reviewMsg.value = result.message ||
       (result.failed > 0
-        ? `${result.summarized} 篇摘要成功，${result.failed} 篇失败`
-        : `已生成 ${result.summarized} 篇笔记摘要`)
+        ? t('reports.review.generatePartial', { ok: result.summarized, failed: result.failed })
+        : t('reports.review.generateDone', { n: result.summarized }))
     await load()
     openFile(result.path)
   } catch (e) {

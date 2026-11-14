@@ -45,7 +45,7 @@ const recentSectionRef = ref<HTMLElement | null>(null)
 
 async function ensureSavedDrafts() {
   if (await flushOpenEditor()) return true
-  toast.warning('请先处理未保存的草稿或外部冲突，再切换工作区。')
+  toast.warning(t('welcome.errors.draftConflict'))
   return false
 }
 
@@ -246,7 +246,7 @@ async function openDemo() {
       await WorkspaceService.SetCurrentWorkspace(existing.id)
       workspaceStore.setCurrentWorkspace(toWorkspace(existing))
     } else {
-      const ws = await WorkspaceService.CreateWorkspace('演示工作区', demoPath)
+      const ws = await WorkspaceService.CreateWorkspace(t('welcome.demoWorkspaceName'), demoPath)
       if (ws) {
         workspaceStore.setCurrentWorkspace(toWorkspace(ws))
         // 创建一些演示文档

@@ -20,7 +20,7 @@ const router = useRouter()
 const sourceImport = useSourceImport()
 const sessionMatches = computed(() => editorSession.workspacePath === workspaceStore.currentWorkspace?.path)
 const editing = computed(() => route.path === '/editor' && sessionMatches.value && context.value.file === editorSession.path)
-const saveLabel = computed(() => ({ idle: '未打开文档', saved: '已保存', dirty: '等待保存', saving: '正在保存', error: '保存失败', conflict: '外部修改冲突' })[editorSession.state])
+const saveLabel = computed(() => ({ idle: t('statusbar.noFileOpen'), saved: t('statusbar.saved'), dirty: t('statusbar.dirty'), saving: t('statusbar.saving'), error: t('statusbar.saveError'), conflict: t('statusbar.conflict') })[editorSession.state])
 
 const themeLabel = computed(() => {
   const map: Record<string, string> = {
@@ -56,12 +56,12 @@ const currentFile = computed(() => {
         class="status-draft"
         @click="openDocument(router, workspaceStore, editorSession.draftPath)"
       >
-        未保存草稿 {{ editorSession.dirtyCount }}
+        {{ t('statusbar.unsavedDrafts', { count: editorSession.dirtyCount }) }}
       </button>
       <span
         v-else
         class="status-item"
-      >{{ workspaceStore.hasWorkspace ? `${workbench.documents.length} 篇文档` : '本地优先 · Markdown' }}</span>
+      >{{ workspaceStore.hasWorkspace ? t('statusbar.docCount', { count: workbench.documents.length }) : t('statusbar.localFirst') }}</span>
       <span class="status-separator">·</span>
       <span class="status-item">{{ currentFile }}</span>
     </div>
@@ -73,7 +73,7 @@ const currentFile = computed(() => {
         data-testid="source-import-status"
         @click="requestSourceImport()"
       >
-        {{ sourceImport.busy ? '资料导入中…' : sourceImport.current?.phase === 'succeeded' ? '导入完成' : '查看导入任务' }}
+        {{ sourceImport.busy ? t('statusbar.importing') : sourceImport.current?.phase === 'succeeded' ? t('statusbar.importDone') : t('statusbar.viewImport') }}
       </button>
       <template v-if="editing">
         <span class="status-item">Markdown · UTF-8</span>

@@ -4,13 +4,20 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { reactive } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { i18n } from '@/i18n'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useSettingsStore } from '@/stores/settings'
 import type { WorkbenchProject, WorkbenchTask } from '@/api/workbench'
 import TodayView from './TodayView.vue'
 
-const harness = vi.hoisted(() => ({ state: {} as Record<string, unknown>, addTask: vi.fn(), readReport: vi.fn() }))
+const harness = vi.hoisted(() => ({ state: {} as Record<string, unknown>, addTask: vi.fn(), readReport: vi.fn(), briefing: vi.fn() }))
 vi.mock('@/stores/workbench', () => ({ useWorkbenchStore: () => harness.state }))
 vi.mock('@/api/workbench', () => ({ WorkbenchService: { ReadDailyReport: harness.readReport } }))
+vi.mock('@/api', () => ({
+  ReportService: { GenerateDailyBriefing: harness.briefing },
+  CredentialService: { GetCredential: vi.fn(async () => ''), SaveCredential: vi.fn(async () => undefined) },
+  ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
+}))
 vi.mock('@/components/workbench/TaskCard.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/components/workbench/InterviewReview.vue', () => ({ default: { template: '<div />' } }))
 
@@ -33,10 +40,12 @@ beforeEach(() => {
   localStorage.clear()
   harness.addTask.mockReset().mockResolvedValue(undefined)
   harness.readReport.mockReset().mockResolvedValue('# 今日工作汇报')
+  harness.briefing.mockReset()
   harness.state = reactive({
     today: '2026-09-08', tasks: [], todayTasks: [], blockers: [], reviewQueue: [], reviewedToday: 0,
     dueReminders: [], progress: [], warnings: [], loading: false, busy: false,
     error: '', reminderError: '', lastUpdated: '2026-09-08T10:00:00+08:00',
+    agentEvents: [],
     projects: [project('A')],
     addTask: harness.addTask, refresh: vi.fn(),
   })
@@ -53,7 +62,7 @@ async function renderToday() {
     { path: '/editor', component: { template: '<div />' } },
   ] })
   await router.push('/today')
-  const wrapper = mount(TodayView, { global: { plugins: [pinia, router] } })
+  const wrapper = mount(TodayView, { global: { plugins: [pinia, router, i18n] } })
   const button = (label: string) => wrapper.findAll('button').find(item => item.text().includes(label))!
   return { wrapper, workspace, router, button }
 }
@@ -67,6 +76,29 @@ describe('Today workspace boundaries', () => {
     expect(wrapper.get('[data-testid="task-destination"]').text()).toContain('Projects/A/Tasks.md')
     expect(router.currentRoute.value.query.action).toBeUndefined()
     expect(harness.addTask).not.toHaveBeenCalled()
+  })
+
+  it('renders agent activity latest-first and opens the daily agent log', async () => {
+    harness.state.agentEvents = [
+      { time: '09:12', agent: 'claude-code', content: '修复导航测试' },
+      { time: '10:30', agent: '', content: '重构 settings store' },
+    ]
+    const { wrapper, router, workspace } = await renderToday()
+    await flushPromises()
+    const items = wrapper.get('[data-testid="agent-card"]').findAll('.agent-item')
+    expect(items).toHaveLength(2)
+    expect(items[0].text()).toContain('重构 settings store')
+    expect(items[1].text()).toContain('claude-code')
+    await items[0].trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query.file).toBe('Daily/Agent/2026-09-08.md')
+    expect(workspace.activeFile).toBe('Daily/Agent/2026-09-08.md')
+  })
+
+  it('hides the agent card when there is no agent activity', async () => {
+    const { wrapper } = await renderToday()
+    await flushPromises()
+    expect(wrapper.find('[data-testid="agent-card"]').exists()).toBe(false)
   })
 
   it('opens the saved work log from the secondary header action', async () => {
@@ -194,5 +226,41 @@ describe('Today workspace boundaries', () => {
     await flushPromises()
     expect(wrapper.find('[aria-label="任务标题"]').exists()).toBe(true)
     expect((wrapper.get('[aria-label="任务标题"]').element as HTMLInputElement).value).toBe('B current draft')
+  })
+
+  it('generates the AI briefing for today and restores it from cache without re-calling', async () => {
+    harness.briefing.mockResolvedValue({ date: '2026-09-08', briefing: '- 先做支付回调联调\n- 复习导航改动', aiUsed: true })
+    const { wrapper } = await renderToday()
+    expect(wrapper.get('[data-testid="today-briefing"]').text()).toContain('让 AI 汇总')
+    await wrapper.get('[data-testid="briefing-generate"]').trigger('click')
+    await flushPromises()
+    expect(harness.briefing).toHaveBeenCalledTimes(1)
+    expect(harness.briefing.mock.calls[0]?.slice(0, 2)).toEqual(['/a', '2026-09-08'])
+    expect(wrapper.get('[data-testid="today-briefing"]').text()).toContain('先做支付回调联调')
+
+    const again = await renderToday()
+    expect(again.wrapper.get('[data-testid="today-briefing"]').text()).toContain('先做支付回调联调')
+    expect(harness.briefing).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows configuration guidance when AI is not set up', async () => {
+    useSettingsStore().settings.ai.baseURL = ''
+    useSettingsStore().settings.ai.model = ''
+    const { wrapper } = await renderToday()
+    await wrapper.get('[data-testid="briefing-generate"]').trigger('click')
+    await flushPromises()
+    expect(harness.briefing).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="today-briefing"]').text()).toContain('未配置 AI 端点')
+  })
+
+  it('shows backend briefing failures inline and keeps the card usable', async () => {
+    useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
+    useSettingsStore().settings.ai.model = 'test-model'
+    harness.briefing.mockRejectedValue(new Error('AI 简报生成失败：boom'))
+    const { wrapper } = await renderToday()
+    await wrapper.get('[data-testid="briefing-generate"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="today-briefing"] [role="alert"]').text()).toContain('boom')
+    expect(wrapper.get('[data-testid="briefing-generate"]').attributes('disabled')).toBeUndefined()
   })
 })

@@ -2,6 +2,7 @@ package service
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -502,4 +503,41 @@ func (s *FileService) SaveImage(workspacePath string, fileName string, data []by
 	}
 
 	return filepath.ToSlash(filepath.Join("assets", uniqueName)), nil
+}
+
+// imageMIME 是 ReadImageBinary 允许读取的图片扩展名 → MIME 白名单。
+var imageMIME = map[string]string{
+	".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+	".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
+	".avif": "image/avif", ".bmp": "image/bmp",
+}
+
+// maxImageBytes 限制单张图片的读取体积，防止超大文件整段读进 WebView 内存。
+const maxImageBytes = 20 << 20
+
+// ReadImageBinary 读取工作区内的图片，返回 base64 data URL。
+//
+// 预览运行在应用内嵌 origin 上，`![](assets/x.png)` 的相对路径命不中工作区文件；
+// 由后端读出并以 data: 形式交给前端水合 <img>（CSP img-src 已放行 data:）。
+func (s *FileService) ReadImageBinary(workspacePath string, relativePath string) (string, error) {
+	fullPath, err := confineToWorkspace(workspacePath, relativePath)
+	if err != nil {
+		return "", err
+	}
+	mime, ok := imageMIME[strings.ToLower(filepath.Ext(relativePath))]
+	if !ok {
+		return "", core.NewError(core.ErrInvalidInput, "不支持的图片格式: "+relativePath)
+	}
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		return "", core.OsToNVError(err, "读取图片失败: "+relativePath)
+	}
+	if info.Size() > maxImageBytes {
+		return "", core.NewError(core.ErrInvalidInput, "图片超过 20MB，无法在预览中显示: "+relativePath)
+	}
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		return "", core.OsToNVError(err, "读取图片失败: "+relativePath)
+	}
+	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }

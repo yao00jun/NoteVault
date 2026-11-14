@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // newTestVault 建一个临时 vault：alpha 链接到 Beta，两者都带 ai 标签。
@@ -97,7 +98,7 @@ func TestInitialize(t *testing.T) {
 	}
 }
 
-func TestToolsListHasEight(t *testing.T) {
+func TestToolsListHasEleven(t *testing.T) {
 	s := NewServer(newTestVault(t), false)
 	resp := rpc(s, "tools/list", nil)
 	res, ok := resp["result"].(map[string]any)
@@ -108,13 +109,14 @@ func TestToolsListHasEight(t *testing.T) {
 	if !ok {
 		t.Fatalf("tools/list: tools not array")
 	}
-	if len(tools) != 8 {
-		t.Errorf("tool count = %d, want 8", len(tools))
+	if len(tools) != 11 {
+		t.Errorf("tool count = %d, want 11", len(tools))
 	}
 	want := map[string]bool{
 		"list_notes": true, "read_note": true, "search_notes": true,
 		"get_tags": true, "get_backlinks": true, "create_note": true,
 		"append_note": true, "patch_note": true,
+		"append_worklog": true, "record_decision": true, "update_project_status": true,
 	}
 	for _, td := range tools {
 		m, ok := td.(map[string]any)
@@ -403,5 +405,208 @@ func TestPatchNote_TargetNotFound(t *testing.T) {
 	}
 	if isError, _ := res["isError"].(bool); !isError {
 		t.Errorf("目标不存在应 isError: %v", res)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P1：结构化写入工具（append_worklog / record_decision / update_project_status）
+// ---------------------------------------------------------------------------
+
+// addProject 在 vault 里放一个项目档案，返回 project.md 原内容。
+func addProject(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, "Projects", name), 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Projects", name, "project.md"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAppendWorklog_DisabledByDefault(t *testing.T) {
+	s := NewServer(newTestVault(t), false)
+	resp := rpc(s, "tools/call", map[string]any{
+		"name":      "append_worklog",
+		"arguments": map[string]any{"content": "x"},
+	})
+	res, ok := resp["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("应返回 result: %v", resp)
+	}
+	if isError, _ := res["isError"].(bool); !isError {
+		t.Errorf("写禁用时 isError 应为 true: %v", res)
+	}
+}
+
+func TestAppendWorklog_CreatesDailyFile(t *testing.T) {
+	ws := newTestVault(t)
+	s := NewServer(ws, true)
+	today := time.Now().Format("2006-01-02")
+	rel := filepath.Join("Daily", "Agent", today+".md")
+
+	text := toolText(t, s, "append_worklog", map[string]any{"content": "修复导航测试", "agent": "claude-code"})
+	if !strings.Contains(text, "Created") {
+		t.Errorf("首次写入应返回 Created: %s", text)
+	}
+	data, err := os.ReadFile(filepath.Join(ws, rel))
+	if err != nil {
+		t.Fatalf("当日日志未落盘: %v", err)
+	}
+	if !strings.Contains(string(data), "# Agent 工作日志 "+today) ||
+		!strings.Contains(string(data), "[claude-code] 修复导航测试") {
+		t.Errorf("日志内容/标题不对:\n%s", data)
+	}
+
+	// 第二次追加：同一文件继续追加行，且带快照 id
+	text = toolText(t, s, "append_worklog", map[string]any{"content": "重构 store"})
+	if !strings.Contains(text, "Appended") || !strings.Contains(text, "snapshot:") {
+		t.Errorf("再次追加应返回 Appended+快照: %s", text)
+	}
+	data, _ = os.ReadFile(filepath.Join(ws, rel))
+	if !strings.Contains(string(data), "重构 store") || strings.Contains(string(data), "[claude-code] 重构 store") {
+		t.Errorf("第二次追加不应带 agent 名且应包含内容:\n%s", data)
+	}
+}
+
+func TestAppendWorklog_RejectsMultiline(t *testing.T) {
+	s := NewServer(newTestVault(t), true)
+	resp := rpc(s, "tools/call", map[string]any{
+		"name":      "append_worklog",
+		"arguments": map[string]any{"content": "两行\n内容"},
+	})
+	res := resp["result"].(map[string]any)
+	if isError, _ := res["isError"].(bool); !isError {
+		t.Errorf("多行内容应拒绝: %v", res)
+	}
+}
+
+func TestRecordDecision_AppendsUnderHeading(t *testing.T) {
+	ws := newTestVault(t)
+	addProject(t, ws, "demo", "---\nname: demo\nstatus: 进行中\n---\n# demo\n\n## 目标\n\n做点事\n\n## 资料与决策\n\n- 2026-01-01 · 旧决策\n")
+	s := NewServer(ws, true)
+	resp := rpc(s, "tools/call", map[string]any{
+		"name":      "record_decision",
+		"arguments": map[string]any{"project": "demo", "content": "采用独立日文件"},
+	})
+	if _, has := resp["error"]; has {
+		t.Fatalf("record_decision failed: %v", resp["error"])
+	}
+	res := resp["result"].(map[string]any)
+	text := res["content"].([]any)[0].(map[string]any)["text"].(string)
+	if !strings.Contains(text, "snapshot:") {
+		t.Errorf("应携带快照 id: %s", text)
+	}
+	data, _ := os.ReadFile(filepath.Join(ws, "Projects", "demo", "project.md"))
+	body := string(data)
+	if !strings.Contains(body, "## 资料与决策\n\n- 2026-01-01 · 旧决策\n- "+time.Now().Format("2006-01-02")+" · 采用独立日文件") {
+		t.Errorf("决策应按日期前缀追加到章节末尾:\n%s", body)
+	}
+}
+
+func TestRecordDecision_CreatesHeadingWhenMissing(t *testing.T) {
+	ws := newTestVault(t)
+	addProject(t, ws, "demo", "---\nname: demo\nstatus: 进行中\n---\n# demo\n\n正文\n")
+	s := NewServer(ws, true)
+	toolText(t, s, "record_decision", map[string]any{"project": "demo", "content": "首条决策"})
+	data, _ := os.ReadFile(filepath.Join(ws, "Projects", "demo", "project.md"))
+	body := string(data)
+	if !strings.Contains(body, "\n\n## 资料与决策\n\n- "+time.Now().Format("2006-01-02")+" · 首条决策\n") {
+		t.Errorf("标题缺失时应文末补建:\n%s", body)
+	}
+}
+
+func TestRecordDecision_ProjectMissing(t *testing.T) {
+	s := NewServer(newTestVault(t), true)
+	resp := rpc(s, "tools/call", map[string]any{
+		"name":      "record_decision",
+		"arguments": map[string]any{"project": "ghost", "content": "x"},
+	})
+	res := resp["result"].(map[string]any)
+	if isError, _ := res["isError"].(bool); !isError {
+		t.Errorf("项目不存在应 isError: %v", res)
+	}
+}
+
+func TestUpdateProjectStatus_UpdatesAndAliases(t *testing.T) {
+	ws := newTestVault(t)
+	// 用中文别名「状态」与「下一步行动」书写 frontmatter，验证兼容
+	addProject(t, ws, "demo", "---\n名称: demo\n状态: 进行中\n下一步行动: 发布 v0.2\n---\n# demo\n")
+	s := NewServer(ws, true)
+	toolText(t, s, "update_project_status", map[string]any{"project": "demo", "status": "已完成"})
+	data, _ := os.ReadFile(filepath.Join(ws, "Projects", "demo", "project.md"))
+	body := string(data)
+	if !strings.Contains(body, "状态: 已完成") || strings.Contains(body, "进行中") {
+		t.Errorf("别名键应被原位更新:\n%s", body)
+	}
+	if strings.Contains(body, "nextStep:") || strings.Contains(body, "status:") {
+		t.Errorf("不应新增重复的英文键:\n%s", body)
+	}
+
+	// next_step 更新别名键
+	toolText(t, s, "update_project_status", map[string]any{"project": "demo", "status": "已完成", "next_step": "归档"})
+	data, _ = os.ReadFile(filepath.Join(ws, "Projects", "demo", "project.md"))
+	if !strings.Contains(string(data), "下一步行动: 归档") {
+		t.Errorf("next_step 应更新到别名键:\n%s", data)
+	}
+}
+
+func TestUpdateProjectStatus_InsertsMissingField(t *testing.T) {
+	ws := newTestVault(t)
+	addProject(t, ws, "demo", "---\ntitle: demo\n---\n# demo\n")
+	s := NewServer(ws, true)
+	toolText(t, s, "update_project_status", map[string]any{"project": "demo", "status": "进行中", "next_step": "写测试"})
+	data, _ := os.ReadFile(filepath.Join(ws, "Projects", "demo", "project.md"))
+	body := string(data)
+	if !strings.Contains(body, "status: 进行中\nnextStep: 写测试\n---") {
+		t.Errorf("缺失字段应按序插入 frontmatter 末尾:\n%s", body)
+	}
+	if !strings.Contains(body, "title: demo") {
+		t.Errorf("原有字段不应丢失:\n%s", body)
+	}
+}
+
+func TestUpdateProjectStatus_CreatesFileWhenDirExists(t *testing.T) {
+	ws := newTestVault(t)
+	if err := os.MkdirAll(filepath.Join(ws, "Projects", "empty"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	s := NewServer(ws, true)
+	text := toolText(t, s, "update_project_status", map[string]any{"project": "empty", "status": "进行中"})
+	if !strings.Contains(text, "Created") {
+		t.Errorf("目录存在但档案缺失应创建: %s", text)
+	}
+	data, err := os.ReadFile(filepath.Join(ws, "Projects", "empty", "project.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "status: 进行中") {
+		t.Errorf("创建的档案应含 status:\n%s", data)
+	}
+}
+
+func TestUpdateProjectStatus_ProjectDirMissing(t *testing.T) {
+	s := NewServer(newTestVault(t), true)
+	resp := rpc(s, "tools/call", map[string]any{
+		"name":      "update_project_status",
+		"arguments": map[string]any{"project": "ghost", "status": "进行中"},
+	})
+	res := resp["result"].(map[string]any)
+	if isError, _ := res["isError"].(bool); !isError {
+		t.Errorf("项目目录不存在应 isError: %v", res)
+	}
+}
+
+func TestStructuredWrites_DisabledByDefault(t *testing.T) {
+	s := NewServer(newTestVault(t), false)
+	for _, name := range []string{"append_worklog", "record_decision", "update_project_status"} {
+		args := map[string]any{"content": "x", "project": "demo", "status": "s"}
+		resp := rpc(s, "tools/call", map[string]any{"name": name, "arguments": args})
+		res, ok := resp["result"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s: 应返回 result: %v", name, resp)
+		}
+		if isError, _ := res["isError"].(bool); !isError {
+			t.Errorf("%s 写禁用时 isError 应为 true", name)
+		}
 	}
 }

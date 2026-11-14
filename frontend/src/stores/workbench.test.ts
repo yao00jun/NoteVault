@@ -14,7 +14,7 @@ import { useWorkspaceStore } from './workspace'
 
 const ws = (id: string) => ({ id, name: id, path: `/vault/${id}`, createdAt: '', lastOpenedAt: '' })
 const task: WorkbenchTask = { id: 'task', filePath: 'Daily/2026-09-08.md', fileName: '2026-09-08.md', lineIndex: 2, sourceLine: '- [ ] [US] 接口', content: '接口', title: '接口', type: 'US', project: '', projectPath: '', completed: false, priority: 'medium', due: '', date: '2026-09-08', completedAt: '', status: 'pending', blocker: '', progress: [] }
-const snapshot = (tasks: WorkbenchTask[] = []): WorkbenchSnapshot => ({ date: '2026-09-08', tasks, projects: [], books: [], cards: [], progress: [], radar: { path: 'Learning/技术雷达.md', content: '' }, documents: [], indexedAt: '2026-09-08T09:00:00+08:00', warnings: [] })
+const snapshot = (tasks: WorkbenchTask[] = []): WorkbenchSnapshot => ({ date: '2026-09-08', tasks, projects: [], books: [], cards: [], progress: [], agentEvents: [], radar: { path: 'Learning/技术雷达.md', content: '' }, documents: [], indexedAt: '2026-09-08T09:00:00+08:00', warnings: [] })
 let pinia: ReturnType<typeof createPinia>
 
 beforeEach(() => {

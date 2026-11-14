@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { FileService, GraphService, PluginService, SearchService, TagService, TodoService, FileNode } from '@/api'
 import { Events } from '@wailsio/runtime'
 import { ref, onScopeDispose } from 'vue'
+import { i18n } from '@/i18n'
 import { PluginRuntimeHost } from '@/plugins/runtime'
 import { createMainThreadTransport } from '@/plugins/mainThreadTransport'
 import { createWorkerSource } from '@/plugins/workerSource'
@@ -148,7 +149,7 @@ export const usePluginRuntimeStore = defineStore('plugin-runtime', () => {
   function requireWorkspacePath(): string {
     const workspaceStore = useWorkspaceStore()
     if (!workspaceStore.currentWorkspace?.path) {
-      throw new Error('没有可用的工作区')
+      throw new Error(i18n.global.t('plugins.runtime.noWorkspace'))
     }
     return workspaceStore.currentWorkspace.path
   }

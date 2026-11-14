@@ -1,4 +1,5 @@
 import type { RouteLocationRaw, Router } from 'vue-router'
+import { i18n } from '@/i18n'
 
 export type WorkflowSection = 'today' | 'projects' | 'learning' | 'vault'
 export interface RouteContextInput { path: string; query: Record<string, unknown> }
@@ -10,7 +11,11 @@ export interface PageContext {
   entityFolder: string | null
   entityKind: 'project' | 'book' | null
 }
-export const sectionLabels: Record<WorkflowSection, string> = { today: '今日', projects: '项目', learning: '学习', vault: '知识库' }
+
+/** 分区显示名（面包屑 / 导航高亮）。函数形式保证 locale 变化后取到最新文案。 */
+export function sectionLabels(section: WorkflowSection): string {
+  return i18n.global.t(`navigation.sections.${section}`)
+}
 export function queryText(value: unknown): string { return typeof value === 'string' ? value : '' }
 export function normalizeNotePath(path: string): string { return path.replace(/\\/g, '/').replace(/^\.\//, '') }
 
@@ -40,12 +45,17 @@ export function pageContext(route: RouteContextInput, origin?: WorkflowSection):
   const entityKind = section === 'projects' && parts[0] === 'Projects' && parts[1] ? 'project'
     : section === 'learning' && parts[0] === 'Learning' && parts[1] ? 'book' : null
   const entityFolder = entityKind ? parts.slice(0, 2).join('/') : null
+  const t = i18n.global.t
   const titles: Record<string, string> = {
-    '/': '工作区', '/today': '今日工作台', '/knowledge': '今日工作台', '/projects': '项目组合', '/learning': '技术书架',
-    '/vault': '文档管理', '/library': '文档管理', '/settings': '设置', '/editor': '文档', '/canvas': '白板',
-    '/insights': query.tab === 'compile' ? 'AI 整理' : query.tab === 'bases' ? '属性视图' : '知识图谱',
-    '/discover': query.tab === 'qna' ? '知识问答' : query.tab === 'views' ? '主题与标签' : '搜索',
-    '/review': query.tab === 'versions' ? '版本历史' : '工作回顾', '/archive': '归档', '/trash': '回收站', '/import': '导入与迁移', '/plugins': '插件',
+    '/': t('navigation.pages.home'), '/today': t('navigation.pages.today'), '/knowledge': t('navigation.pages.knowledge'),
+    '/projects': t('navigation.pages.projects'), '/learning': t('navigation.pages.learning'),
+    '/vault': t('navigation.pages.vault'), '/library': t('navigation.pages.library'),
+    '/settings': t('navigation.pages.settings'), '/editor': t('navigation.pages.editor'), '/canvas': t('navigation.pages.canvas'),
+    '/insights': query.tab === 'compile' ? t('navigation.pages.insightsCompile') : query.tab === 'bases' ? t('navigation.pages.insightsBases') : t('navigation.pages.insightsGraph'),
+    '/discover': query.tab === 'qna' ? t('navigation.pages.discoverQna') : query.tab === 'views' ? t('navigation.pages.discoverViews') : t('navigation.pages.discoverSearch'),
+    '/review': query.tab === 'versions' ? t('navigation.pages.reviewVersions') : t('navigation.pages.reviewDefault'),
+    '/archive': t('navigation.pages.archive'), '/trash': t('navigation.pages.trash'),
+    '/import': t('navigation.pages.import'), '/plugins': t('navigation.pages.plugins'),
   }
   const title = file ? file.split('/').pop()! : entity ? entity.split('/').pop()! : titles[route.path] || 'NoteVault'
   return { section, title, file, folder, entityFolder, entityKind }
@@ -99,21 +109,21 @@ export function contextBreadcrumbs(context: PageContext, route: RouteContextInpu
     const crumbs: Breadcrumb[] = []
 
     if (parts[0] === 'Learning' && parts.length >= 2) {
-      crumbs.push({ label: sectionLabels.learning, to: '/learning' })
+      crumbs.push({ label: sectionLabels('learning'), to: '/learning' })
       crumbs.push({ label: parts[1]!, to: { path: '/learning', query: { book: parts.slice(0, 2).join('/') } } })
       for (let i = 2; i < parts.length; i++) {
         crumbs.push({ label: parts[i]! })
       }
     } else if (parts[0] === 'Projects' && parts.length >= 2) {
-      crumbs.push({ label: sectionLabels.projects, to: '/projects' })
+      crumbs.push({ label: sectionLabels('projects'), to: '/projects' })
       crumbs.push({ label: parts[1]!, to: { path: '/projects', query: { project: parts.slice(0, 2).join('/') } } })
       for (let i = 2; i < parts.length; i++) {
         crumbs.push({ label: parts[i]! })
       }
     } else if (parts[0] === 'Daily') {
-      crumbs.push({ label: sectionLabels.today, to: '/today' })
+      crumbs.push({ label: sectionLabels('today'), to: '/today' })
     } else {
-      crumbs.push({ label: sectionLabels.vault, to: '/vault' })
+      crumbs.push({ label: sectionLabels('vault'), to: '/vault' })
       let cumulative = ''
       for (let i = 0; i < parts.length; i++) {
         cumulative = cumulative ? `${cumulative}/${parts[i]}` : parts[i]!
@@ -125,7 +135,7 @@ export function contextBreadcrumbs(context: PageContext, route: RouteContextInpu
     return crumbs
   }
 
-  const crumbs: Breadcrumb[] = [{ label: sectionLabels[context.section], to: '/' + context.section }]
+  const crumbs: Breadcrumb[] = [{ label: sectionLabels(context.section), to: '/' + context.section }]
   if (context.entityFolder) {
     crumbs.push({ label: context.entityFolder.split('/').pop()!, to: { path: '/' + context.section, query: { [context.entityKind === 'project' ? 'project' : 'book']: context.entityFolder } } })
   } else if (context.file && context.folder) {

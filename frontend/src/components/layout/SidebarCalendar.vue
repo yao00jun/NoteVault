@@ -7,6 +7,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { FileService } from '@/api'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkLog } from '@/composables/useWorkLog'
@@ -16,6 +17,7 @@ import type { FileNode } from '@/components/editor/FileTree.vue'
 
 defineOptions({ name: 'SidebarCalendar' })
 
+const { t } = useI18n()
 const workspaceStore = useWorkspaceStore()
 const router = useRouter()
 const { openTodayWorkLog } = useWorkLog()
@@ -27,8 +29,16 @@ const today = ref(localDateKey())
 const logDates = ref<Set<string>>(new Set())
 const logPaths = ref<Map<string, string>>(new Map())
 
-const monthLabel = computed(() => `${viewYear.value}年${viewMonth.value + 1}月`)
-const weekdays = ['一', '二', '三', '四', '五', '六', '日']
+const monthLabel = computed(() => t('calendar.monthLabel', { year: viewYear.value, month: viewMonth.value + 1 }))
+const weekdays = computed(() => [
+  t('calendar.weekdays.mon'),
+  t('calendar.weekdays.tue'),
+  t('calendar.weekdays.wed'),
+  t('calendar.weekdays.thu'),
+  t('calendar.weekdays.fri'),
+  t('calendar.weekdays.sat'),
+  t('calendar.weekdays.sun'),
+])
 
 function formatKey(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -121,7 +131,7 @@ function openDay(cell: { key: string; isToday: boolean; hasLog: boolean }) {
     <div class="calendar-header">
       <button
         class="calendar-nav-btn"
-        aria-label="上一月"
+        :aria-label="t('calendar.prevMonth')"
         @click="shiftMonth(-1)"
       >
         ‹
@@ -129,15 +139,15 @@ function openDay(cell: { key: string; isToday: boolean; hasLog: boolean }) {
       <span class="calendar-month">{{ monthLabel }}</span>
       <button
         class="calendar-nav-btn calendar-today-btn"
-        aria-label="回到本月"
-        title="回到本月"
+        :aria-label="t('calendar.backToToday')"
+        :title="t('calendar.backToToday')"
         @click="backToToday"
       >
-        今日
+        {{ t('calendar.today') }}
       </button>
       <button
         class="calendar-nav-btn"
-        aria-label="下一月"
+        :aria-label="t('calendar.nextMonth')"
         @click="shiftMonth(1)"
       >
         ›
@@ -157,7 +167,7 @@ function openDay(cell: { key: string; isToday: boolean; hasLog: boolean }) {
           v-if="cell.inMonth && (cell.hasLog || cell.isToday)"
           class="calendar-cell is-interactive"
           :class="{ 'is-today': cell.isToday, 'has-log': cell.hasLog }"
-          :title="cell.hasLog ? `${cell.key} · 已完成工作日报` : `${cell.key} · 尚无日志，点击生成`"
+          :title="cell.hasLog ? t('calendar.hasLogTip', { date: cell.key }) : t('calendar.noLogTip', { date: cell.key })"
           @click="openDay(cell)"
         >
           <span class="calendar-day">{{ cell.day }}</span>
@@ -167,7 +177,7 @@ function openDay(cell: { key: string; isToday: boolean; hasLog: boolean }) {
           v-else
           class="calendar-cell"
           :class="{ 'is-outside': !cell.inMonth, 'is-today': cell.isToday }"
-          :title="cell.hasLog ? `${cell.key} · 已完成工作日报` : undefined"
+          :title="cell.hasLog ? t('calendar.hasLogTip', { date: cell.key }) : undefined"
         >
           <span class="calendar-day">{{ cell.day }}</span>
           <span

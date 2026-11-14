@@ -38,10 +38,10 @@
 
     <section class="iv-card">
       <div class="iv-card-title">
-        <FileUp :size="16" /> 从资料建立项目与书籍
+        <FileUp :size="16" /> {{ t('import.quickStart.title') }}
       </div>
       <p class="iv-sub">
-        提供本地目录、网址或文件，自动整理为可编辑的 Markdown；也可以只建立空白项目或书籍。
+        {{ t('import.quickStart.desc') }}
       </p>
       <div class="iv-source-grid">
         <button
@@ -49,21 +49,21 @@
           :disabled="!currentWorkspace"
           @click="requestSourceImport({ kind: 'project', sourceType: 'folder' })"
         >
-          初始化项目
+          {{ t('import.quickStart.initProject') }}
         </button>
         <button
           class="iv-btn iv-btn-primary"
           :disabled="!currentWorkspace"
           @click="requestSourceImport({ kind: 'book', sourceType: 'folder' })"
         >
-          初始化书籍
+          {{ t('import.quickStart.initBook') }}
         </button>
         <button
           class="iv-btn"
           :disabled="!currentWorkspace"
           @click="requestSourceImport({ kind: 'topic', sourceType: 'files' })"
         >
-          导入主题资料
+          {{ t('import.quickStart.importTopic') }}
         </button>
       </div>
     </section>

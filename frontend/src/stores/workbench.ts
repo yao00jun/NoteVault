@@ -4,6 +4,7 @@ import { ReminderService, WorkbenchService } from '@/api'
 import type { DistillRequest, InterviewCard, WorkbenchSnapshot, WorkbenchTask } from '@/api/workbench'
 import { useWorkspaceStore } from './workspace'
 import { localDateKey, selectReviewSession, selectTodayTasks } from '@/utils/workbench'
+import { i18n } from '@/i18n'
 
 interface DueReminder { id: string; content: string; filePath: string; remindAt: string; completed: boolean }
 
@@ -28,6 +29,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   const cards = computed(() => snapshot.value?.cards ?? [])
   const documents = computed(() => snapshot.value?.documents ?? [])
   const progress = computed(() => (snapshot.value?.progress ?? []).filter(entry => entry.at.slice(0, 10) === today.value).slice().sort((a, b) => b.at.localeCompare(a.at)))
+  const agentEvents = computed(() => snapshot.value?.agentEvents ?? [])
   const radar = computed(() => snapshot.value?.radar ?? { path: 'Learning/技术雷达.md', content: '' })
   const todayTasks = computed(() => selectTodayTasks(tasks.value, today.value))
   const blockers = computed(() => tasks.value.filter(task => !task.completed && (task.blocker || task.status === 'blocked')))
@@ -60,13 +62,13 @@ export const useWorkbenchStore = defineStore('workbench', () => {
       snapshot.value = data.value
       error.value = ''
     } else {
-      error.value = `工作台读取失败：${data.reason instanceof Error ? data.reason.message : String(data.reason)}`
+      error.value = i18n.global.t('workbench.errors.readFailed', { msg: data.reason instanceof Error ? data.reason.message : String(data.reason) })
     }
     if (reminderData.status === 'fulfilled') {
       reminders.value = (reminderData.value ?? []).filter((entry): entry is NonNullable<typeof entry> => !!entry)
       reminderError.value = ''
     } else {
-      reminderError.value = '提醒暂时无法读取，请刷新重试'
+      reminderError.value = i18n.global.t('workbench.errors.reminderReadFailed')
     }
     loading.value = false
   }
@@ -92,8 +94,8 @@ export const useWorkbenchStore = defineStore('workbench', () => {
 
   async function mutate(operation: (path: string, day: string) => Promise<void>) {
     const path = workspace.currentWorkspace?.path
-    if (!path) throw new Error('请先打开工作区')
-    if (busy.value) throw new Error('上一项操作正在保存，请稍候')
+    if (!path) throw new Error(i18n.global.t('workbench.errors.needWorkspace'))
+    if (busy.value) throw new Error(i18n.global.t('workbench.errors.busySaving'))
     const generation = workspaceGeneration
     busy.value = true
     try {
@@ -140,5 +142,5 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     if (typeof window !== 'undefined') window.removeEventListener('focus', onFocus)
   })
 
-  return { snapshot, today, loading, busy, error, reminderError, tasks, projects, books, cards, documents, progress, radar, todayTasks, blockers, reviewQueue, reviewedToday, reviewTarget, dueCards, reminders, dueReminders, lastUpdated, warnings, refresh, scheduleRefresh, toggleTask, recordProgress, setBlocker, reviewCard, addTask, distillKnowledge }
+  return { snapshot, today, loading, busy, error, reminderError, tasks, projects, books, cards, documents, progress, agentEvents, radar, todayTasks, blockers, reviewQueue, reviewedToday, reviewTarget, dueCards, reminders, dueReminders, lastUpdated, warnings, refresh, scheduleRefresh, toggleTask, recordProgress, setBlocker, reviewCard, addTask, distillKnowledge }
 })

@@ -369,7 +369,7 @@ onBeforeUnmount(() => {
           data-testid="plugin-runtime-failed"
         >
           <Puzzle :size="14" />
-          <span>{{ pluginRuntimeStore.failedPlugins.map(plugin => plugin.name).join('、') }}</span>
+          <span>{{ pluginRuntimeStore.failedPlugins.map(plugin => plugin.name).join(t('common.listJoiner')) }}</span>
         </div>
       </div>
     </div>

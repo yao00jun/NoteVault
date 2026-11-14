@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
-import { Settings, Palette, Keyboard, Info, Sparkles, Eye, EyeOff, AlertTriangle, PackageOpen, GitBranch } from '@lucide/vue'
+import { Settings, Palette, Keyboard, Info, Sparkles, Eye, EyeOff, AlertTriangle, PackageOpen, GitBranch, Plug } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
@@ -79,6 +79,27 @@ const {
   onDragStart, onDrop, addCustomCommand, removeCustomCommand,
 } = useEditorToolbarSettings()
 
+// MCP 接入（P1）：为 notevault-mcp 生成客户端接入配置，工作区路径按当前工作区填入
+const mcpCliCommand = computed(() => {
+  const ws = workspaceStore.currentWorkspace?.path || t('settings.mcp.workspacePlaceholder')
+  const write = settingsStore.settings.mcp.enableWrite ? ' --enable-write' : ''
+  return `claude mcp add notevault -- notevault-mcp --workspace "${ws}"${write}`
+})
+const mcpJsonConfig = computed(() => {
+  const ws = workspaceStore.currentWorkspace?.path || t('settings.mcp.workspacePlaceholder')
+  const args = ['--workspace', ws]
+  if (settingsStore.settings.mcp.enableWrite) args.push('--enable-write')
+  return JSON.stringify({ mcpServers: { notevault: { command: 'notevault-mcp', args } } }, null, 2)
+})
+async function copyMcpConfig(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast.success(t('settings.mcp.copied'))
+  } catch {
+    toast.error(t('settings.mcp.copyFailed'))
+  }
+}
+
 
 const themes: { value: ThemeType; label: string }[] = [
   { value: 'macos', label: 'macOS' },
@@ -96,8 +117,9 @@ const sections = computed(() => [
   { id: 'rerank', label: t('settings.nav.rerank'), icon: Sparkles },
   { id: 'shortcuts', label: t('settings.nav.shortcuts'), icon: Keyboard },
   { id: 'assets', label: t('settings.nav.assets'), icon: PackageOpen },
-  { id: 'versioning', label: '版本与备份', icon: GitBranch },
+  { id: 'versioning', label: t('settings.nav.versioning'), icon: GitBranch },
   { id: 'errorReport', label: t('settings.nav.errorReport'), icon: AlertTriangle },
+  { id: 'mcp', label: t('settings.nav.mcp'), icon: Plug },
   { id: 'about', label: t('settings.nav.about'), icon: Info },
 ])
 
@@ -107,12 +129,12 @@ const shortcuts = computed(() => [
   { keys: 'Ctrl + P', desc: t('settings.shortcuts.commandPalette') },
   { keys: 'Ctrl + ,', desc: t('settings.shortcuts.openSettings') },
   { keys: 'Ctrl + N', desc: t('settings.shortcuts.newFile') },
-  { keys: 'Ctrl + S', desc: t('settings.shortcuts.saveDoc') + ' (编辑器内)' },
-  { keys: 'Ctrl + B', desc: t('settings.shortcuts.bold') + ' (编辑器内)' },
-  { keys: 'Ctrl + I', desc: t('settings.shortcuts.italic') + ' (编辑器内)' },
-  { keys: 'Ctrl + K', desc: t('settings.shortcuts.link') + ' (编辑器内)' },
-  { keys: 'Ctrl + \\', desc: t('settings.shortcuts.code') + ' (编辑器内)' },
-  { keys: 'Esc', desc: t('settings.shortcuts.esc') + ' (命令面板打开时)' },
+  { keys: 'Ctrl + S', desc: t('settings.shortcuts.inEditor', { action: t('settings.shortcuts.saveDoc') }) },
+  { keys: 'Ctrl + B', desc: t('settings.shortcuts.inEditor', { action: t('settings.shortcuts.bold') }) },
+  { keys: 'Ctrl + I', desc: t('settings.shortcuts.inEditor', { action: t('settings.shortcuts.italic') }) },
+  { keys: 'Ctrl + K', desc: t('settings.shortcuts.inEditor', { action: t('settings.shortcuts.link') }) },
+  { keys: 'Ctrl + \\', desc: t('settings.shortcuts.inEditor', { action: t('settings.shortcuts.code') }) },
+  { keys: 'Esc', desc: t('settings.shortcuts.paletteOpen', { action: t('settings.shortcuts.esc') }) },
 ])
 
 function onLanguageChange(e: Event) {
@@ -987,18 +1009,18 @@ async function scrollToSection(id: string) {
         class="settings-section"
       >
         <h3 class="section-title">
-          版本与备份
+          {{ t('settings.versioning.title') }}
         </h3>
         <div class="setting-item">
           <div class="setting-info">
-            <span class="setting-label">Markdown 文件与 Git 版本记录</span><span class="setting-desc">查看当前工作区的版本状态、保存本地提交；知识库的“更多”菜单提供 Markdown 导出。</span>
+            <span class="setting-label">{{ t('settings.versioning.mdGitLabel') }}</span><span class="setting-desc">{{ t('settings.versioning.mdGitDesc') }}</span>
           </div>
           <button
             class="collection-button"
             :disabled="!workspaceStore.hasWorkspace"
             @click="router.push('/import#workspace-versioning')"
           >
-            管理版本记录
+            {{ t('settings.versioning.manageBtn') }}
           </button>
         </div>
       </div>
@@ -1037,6 +1059,71 @@ async function scrollToSection(id: string) {
             <span class="toggle-slider" />
           </label>
         </div>
+      </div>
+
+      <!-- 5c. MCP 接入 -->
+      <div
+        id="settings-section-mcp"
+        class="settings-section"
+      >
+        <h3 class="section-title">
+          {{ t('settings.mcp.title') }}
+        </h3>
+        <p class="section-desc">
+          {{ t('settings.mcp.desc') }}
+        </p>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.mcp.enableWrite') }}</span>
+            <span class="setting-desc">{{ t('settings.mcp.enableWriteDesc') }}</span>
+          </div>
+          <label class="toggle-switch">
+            <input
+              v-model="settingsStore.settings.mcp.enableWrite"
+              type="checkbox"
+            >
+            <span class="toggle-slider" />
+          </label>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.mcp.cli') }}</span>
+            <span class="setting-desc">{{ t('settings.mcp.cliDesc') }}</span>
+          </div>
+          <button
+            type="button"
+            class="preset-btn"
+            data-testid="mcp-copy-cli"
+            @click="copyMcpConfig(mcpCliCommand)"
+          >
+            {{ t('settings.mcp.copy') }}
+          </button>
+        </div>
+        <pre
+          class="mcp-snippet"
+          data-testid="mcp-cli-snippet"
+        >{{ mcpCliCommand }}</pre>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.mcp.json') }}</span>
+            <span class="setting-desc">{{ t('settings.mcp.jsonDesc') }}</span>
+          </div>
+          <button
+            type="button"
+            class="preset-btn"
+            data-testid="mcp-copy-json"
+            @click="copyMcpConfig(mcpJsonConfig)"
+          >
+            {{ t('settings.mcp.copy') }}
+          </button>
+        </div>
+        <pre
+          class="mcp-snippet"
+          data-testid="mcp-json-snippet"
+        >{{ mcpJsonConfig }}</pre>
+        <p class="section-desc">
+          {{ t('settings.mcp.buildHint') }}
+        </p>
       </div>
 
       <!-- 6. 关于 -->
@@ -1147,6 +1234,21 @@ async function scrollToSection(id: string) {
   flex: 1;
   overflow-y: auto;
   padding: var(--space-6);
+}
+
+/* MCP 接入：命令 / JSON 片段展示 */
+.mcp-snippet {
+  margin: calc(var(--space-2) * -1) 0 var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
 }
 
 .settings-section {

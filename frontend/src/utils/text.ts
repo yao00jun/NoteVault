@@ -1,6 +1,7 @@
 /**
  * 搜索文本高亮 + 清洗工具
  */
+import { i18n } from '@/i18n'
 
 /**
  * 把 Markdown 噪音字符替换为空格，便于在 snippet 中显示
@@ -17,7 +18,7 @@ export function stripMarkdownNoise(text: string): string {
     // 链接 [text](url) -> text
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     // 图片 ![alt](url) -> alt
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '图片：$1')
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, `${i18n.global.t('search.imageAltLabel')}$1`)
     // Wiki 链接 [[A]] / [[A|B]] -> A
     .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, a, b) => b || a)
     // 任务列表

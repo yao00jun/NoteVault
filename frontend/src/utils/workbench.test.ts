@@ -7,7 +7,7 @@ function task(id: string, fields: Partial<WorkbenchTask> = {}): WorkbenchTask {
 }
 
 function card(id: string, fields: Partial<InterviewCard> = {}): InterviewCard {
-  return { id, filePath: 'Learning/面试宝典/Go.md', lineIndex: 2, comment: '<!-- srs: {} -->', question: id, answer: 'answer', level: '', interval: 0, due: '2026-09-08', reps: 0, failures: 0, lastReviewed: '', weak: false, ...fields }
+  return { id, filePath: 'Learning/面试宝典/Go.md', lineIndex: 2, comment: '<!-- srs: {} -->', question: id, answer: 'answer', level: '', interval: 0, due: '2026-09-08', reps: 0, failures: 0, lastReviewed: '', weak: false, source: '', ...fields }
 }
 
 describe('workbench calendar and task selection', () => {

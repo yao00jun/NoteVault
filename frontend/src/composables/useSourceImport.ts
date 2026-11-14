@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { TaskService, type TaskInfo } from '@/api'
 import { SourceImportService } from '@/api/sourceImport'
 import type { CollectionKind, SourceImportFile, SourceImportOpenRequest, SourceImportPreview, SourceImportRequest, SourceImportResult } from '@/api/sourceImport'
+import { i18n } from '@/i18n'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 export type { SourceImportOpenRequest } from '@/api/sourceImport'
@@ -90,29 +91,30 @@ function absoluteSource(path: string): boolean {
 }
 
 function validate(request: SourceImportRequest, workspace: string): string {
-  if (!collectionSpaces[request.kind] || !['empty', 'folder', 'adopt', 'files', 'url', 'attachments'].includes(request.sourceType)) return '请选择有效的来源和类型'
-  if (request.sourceType === 'empty' && !request.name) return '请填写名称'
-  if (request.name && !safeFolderName(request.name)) return '名称不能包含路径分隔符、特殊字符或保留的文件名'
-  if (request.targetFolder && !destinationValid(request.targetFolder, request.kind)) return `保存位置应为 ${collectionSpaces[request.kind]}/集合名称，集合必须直接位于该空间下`
-  if (request.sourceType === 'folder' && !absoluteSource(request.source)) return '请输入文件夹的绝对路径，或使用选择文件夹'
+  const t = i18n.global.t
+  if (!collectionSpaces[request.kind] || !['empty', 'folder', 'adopt', 'files', 'url', 'attachments'].includes(request.sourceType)) return t('import.validate.invalidSource')
+  if (request.sourceType === 'empty' && !request.name) return t('import.validate.nameRequired')
+  if (request.name && !safeFolderName(request.name)) return t('import.validate.nameInvalid')
+  if (request.targetFolder && !destinationValid(request.targetFolder, request.kind)) return t('import.validate.destInvalid', { space: collectionSpaces[request.kind] })
+  if (request.sourceType === 'folder' && !absoluteSource(request.source)) return t('import.validate.folderAbsolute')
   if (request.sourceType === 'adopt') {
     let relative = normalizePath(request.source)
     if (absoluteSource(relative)) {
       const root = normalizePath(workspace)
-      if (!workspaceKey(relative).startsWith(`${workspaceKey(root)}/`)) return '已有目录必须位于当前工作区内'
+      if (!workspaceKey(relative).startsWith(`${workspaceKey(root)}/`)) return t('import.validate.adoptOutsideWorkspace')
       relative = relative.slice(root.length + 1)
     }
-    if (!destinationValid(relative, request.kind)) return `已有目录应为当前工作区的 ${collectionSpaces[request.kind]}/集合名称`
-    if (request.targetFolder && request.targetFolder !== relative) return '接入已有目录时，保存位置必须与来源目录一致'
+    if (!destinationValid(relative, request.kind)) return t('import.validate.adoptDestInvalid', { space: collectionSpaces[request.kind] })
+    if (request.targetFolder && request.targetFolder !== relative) return t('import.validate.adoptDestMismatch')
   }
   if (request.sourceType === 'url') {
     try {
       const url = new URL(request.source)
-      if (!/^https?:$/.test(url.protocol) || !url.hostname || url.username || url.password) return '请输入有效的 HTTP(S) 链接，不要在链接中包含账号或密码'
-    } catch { return '请输入有效的 HTTP(S) 链接' }
+      if (!/^https?:$/.test(url.protocol) || !url.hostname || url.username || url.password) return t('import.validate.urlInvalidWithCredentials')
+    } catch { return t('import.validate.urlInvalid') }
   }
-  if (request.sourceType === 'files' && request.files.length === 0) return '请先选择或拖入文件'
-  if (request.sourceType === 'attachments' && (request.kind !== 'book' || !destinationValid(request.source, 'book') || (request.targetFolder && request.targetFolder !== request.source))) return '请选择当前工作区 Learning 下的原分册目录'
+  if (request.sourceType === 'files' && request.files.length === 0) return t('import.validate.filesRequired')
+  if (request.sourceType === 'attachments' && (request.kind !== 'book' || !destinationValid(request.source, 'book') || (request.targetFolder && request.targetFolder !== request.source))) return t('import.validate.attachmentsDestInvalid')
   return ''
 }
 
@@ -187,11 +189,11 @@ export const useSourceImport = defineStore('sourceImport', () => {
     try {
       const value = await SourceImportService.PreviewSourceImport(entry.workspacePath, request)
       if (!valid(entry, generation) || sequence !== stateRuntime.previewSequence || !sameDraft(request, entry.draft)) return null
-      if (value.kind !== request.kind || !destinationValid(value.targetFolder, value.kind) || value.metadataPath !== `${value.targetFolder}/${collectionMetadata[value.kind]}`) throw new Error('来源预览返回了无法识别的保存位置，请重新检查')
+      if (value.kind !== request.kind || !destinationValid(value.targetFolder, value.kind) || value.metadataPath !== `${value.targetFolder}/${collectionMetadata[value.kind]}`) throw new Error(i18n.global.t('import.validate.previewDestinationUnknown'))
       entry.preview = { ...value, files: value.files ?? [], warnings: value.warnings ?? [] }
       return entry.preview
     } catch (error) {
-      if (valid(entry, generation) && sequence === stateRuntime.previewSequence) entry.error = `预览失败：${errorText(error)}`
+      if (valid(entry, generation) && sequence === stateRuntime.previewSequence) entry.error = i18n.global.t('import.validate.previewFailed', { msg: errorText(error) })
       return null
     } finally {
       if (valid(entry, generation) && sequence === stateRuntime.previewSequence) entry.previewing = false
@@ -217,10 +219,10 @@ export const useSourceImport = defineStore('sourceImport', () => {
     try {
       const task = await TaskService.GetTask(taskId)
       if (!valid(entry, generation) || entry.taskId !== taskId) return
-      if (!task || task.id !== taskId) throw new Error('找不到任务，结果尚未确认')
+      if (!task || task.id !== taskId) throw new Error(i18n.global.t('import.validate.taskNotFound'))
       entry.task = task
       if (!terminal(task.status)) {
-        if (!['pending', 'running'].includes(task.status)) throw new Error('任务状态暂时无法识别')
+        if (!['pending', 'running'].includes(task.status)) throw new Error(i18n.global.t('import.validate.taskStatusUnknown'))
         entry.phase = 'running'
         entry.error = ''
         stateRuntime.timer = setTimeout(() => { void poll(entry) }, POLL_INTERVAL)
@@ -228,17 +230,17 @@ export const useSourceImport = defineStore('sourceImport', () => {
       }
       const result = await SourceImportService.GetSourceImportResult(entry.workspacePath, taskId)
       if (!valid(entry, generation) || entry.taskId !== taskId) return
-      if (!result || result.taskId !== taskId) throw new Error('任务结果尚未确认')
+      if (!result || result.taskId !== taskId) throw new Error(i18n.global.t('import.validate.resultNotConfirmed'))
       entry.result = { ...result, files: result.files ?? [], warnings: result.warnings ?? [], conflicts: result.conflicts ?? [] }
       entry.phase = task.status as SourceImportPhase
-      entry.error = task.status === 'failed' ? (task.error || '任务未完成，已保存的文件会保留') : ''
+      entry.error = task.status === 'failed' ? (task.error || i18n.global.t('import.validate.failedFallback')) : ''
       entry.cancelRequested = false
       if (entry.submitted) entry.submitted.ai.apiKey = ''
       refreshCompleted(entry)
     } catch (error) {
       if (valid(entry, generation)) {
         entry.phase = 'unknown'
-        entry.error = `任务结果尚未确认：${errorText(error)}。请重新检查状态，不要重复导入。`
+        entry.error = i18n.global.t('import.validate.pollUnconfirmed', { msg: errorText(error) })
       }
     } finally {
       if (stateRuntime.pollingGeneration === generation) stateRuntime.pollingGeneration = null
@@ -275,14 +277,14 @@ export const useSourceImport = defineStore('sourceImport', () => {
     try {
       const id = await SourceImportService.StartSourceImport(entry.workspacePath, request)
       if (!valid(entry, generation)) return
-      if (!id) throw new Error('未收到任务编号')
+      if (!id) throw new Error(i18n.global.t('import.validate.noTaskId'))
       entry.taskId = id
       entry.phase = 'running'
       void poll(entry)
     } catch (error) {
       if (valid(entry, generation)) {
         entry.phase = 'unknown'
-        entry.error = `未能确认任务是否已启动：${errorText(error)}。请先检查工作区，避免重复写入。`
+        entry.error = i18n.global.t('import.validate.startUnconfirmed', { msg: errorText(error) })
       }
     }
   }
@@ -300,7 +302,7 @@ export const useSourceImport = defineStore('sourceImport', () => {
     } catch (error) {
       if (valid(entry, generation)) {
         entry.cancelRequested = false
-        entry.error = `取消请求尚未确认：${errorText(error)}`
+        entry.error = i18n.global.t('import.validate.cancelUnconfirmed', { msg: errorText(error) })
       }
     }
   }
@@ -331,14 +333,14 @@ export const useSourceImport = defineStore('sourceImport', () => {
     const entry = current.value
     if (!entry || active(entry) || entry.readingFiles || !files.length) return
     entry.error = ''
-    if (files.length + entry.draft.files.length > 500) { entry.error = '每次最多选择 500 个文件'; return }
-    if (files.some(file => file.size > FILE_LIMIT)) { entry.error = '单个文件不能超过 20 MiB'; return }
+    if (files.length + entry.draft.files.length > 500) { entry.error = i18n.global.t('import.validate.tooManyFiles'); return }
+    if (files.some(file => file.size > FILE_LIMIT)) { entry.error = i18n.global.t('import.validate.fileTooLarge'); return }
     const existingBytes = entry.draft.files.reduce((sum, file) => sum + file.contentBase64.length * 3 / 4 - (file.contentBase64.endsWith('==') ? 2 : file.contentBase64.endsWith('=') ? 1 : 0), 0)
-    if (files.reduce((sum, file) => sum + file.size, existingBytes) > BATCH_LIMIT) { entry.error = '每次文件总大小不能超过 100 MiB'; return }
+    if (files.reduce((sum, file) => sum + file.size, existingBytes) > BATCH_LIMIT) { entry.error = i18n.global.t('import.validate.batchTooLarge'); return }
     const names = files.map(file => (file.webkitRelativePath || file.name).replace(/\\/g, '/'))
-    if (names.some(name => name.split('/').some(segment => !safeFolderName(segment)))) { entry.error = '文件名包含无效路径，请重新选择'; return }
+    if (names.some(name => name.split('/').some(segment => !safeFolderName(segment)))) { entry.error = i18n.global.t('import.validate.fileNameInvalid'); return }
     const allNames = [...entry.draft.files.map(file => file.name), ...names]
-    if (new Set(allNames).size !== allNames.length) { entry.error = '已选择同名文件，请先移除重复项'; return }
+    if (new Set(allNames).size !== allNames.length) { entry.error = i18n.global.t('import.validate.duplicateNames'); return }
     const generation = runtime(entry).generation
     entry.readingFiles = true
     try {
@@ -346,7 +348,7 @@ export const useSourceImport = defineStore('sourceImport', () => {
       for (let index = 0; index < files.length; index++) {
         const buffer = await fileBytes(files[index]!)
         if (!valid(entry, generation) || current.value !== entry) return
-        if (buffer.byteLength > FILE_LIMIT) throw new Error('单个文件不能超过 20 MiB')
+        if (buffer.byteLength > FILE_LIMIT) throw new Error(i18n.global.t('import.validate.fileTooLarge'))
         const bytes = new Uint8Array(buffer)
         let binary = ''
         for (let offset = 0; offset < bytes.length; offset += 32768) binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768))
@@ -356,7 +358,7 @@ export const useSourceImport = defineStore('sourceImport', () => {
       entry.draft.sourceType = 'files'
       invalidatePreview()
     } catch (error) {
-      if (valid(entry, generation)) entry.error = `文件读取失败：${errorText(error)}`
+      if (valid(entry, generation)) entry.error = i18n.global.t('import.validate.readFailed', { msg: errorText(error) })
     } finally {
       if (valid(entry, generation)) entry.readingFiles = false
     }
@@ -381,9 +383,9 @@ function fileBytes(file: File): Promise<ArrayBuffer> {
   if (typeof file.arrayBuffer === 'function') return file.arrayBuffer()
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onload = () => reader.result instanceof ArrayBuffer ? resolve(reader.result) : reject(new Error('无法读取文件内容'))
-    reader.onerror = () => reject(reader.error ?? new Error('无法读取文件'))
-    reader.onabort = () => reject(new Error('文件读取已取消'))
+    reader.onload = () => reader.result instanceof ArrayBuffer ? resolve(reader.result) : reject(new Error(i18n.global.t('import.validate.readContentFailed')))
+    reader.onerror = () => reject(reader.error ?? new Error(i18n.global.t('import.validate.readFileFailed')))
+    reader.onabort = () => reject(new Error(i18n.global.t('import.validate.readCancelled')))
     reader.readAsArrayBuffer(file)
   })
 }

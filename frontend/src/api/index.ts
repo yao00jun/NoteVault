@@ -7,7 +7,7 @@
  */
 export * from '@bindings/github.com/notevault/notevault/index.js'
 export * from '@bindings/github.com/notevault/notevault/models.js'
-export type { RerankProvider } from '@bindings/github.com/notevault/notevault/internal/service/models.js'
+export type { RerankProvider, WeeklyReportAIConfig } from '@bindings/github.com/notevault/notevault/internal/service/models.js'
 export * from './workbench'
 export * as TaskService from '@bindings/github.com/notevault/notevault/internal/service/taskservice.js'
 export type { TaskInfo } from '@bindings/github.com/notevault/notevault/internal/service/models.js'

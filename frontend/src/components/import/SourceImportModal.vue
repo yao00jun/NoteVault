@@ -18,22 +18,22 @@
         <header class="si-header">
           <div>
             <p class="si-eyebrow">
-              工作台 · 新建
+              {{ t('import.source.eyebrow') }}
             </p>
             <h2 id="source-import-title">
-              {{ intake.hasTask ? '来源任务' : '把资料带进工作台' }}
+              {{ intake.hasTask ? t('import.source.taskTitle') : t('import.source.title') }}
             </h2>
             <p
               id="source-import-description"
               class="si-hint"
             >
-              创建项目、图书或专题，把已有资料整理到一个地方。
+              {{ t('import.source.subtitle') }}
             </p>
           </div>
           <button
             type="button"
             class="si-close"
-            aria-label="关闭新建窗口"
+            :aria-label="t('import.source.closeAria')"
             @click="emit('close')"
           >
             <X :size="18" />
@@ -56,7 +56,7 @@
           role="alert"
           class="si-error"
         >
-          请先打开工作区后再新建。
+          {{ t('import.source.noWorkspace') }}
         </p>
 
         <template v-else>
@@ -67,7 +67,7 @@
             @keydown.enter="guardComposition"
           >
             <div class="si-field si-kind">
-              <label for="source-kind">类型</label>
+              <label for="source-kind">{{ t('import.source.kindLabel') }}</label>
               <select
                 id="source-kind"
                 v-model="state.draft.kind"
@@ -75,13 +75,13 @@
                 data-testid="source-kind"
               >
                 <option value="project">
-                  项目
+                  {{ t('import.source.kindProject') }}
                 </option>
                 <option value="book">
-                  图书
+                  {{ t('import.source.kindBook') }}
                 </option>
                 <option value="topic">
-                  专题
+                  {{ t('import.source.kindTopic') }}
                 </option>
               </select>
             </div>
@@ -89,7 +89,7 @@
             <div
               class="si-tabs"
               role="tablist"
-              aria-label="资料来源"
+              :aria-label="t('import.source.tabsAria')"
             >
               <button
                 v-for="(tab, index) in sourceTabs"
@@ -120,10 +120,10 @@
                 v-if="state.draft.sourceType === 'empty'"
                 class="si-hint"
               >
-                从一个空白{{ kindLabel }}开始，之后随时添加笔记和资料。
+                {{ t('import.source.emptyHint', { kind: kindLabel }) }}
               </p>
               <template v-else-if="state.draft.sourceType !== 'files'">
-                <label for="source-location">{{ state.draft.sourceType === 'url' ? '网页、仓库或在线资料链接' : ['adopt', 'attachments'].includes(state.draft.sourceType) ? '工作区中的已有目录' : '来源文件夹' }}</label>
+                <label for="source-location">{{ state.draft.sourceType === 'url' ? t('import.source.labelUrl') : ['adopt', 'attachments'].includes(state.draft.sourceType) ? t('import.source.labelAdopt') : t('import.source.labelFolder') }}</label>
                 <div class="si-location-row">
                   <input
                     id="source-location"
@@ -132,7 +132,7 @@
                     type="text"
                     autocomplete="off"
                     spellcheck="false"
-                    :placeholder="state.draft.sourceType === 'url' ? 'https://…' : ['adopt', 'attachments'].includes(state.draft.sourceType) ? `${space}/集合名称` : '输入绝对路径，如 E:\\资料\\项目'"
+                    :placeholder="state.draft.sourceType === 'url' ? 'https://…' : ['adopt', 'attachments'].includes(state.draft.sourceType) ? t('import.source.placeholderAdopt', { space }) : t('import.source.placeholderFolder')"
                   >
                   <button
                     v-if="!['url', 'attachments'].includes(state.draft.sourceType)"
@@ -142,11 +142,11 @@
                     :disabled="choosingFolder"
                     @click="chooseFolder"
                   >
-                    选择文件夹
+                    {{ t('import.source.pickFolder') }}
                   </button>
                 </div>
                 <p class="si-hint">
-                  {{ state.draft.sourceType === 'attachments' ? '按标题、段落和代码块提取 PDF 正文。未改动的旧章节可更新排版，原文件和已编辑笔记会保留。' : state.draft.sourceType === 'adopt' ? '为已有目录补齐工作台入口，保留原有笔记内容。' : state.draft.sourceType === 'folder' ? '复制支持的资料，保留来源文件夹。' : '支持公开网页、GitHub 仓库及可下载的资料链接。' }}
+                  {{ state.draft.sourceType === 'attachments' ? t('import.source.hintAttachments') : state.draft.sourceType === 'adopt' ? t('import.source.hintAdopt') : state.draft.sourceType === 'folder' ? t('import.source.hintFolder') : t('import.source.hintUrl') }}
                 </p>
               </template>
               <template v-else>
@@ -163,16 +163,16 @@
                     :size="22"
                     aria-hidden="true"
                   />
-                  <strong>{{ state.readingFiles ? '正在读取文件…' : '选择文件，或拖到这里' }}</strong>
-                  <span>Markdown、文本、PDF、Word、EPUB、ZIP 等</span>
-                  <span>单个文件 20 MiB · 每次共 100 MiB，最多 500 个</span>
+                  <strong>{{ state.readingFiles ? t('import.source.readingFiles') : t('import.source.dropzoneTitle') }}</strong>
+                  <span>{{ t('import.source.dropzoneTypes') }}</span>
+                  <span>{{ t('import.source.dropzoneLimits') }}</span>
                   <input
                     id="source-files"
                     data-testid="source-files"
                     class="si-file-input"
                     type="file"
                     multiple
-                    aria-label="选择资料文件"
+                    :aria-label="t('import.source.filesAria')"
                     :disabled="state.readingFiles"
                     @change="onFileSelection"
                   >
@@ -181,12 +181,12 @@
                   v-if="state.draft.source"
                   class="si-hint"
                 >
-                  请在文件选择器中选择：{{ state.draft.source }}
+                  {{ t('import.source.pickedFrom', { source: state.draft.source }) }}
                 </p>
                 <ul
                   v-if="state.draft.files.length"
                   class="si-files"
-                  aria-label="已选文件"
+                  :aria-label="t('import.source.chosenFilesAria')"
                 >
                   <li
                     v-for="(file, index) in state.draft.files"
@@ -195,7 +195,7 @@
                     <span>{{ file.name }}</span>
                     <button
                       type="button"
-                      :aria-label="`移除 ${file.name}`"
+                      :aria-label="t('import.source.removeFile', { name: file.name })"
                       :disabled="state.readingFiles"
                       @click="intake.removeFile(index)"
                     >
@@ -208,31 +208,31 @@
 
             <div class="si-fields">
               <div class="si-field">
-                <label for="source-name">名称<span v-if="state.draft.sourceType !== 'empty'">（可从来源推断）</span></label>
+                <label for="source-name">{{ t('import.source.nameLabel') }}<span v-if="state.draft.sourceType !== 'empty'">{{ t('import.source.nameOptional') }}</span></label>
                 <input
                   id="source-name"
                   v-model="state.draft.name"
                   data-testid="source-name"
                   type="text"
-                  :placeholder="`${kindLabel}名称`"
+                  :placeholder="t('import.source.namePlaceholder', { kind: kindLabel })"
                   :disabled="state.readingFiles"
                 >
               </div>
               <div class="si-field">
-                <label for="source-destination">保存位置<span>（可留空）</span></label>
+                <label for="source-destination">{{ t('import.source.destLabel') }}<span>{{ t('import.source.destOptional') }}</span></label>
                 <input
                   id="source-destination"
                   v-model="state.draft.targetFolder"
                   data-testid="source-destination"
                   type="text"
-                  :placeholder="`${space}/${state.draft.name.trim() || '集合名称'}`"
+                  :placeholder="`${space}/${state.draft.name.trim() || t('import.source.collectionName')}`"
                   spellcheck="false"
                   :disabled="state.readingFiles"
                 >
               </div>
             </div>
             <div class="si-destination">
-              <span>工作台入口</span>
+              <span>{{ t('import.source.entryLabel') }}</span>
               <code
                 v-if="metadataPath"
                 data-testid="source-metadata-path"
@@ -240,26 +240,26 @@
               <span
                 v-else
                 class="si-hint"
-              >预览后显示完整的 Markdown 保存路径</span>
+              >{{ t('import.source.entryHint') }}</span>
             </div>
 
             <details class="si-options">
-              <summary>导入选项与 AI 梳理</summary>
+              <summary>{{ t('import.source.optionsTitle') }}</summary>
               <div class="si-field">
-                <label for="source-conflict">同名文件</label>
+                <label for="source-conflict">{{ t('import.source.conflictLabel') }}</label>
                 <select
                   id="source-conflict"
                   v-model="state.draft.conflictStrategy"
                   data-testid="source-conflict"
                 >
                   <option value="skip">
-                    保留已有文件，跳过同名项
+                    {{ t('import.source.conflictSkip') }}
                   </option>
                   <option value="update">
-                    更新来源文件，保留手动修改
+                    {{ t('import.source.conflictUpdate') }}
                   </option>
                   <option value="copy">
-                    另存副本
+                    {{ t('import.source.conflictCopy') }}
                   </option>
                 </select>
               </div>
@@ -267,22 +267,22 @@
                 v-model="state.draft.enrich"
                 type="checkbox"
                 data-testid="source-enrich"
-              >导入后用 AI 整理</label>
+              >{{ t('import.source.enrichLabel') }}</label>
               <p
                 v-if="state.draft.enrich && !aiConfigured"
                 class="si-hint"
               >
-                尚未配置 AI，将先完成资料导入。之后可以在设置中配置 AI。
+                {{ t('import.source.noAIHint') }}
               </p>
               <div class="si-field">
-                <label for="source-instruction">整理要求<span>（可选，仅用于 AI 梳理）</span></label>
+                <label for="source-instruction">{{ t('import.source.instructionLabel') }}<span>{{ t('import.source.instructionOptional') }}</span></label>
                 <textarea
                   id="source-instruction"
                   v-model="state.draft.instruction"
                   data-testid="source-instruction"
                   rows="2"
                   maxlength="4000"
-                  placeholder="例如：按章节梳理关键概念，保留原文引用"
+                  :placeholder="t('import.source.instructionPlaceholder')"
                 />
               </div>
             </details>
@@ -292,13 +292,13 @@
               class="si-preview"
               open
             >
-              <summary>{{ state.preview.existing ? '已有目录' : '将创建' }} · {{ state.preview.fileCount }} 个源文件</summary>
+              <summary>{{ state.preview.existing ? t('import.source.existingDir') : t('import.source.willCreate') }} · {{ t('import.source.fileCount', { n: state.preview.fileCount }) }}</summary>
               <code>{{ state.preview.metadataPath }}</code>
               <p
                 v-if="state.preview.existing"
                 class="si-hint"
               >
-                同名文件会按所选策略处理，已有笔记内容会保留。
+                {{ t('import.source.existingHint') }}
               </p>
               <ul v-if="state.preview.files.length">
                 <li
@@ -312,7 +312,7 @@
                 v-if="state.preview.files.length > 8"
                 class="si-hint"
               >
-                还有 {{ state.preview.files.length - 8 }} 项
+                {{ t('import.source.moreFiles', { n: state.preview.files.length - 8 }) }}
               </p>
               <ul
                 v-if="state.preview.warnings.length"
@@ -342,7 +342,7 @@
                 :disabled="state.previewing || state.readingFiles"
                 @click="intake.preview()"
               >
-                {{ state.previewing ? '正在预览…' : '预览来源' }}
+                {{ state.previewing ? t('import.source.previewing') : t('import.source.preview') }}
               </button>
               <button
                 type="submit"
@@ -350,7 +350,7 @@
                 data-testid="source-start"
                 :disabled="!canSubmit || state.previewing || state.readingFiles"
               >
-                {{ state.draft.sourceType === 'empty' ? `创建${kindLabel}` : `导入并创建${kindLabel}` }}
+                {{ state.draft.sourceType === 'empty' ? t('import.source.createKind', { kind: kindLabel }) : t('import.source.importCreateKind', { kind: kindLabel }) }}
               </button>
             </footer>
           </form>
@@ -370,14 +370,14 @@
                   class="si-spin"
                   :size="19"
                   aria-hidden="true"
-                /><h3>{{ state.phase === 'unknown' ? '任务状态待确认' : state.cancelRequested ? '正在取消…' : state.phase === 'starting' ? '正在准备来源…' : '正在导入资料' }}</h3>
+                /><h3>{{ state.phase === 'unknown' ? t('import.source.phaseUnknown') : state.cancelRequested ? t('import.source.phaseCancelling') : state.phase === 'starting' ? t('import.source.phaseStarting') : t('import.source.phaseImporting') }}</h3>
               </div>
-              <p>{{ state.task?.message || (state.phase === 'starting' ? '正在检查来源和保存位置' : '正在等待任务进度') }}</p>
+              <p>{{ state.task?.message || (state.phase === 'starting' ? t('import.source.checkingSource') : t('import.source.waitingProgress')) }}</p>
               <div
                 v-if="state.phase !== 'unknown'"
                 class="si-progress-track"
                 role="progressbar"
-                aria-label="来源导入进度"
+                :aria-label="t('import.source.progressAria')"
                 aria-valuemin="0"
                 aria-valuemax="100"
                 :aria-valuenow="state.task?.total ? progress : undefined"
@@ -392,7 +392,7 @@
               </div>
               <code v-if="state.preview">{{ state.preview.metadataPath }}</code>
               <p class="si-hint">
-                {{ state.phase === 'unknown' ? '状态确认前不会重复提交导入。' : '关闭窗口后任务仍会继续，可从后台任务入口重新查看。' }}
+                {{ state.phase === 'unknown' ? t('import.source.unknownHint') : t('import.source.backgroundHint') }}
               </p>
             </section>
 
@@ -406,25 +406,25 @@
                 class="si-hint"
                 data-testid="source-content-summary"
               >
-                正文可用 {{ state.result.readable ?? 0 }} 份 · 仅保存附件 {{ state.result.attachments ?? 0 }} 份
+                {{ t('import.source.contentSummary', { readable: state.result.readable ?? 0, attachments: state.result.attachments ?? 0 }) }}
               </p>
               <code>{{ state.result.metadataPath }}</code>
               <div class="si-stats">
                 <div data-testid="source-result-imported">
-                  <strong>{{ state.result.imported }}</strong><span>新增</span>
+                  <strong>{{ state.result.imported }}</strong><span>{{ t('import.source.statImported') }}</span>
                 </div>
                 <div data-testid="source-result-updated">
-                  <strong>{{ state.result.updated }}</strong><span>更新</span>
+                  <strong>{{ state.result.updated }}</strong><span>{{ t('import.source.statUpdated') }}</span>
                 </div>
                 <div data-testid="source-result-skipped">
-                  <strong>{{ state.result.skipped }}</strong><span>跳过</span>
+                  <strong>{{ state.result.skipped }}</strong><span>{{ t('import.source.statSkipped') }}</span>
                 </div>
                 <div data-testid="source-result-conflicts">
-                  <strong>{{ state.result.conflicts.length }}</strong><span>冲突</span>
+                  <strong>{{ state.result.conflicts.length }}</strong><span>{{ t('import.source.statConflicts') }}</span>
                 </div>
               </div>
               <details v-if="state.result.conflicts.length">
-                <summary>查看冲突文件</summary><ul>
+                <summary>{{ t('import.source.viewConflicts') }}</summary><ul>
                   <li
                     v-for="file in state.result.conflicts"
                     :key="file"
@@ -461,7 +461,7 @@
                 data-testid="source-check-status"
                 @click="intake.checkStatus()"
               >
-                重新检查状态
+                {{ t('import.source.recheck') }}
               </button>
               <button
                 v-if="state.phase === 'unknown' && !state.taskId"
@@ -470,7 +470,7 @@
                 data-testid="source-inspected-reset"
                 @click="intake.resetAfterInspection()"
               >
-                已检查工作区，返回填写
+                {{ t('import.source.inspectedReset') }}
               </button>
               <button
                 v-if="intake.busy && state.taskId && !['failed', 'cancelled', 'succeeded'].includes(state.task?.status ?? '')"
@@ -480,7 +480,7 @@
                 :disabled="state.cancelRequested"
                 @click="intake.cancel()"
               >
-                {{ state.cancelRequested ? '正在取消…' : '取消任务' }}
+                {{ state.cancelRequested ? t('import.source.phaseCancelling') : t('import.source.cancelTask') }}
               </button>
               <button
                 v-if="state.result && ['failed', 'cancelled'].includes(state.phase)"
@@ -489,7 +489,7 @@
                 data-testid="source-retry"
                 @click="intake.retry(aiConfig)"
               >
-                重试未完成的导入
+                {{ t('import.source.retry') }}
               </button>
               <button
                 v-if="state.result"
@@ -497,7 +497,7 @@
                 class="si-btn"
                 @click="newDraft"
               >
-                新建另一项
+                {{ t('import.source.newDraft') }}
               </button>
               <button
                 v-if="state.result?.metadataPath"
@@ -506,7 +506,7 @@
                 data-testid="source-open-result"
                 @click="openResult"
               >
-                打开{{ kindLabel }}
+                {{ t('import.source.openKind', { kind: kindLabel }) }}
               </button>
               <button
                 v-else
@@ -514,7 +514,7 @@
                 class="si-btn primary"
                 @click="emit('close')"
               >
-                {{ state.phase === 'unknown' ? '关闭并检查工作区' : '在后台继续' }}
+                {{ state.phase === 'unknown' ? t('import.source.closeAndCheck') : t('import.source.backgroundContinue') }}
               </button>
             </footer>
           </div>
@@ -527,6 +527,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { FolderOpen, Loader2, Upload, X } from '@lucide/vue'
 import { AppService } from '@/api'
 import type { SourceImportOpenRequest, SourceImportResult, SourceImportType } from '@/api/sourceImport'
@@ -539,6 +540,7 @@ import { isImeComposing } from '@/utils/ime'
 const props = defineProps<{ open: boolean; request?: SourceImportOpenRequest | null }>()
 const emit = defineEmits<{ close: []; completed: [result: SourceImportResult] }>()
 const router = useRouter()
+const { t } = useI18n()
 const workspace = useWorkspaceStore()
 const settings = useSettingsStore()
 const intake = useSourceImport()
@@ -550,11 +552,11 @@ let opener: HTMLElement | null = null
 let mounted = true
 
 const sourceTabOptions: { value: SourceImportType; label: string }[] = [
-  { value: 'empty', label: '空白新建' }, { value: 'folder', label: '本地文件夹' },
-  { value: 'files', label: '上传文件' }, { value: 'url', label: '链接' }, { value: 'adopt', label: '已有目录' }, { value: 'attachments', label: '已有 PDF' },
+  { value: 'empty', label: t('import.source.tabEmpty') }, { value: 'folder', label: t('import.source.tabFolder') },
+  { value: 'files', label: t('import.source.tabFiles') }, { value: 'url', label: t('import.source.tabUrl') }, { value: 'adopt', label: t('import.source.tabAdopt') }, { value: 'attachments', label: t('import.source.tabAttachments') },
 ]
 const sourceTabs = computed(() => sourceTabOptions.filter(tab => tab.value !== 'attachments' || state.value?.draft.kind === 'book'))
-const kindLabel = computed(() => ({ project: '项目', book: '图书', topic: '专题' }[state.value?.draft.kind ?? 'project']))
+const kindLabel = computed(() => ({ project: t('import.source.kindProject'), book: t('import.source.kindBook'), topic: t('import.source.kindTopic') }[state.value?.draft.kind ?? 'project']))
 const space = computed(() => collectionSpaces[state.value?.draft.kind ?? 'project'])
 const aiConfig = computed(() => ({ apiKey: settings.settings.ai.apiKey ?? '', baseURL: settings.settings.ai.baseURL ?? '', model: settings.settings.ai.model ?? '' }))
 const aiConfigured = computed(() => !!aiConfig.value.baseURL && !!aiConfig.value.model && (!!aiConfig.value.apiKey || isLocalBaseURL(aiConfig.value.baseURL)))
@@ -563,10 +565,10 @@ const resultTitle = computed(() => {
   const entry = state.value
   if (!entry?.result) return ''
   const hasSaved = !!entry.result.metadataPath || entry.result.files.length > 0 || entry.result.imported + entry.result.updated > 0
-  if (entry.phase === 'cancelled' || entry.result.cancelled) return hasSaved ? '已取消，已保存的内容会保留' : '已取消'
-  if (entry.phase === 'failed') return hasSaved ? '任务未完成，已保存的内容会保留' : '任务未完成'
-  if (entry.result.attachments) return entry.result.readable ? '部分正文已提取，原始附件已保留' : '原始资料已保存，正文尚未提取'
-  return entry.draft.sourceType === 'empty' ? '创建完成' : '导入完成'
+  if (entry.phase === 'cancelled' || entry.result.cancelled) return hasSaved ? t('import.source.resultCancelledSaved') : t('import.source.resultCancelled')
+  if (entry.phase === 'failed') return hasSaved ? t('import.source.resultFailedSaved') : t('import.source.resultFailed')
+  if (entry.result.attachments) return entry.result.readable ? t('import.source.resultPartial') : t('import.source.resultAttachmentsOnly')
+  return entry.draft.sourceType === 'empty' ? t('import.source.resultCreated') : t('import.source.resultImported')
 })
 const canSubmit = computed(() => {
   const draft = state.value?.draft
@@ -634,7 +636,7 @@ async function chooseFolder() {
     const path = await AppService.OpenFolderDialog()
     if (mounted && state.value === entry && entry.draft === draft && path) entry.draft.source = path
   } catch (error) {
-    if (mounted && state.value === entry && entry.draft === draft) entry.error = `无法打开文件夹选择器：${error instanceof Error ? error.message : String(error)}。也可以手动输入绝对路径。`
+    if (mounted && state.value === entry && entry.draft === draft) entry.error = t('import.source.folderDialogFailed', { msg: error instanceof Error ? error.message : String(error) })
   } finally { choosingFolder.value = false }
 }
 

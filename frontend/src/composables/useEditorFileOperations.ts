@@ -1,8 +1,8 @@
 import { onScopeDispose, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
-import { useI18n } from 'vue-i18n'
 import { ArchiveService, FileService, TrashService } from '@/api'
 import type { FileNode } from '@/components/editor/FileTree.vue'
+import { i18n } from '@/i18n'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { isEntryPath, renamedEntryPath, windowsWorkspace } from '@/utils/filePaths'
 import { normalizeNotePath } from '@/utils/navigation'
@@ -24,7 +24,7 @@ export function useEditorFileOperations(options: {
   const store = useWorkspaceStore()
   const route = useRoute()
   const router = useRouter()
-  const { t } = useI18n()
+  const t = i18n.global.t
   const toast = useToast()
   const busy = ref(false)
   let generation = 0
@@ -41,7 +41,7 @@ export function useEditorFileOperations(options: {
     busy.value = true
     try { await operation(workspace, current) }
     catch (cause) {
-      if (current()) toast.error(`${label}失败：${cause instanceof Error ? cause.message : String(cause)}`)
+      if (current()) toast.error(t('editor.fileOps.failed', { label, msg: cause instanceof Error ? cause.message : String(cause) }))
     } finally { busy.value = false }
   }
 
@@ -49,7 +49,7 @@ export function useEditorFileOperations(options: {
     if (input === null || !input.trim()) return null
     const name = input.trim()
     if (name === '.' || name === '..' || /[\\/:*?"<>|]/.test(name) || [...name].some(char => char.charCodeAt(0) < 32) || name.endsWith('.')) {
-      throw new Error('请输入有效的名称，不能包含路径分隔符或特殊字符。')
+      throw new Error(t('editor.fileOps.invalidName'))
     }
     return name
   }
@@ -60,10 +60,10 @@ export function useEditorFileOperations(options: {
   }
 
   async function create(parent: string, directory: boolean) {
-    await run(directory ? '新建文件夹' : '新建文档', async (workspace, current) => {
+    await run(directory ? t('editor.fileOps.createFolderLabel') : t('editor.fileOps.createFileLabel'), async (workspace, current) => {
       const name = entryName(await promptDialog({
-        message: directory ? '请输入文件夹名称：' : t('editor.promptFileName'),
-        defaultValue: directory ? '新建文件夹' : t('editor.untitledDoc'),
+        message: directory ? t('editor.fileOps.promptFolderName') : t('editor.promptFileName'),
+        defaultValue: directory ? t('editor.fileOps.defaultFolderName') : t('editor.untitledDoc'),
       }))
       if (!name || !current()) return
       options.onBegin?.()
@@ -75,15 +75,15 @@ export function useEditorFileOperations(options: {
       if (!current()) return
       if (directory) {
         options.focusFolder.value = node?.path || path
-        toast.success(`已创建文件夹「${name}」`)
+        toast.success(t('editor.fileOps.createdFolder', { name }))
       } else if (node) await options.openFile(node as FileNode)
     })
   }
 
   async function handleRename(node: FileNode) {
     const source = { ...node, path: normalizeNotePath(node.path) }
-    await run('重命名', async (workspace, current) => {
-      let name = entryName(await promptDialog({ message: source.isDir ? '请输入新的文件夹名称：' : '请输入新的文件名：', defaultValue: source.name }))
+    await run(t('editor.fileOps.renameLabel'), async (workspace, current) => {
+      let name = entryName(await promptDialog({ message: source.isDir ? t('editor.fileOps.promptNewFolderName') : t('editor.fileOps.promptNewFileName'), defaultValue: source.name }))
       if (!name || !current()) return
       const extension = source.name.match(/\.[^.]+$/)?.[0]
       if (!source.isDir && extension && !/\.[^.]+$/.test(name)) name += extension
@@ -95,7 +95,7 @@ export function useEditorFileOperations(options: {
       const paths = [source.path, destination, ...affected.flatMap(tab => [tab.path, remap(tab.path)])]
       options.onBegin?.()
       await options.withExternalFileChanges(paths, async () => {
-        if (!current()) throw new Error('工作区或页面已变化，请重新操作。')
+        if (!current()) throw new Error(t('editor.fileOps.workspaceChanged'))
         await FileService.RenameFile(workspace, source.path, name)
         if (!current()) return
         // Update identities before releasing the draft lock, so the final reload
@@ -113,14 +113,14 @@ export function useEditorFileOperations(options: {
       })
       if (!current()) return
       await options.refresh()
-      if (current()) toast.success(`已重命名为「${name}」`)
+      if (current()) toast.success(t('editor.fileOps.renamed', { name }))
     })
   }
 
   async function remove(node: FileNode, kind: 'delete' | 'archive' | 'trash') {
     const path = normalizeNotePath(node.path)
     const directory = node.isDir
-    const label = kind === 'delete' ? '删除' : kind === 'archive' ? '归档' : '移入回收站'
+    const label = kind === 'delete' ? t('editor.fileOps.deleteLabel') : kind === 'archive' ? t('editor.fileOps.archiveLabel') : t('editor.fileOps.trashLabel')
     await run(label, async (workspace, current) => {
       if (kind === 'delete' && !await confirmDialog({ message: t('editor.confirmDelete', { name: node.name }), danger: true })) return
       if (!current()) return
@@ -128,7 +128,7 @@ export function useEditorFileOperations(options: {
       const affected = options.tabs.value.filter(tab => matches(tab.path))
       options.onBegin?.()
       await options.withExternalFileChanges([path, ...affected.map(tab => tab.path)], async () => {
-        if (!current()) throw new Error('工作区或页面已变化，请重新操作。')
+        if (!current()) throw new Error(t('editor.fileOps.workspaceChanged'))
         const saved = new Map(affected.map(tab => [tab, tab.content]))
         if (kind === 'delete') await FileService.DeleteFile(workspace, path)
         else if (kind === 'archive') await ArchiveService.ArchiveFile(workspace, path)
@@ -146,9 +146,9 @@ export function useEditorFileOperations(options: {
           try {
             await FileService.CreateFile(workspace, tab.path, content)
             tab.isDirty = tab.content !== content
-            toast.warning(`${label}期间的新修改已保存在 ${tab.path}`)
+            toast.warning(t('editor.fileOps.changedDuring', { label, path: tab.path }))
           } catch (cause) {
-            toast.warning(`文件已${label}，新修改已保留为草稿，请保存：${cause instanceof Error ? cause.message : String(cause)}`)
+            toast.warning(t('editor.fileOps.keptAsDraft', { label, msg: cause instanceof Error ? cause.message : String(cause) }))
           }
         }
         if (!current()) return
@@ -183,14 +183,14 @@ export function useEditorFileOperations(options: {
     // 系统目录既不能移动，也不能作为落点
     if (protectedRoot(source.path) || protectedRoot(destinationDir)) return
     const destination = joined(destinationDir, source.name)
-    return run('移动', async (workspace, current) => {
+    return run(t('editor.fileOps.moveLabel'), async (workspace, current) => {
       const caseInsensitive = windowsWorkspace(workspace)
       const remap = (path: string) => renamedEntryPath(path, source.path, destination, source.isDir, caseInsensitive)
       const affected = options.tabs.value.filter(tab => isEntryPath(tab.path, source.path, source.isDir, caseInsensitive))
       const paths = [source.path, destination, ...affected.flatMap(tab => [tab.path, remap(tab.path)])]
       options.onBegin?.()
       await options.withExternalFileChanges(paths, async () => {
-        if (!current()) throw new Error('工作区或页面已变化，请重新操作。')
+        if (!current()) throw new Error(t('editor.fileOps.workspaceChanged'))
         await FileService.MoveEntry(workspace, source.path, destination)
         if (!current()) return
         // 与重命名同口径：先迁移打开的标签页路径，再释放草稿锁
@@ -207,7 +207,7 @@ export function useEditorFileOperations(options: {
       })
       if (!current()) return
       await options.refresh()
-      if (current()) toast.success(`已移动到 ${destinationDir}/`)
+      if (current()) toast.success(t('editor.fileOps.movedTo', { path: destinationDir }))
     })
   }
 

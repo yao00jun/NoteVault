@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { AlertTriangle, ArrowUpRight, MessageSquarePlus, X, Check, Clock3 } from '@lucide/vue'
 import type { WorkbenchTask } from '@/api/workbench'
 import { useWorkbenchStore } from '@/stores/workbench'
@@ -9,6 +10,7 @@ import { isCarryoverTask } from '@/utils/workbench'
 import { isImeComposing } from '@/utils/ime'
 
 const props = defineProps<{ task: WorkbenchTask }>()
+const { t } = useI18n()
 const store = useWorkbenchStore()
 const workspace = useWorkspaceStore()
 const router = useRouter()
@@ -66,7 +68,7 @@ function openSource() {
         type="checkbox"
         :checked="task.completed"
         :disabled="store.busy"
-        :aria-label="`${task.completed ? '取消完成' : '完成'}：${task.title}`"
+        :aria-label="t('workbench.task.toggleAria', { state: task.completed ? t('workbench.task.checkUndo') : t('workbench.task.checkDone'), title: task.title })"
         @change="toggle"
       >
       <div class="task-body">
@@ -74,7 +76,7 @@ function openSource() {
           <span
             class="task-kind"
             :class="kind"
-          >{{ task.type === 'todo' ? '待办' : task.type }}</span>
+          >{{ task.type === 'todo' ? t('workbench.task.kindTodo') : task.type }}</span>
           <span
             v-if="task.project"
             class="task-project"
@@ -82,11 +84,11 @@ function openSource() {
           <span
             v-if="carryover"
             class="carryover-label"
-          ><Clock3 :size="11" /> {{ task.date === store.today ? '已逾期' : '昨日 / 逾期顺延' }}</span>
+          ><Clock3 :size="11" /> {{ task.date === store.today ? t('workbench.task.overdue') : t('workbench.task.carryover') }}</span>
           <span
             v-if="task.due"
             class="task-due"
-          >{{ task.due.slice(5) }} 到期</span>
+          >{{ t('workbench.task.dueOn', { date: task.due.slice(5) }) }}</span>
         </div>
         <h3 class="task-title">
           {{ task.title || task.content }}
@@ -95,7 +97,7 @@ function openSource() {
           v-if="blocked"
           class="blocker-reason"
         >
-          <AlertTriangle :size="13" />{{ task.blocker || '等待协调解决' }}
+          <AlertTriangle :size="13" />{{ task.blocker || t('workbench.task.noBlocker') }}
         </p>
         <p
           v-else-if="latest"
@@ -107,8 +109,8 @@ function openSource() {
       <button
         type="button"
         class="source-button"
-        title="打开任务笔记"
-        aria-label="打开任务笔记"
+        :title="t('workbench.task.openSourceTitle')"
+        :aria-label="t('workbench.task.openSourceTitle')"
         @click="openSource"
       >
         <ArrowUpRight :size="16" />
@@ -122,7 +124,7 @@ function openSource() {
         :disabled="store.busy"
         @click="openEntry('progress')"
       >
-        <MessageSquarePlus :size="13" />随手记一笔
+        <MessageSquarePlus :size="13" />{{ t('workbench.task.recordProgress') }}
       </button>
       <button
         v-if="!task.completed"
@@ -132,7 +134,7 @@ function openSource() {
         :disabled="store.busy"
         @click="openEntry('blocker')"
       >
-        <AlertTriangle :size="13" />{{ blocked ? '编辑卡点' : '标记阻塞' }}
+        <AlertTriangle :size="13" />{{ blocked ? t('workbench.task.editBlocker') : t('workbench.task.markBlocked') }}
       </button>
       <button
         v-if="blocked"
@@ -141,7 +143,7 @@ function openSource() {
         :disabled="store.busy"
         @click="run(() => store.setBlocker(task, ''))"
       >
-        <Check :size="13" />解除阻塞
+        <Check :size="13" />{{ t('workbench.task.unblock') }}
       </button>
     </div>
     <div
@@ -153,8 +155,8 @@ function openSource() {
         ref="input"
         v-model="entry"
         type="text"
-        :aria-label="mode === 'progress' ? '进展记录' : '阻塞原因'"
-        :placeholder="mode === 'progress' ? '记录进展，回车保存到任务原文…' : '具体卡在哪里，需要谁来协助？'"
+        :aria-label="mode === 'progress' ? t('workbench.task.progressAria') : t('workbench.task.blockerAria')"
+        :placeholder="mode === 'progress' ? t('workbench.task.progressPlaceholder') : t('workbench.task.blockerPlaceholder')"
         :disabled="store.busy"
         @keydown.enter="onEnter"
         @keydown.esc="mode = null"
@@ -165,11 +167,11 @@ function openSource() {
         :disabled="store.busy || !entry.trim()"
         @click="saveEntry"
       >
-        {{ store.busy ? '保存中' : '保存' }}
+        {{ store.busy ? t('workbench.task.saving') : t('workbench.task.save') }}
       </button>
       <button
         type="button"
-        aria-label="取消记录"
+        :aria-label="t('workbench.task.cancelEntryAria')"
         :disabled="store.busy"
         @click="mode = null"
       >
@@ -185,7 +187,7 @@ function openSource() {
         type="button"
         @click="store.refresh()"
       >
-        刷新任务
+        {{ t('workbench.task.refresh') }}
       </button>
     </p>
   </article>

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -138,6 +139,71 @@ func TestReport_GenerateWeeklyReport_OverwritesExisting(t *testing.T) {
 	}
 	if r1.Path != r2.Path {
 		t.Fatalf("same week should map to same path: %s vs %s", r1.Path, r2.Path)
+	}
+}
+
+func TestReport_GenerateDailyBriefing_RequiresAIConfig(t *testing.T) {
+	dir := t.TempDir()
+	s := NewReportService(NewFileServiceWithHistory(NewSnapshotService()), NewTodoService())
+	if _, err := s.GenerateDailyBriefing(dir, "2026-11-15", WeeklyReportAIConfig{}); err == nil {
+		t.Fatal("expected error when AI endpoint is not configured")
+	}
+}
+
+func TestReport_GenerateDailyBriefing_SynthesizesWorkbenchSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	today := time.Now().Format("2006-01-02")
+	workbenchWrite(t, dir, "Projects/商城/project.md", "---\ntype: project\nstatus: 进行中\n---\n\n# 商城\n")
+	workbenchWrite(t, dir, "Projects/商城/Tasks.md", "- [ ] [US] 支付回调联调 #due/"+today+"\n- [ ] [DTS] 权限申请 (卡点：缺少联调账号)\n")
+	workbenchWrite(t, dir, "Daily/Agent/"+today+".md", "# Agent 工作日志 "+today+"\n\n- 09:12 [claude-code] 修复导航测试\n")
+
+	promptCh := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		promptCh <- string(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"- 先做支付回调联调\n- 补齐权限申请避免阻塞\n- 趁热复习 Agent 修的导航改动"}}]}`))
+	}))
+	defer server.Close()
+
+	s := NewReportService(NewFileServiceWithHistory(NewSnapshotService()), NewTodoService())
+	result, err := s.GenerateDailyBriefing(dir, today, WeeklyReportAIConfig{
+		BaseURL:  server.URL,
+		Model:    "test-model",
+		APIKey:   "test-key",
+		Protocol: "openai-chat",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt := <-promptCh
+	for _, want := range []string{"支付回调联调", "缺少联调账号", "修复导航测试", "未完成 2"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("briefing prompt should include workbench snapshot (%s):\n%s", want, prompt)
+		}
+	}
+	if !result.AIUsed || result.Date != today {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	if !strings.HasPrefix(result.Briefing, "- ") || strings.Contains(result.Briefing, "##") {
+		t.Fatalf("briefing should be plain bullet lines, got:\n%s", result.Briefing)
+	}
+}
+
+func TestReport_GenerateDailyBriefing_AIFailureReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	s := NewReportService(NewFileServiceWithHistory(NewSnapshotService()), NewTodoService())
+	if _, err := s.GenerateDailyBriefing(dir, time.Now().Format("2006-01-02"), WeeklyReportAIConfig{
+		BaseURL:  server.URL,
+		Model:    "test-model",
+		Protocol: "openai-chat",
+	}); err == nil {
+		t.Fatal("expected error on AI failure: briefing has no degraded form")
 	}
 }
 

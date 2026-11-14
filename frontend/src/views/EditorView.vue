@@ -45,7 +45,7 @@ import { normalizeNotePath } from '@/utils/navigation'
 import { isEntryPath, windowsWorkspace } from '@/utils/filePaths'
 import { findFileByName } from '@/utils/wikiLinkFiles'
 import { useEditorLayout } from '@/composables/useEditorLayout'
-import { distillationPaths, distillNoteTitle, isProjectMarkdown, type DistillationSource } from '@/utils/distillKnowledge'
+import { distillationPaths, distillNoteTitle, isDistillableSource, type DistillationSource } from '@/utils/distillKnowledge'
 import type { DistillRequest } from '@/api/workbench'
 
 const workspaceStore = useWorkspaceStore()
@@ -77,13 +77,13 @@ const vaultBrowseMode = computed(() => route.path === '/editor' && typeof route.
 const effectiveShowTree = computed(() => vaultBrowseMode.value ? true : (showTree.value && !overlayTree.value))
 
 // PARA 空间快捷卡片：目录名 → 递归文档数（从已加载的文件树统计）
-interface VaultSpace { key: string; label: string; dir: string; icon: typeof BookOpen }
+interface VaultSpace { key: string; dir: string; icon: typeof BookOpen }
 const vaultSpaces: VaultSpace[] = [
-  { key: 'learning', label: '学习', dir: 'Learning', icon: BookOpen },
-  { key: 'projects', label: '项目', dir: 'Projects', icon: Rocket },
-  { key: 'resources', label: '资料收藏', dir: 'Resources', icon: Library },
-  { key: 'inbox', label: '收集箱', dir: 'Inbox', icon: InboxIcon },
-  { key: 'daily', label: '工作日志', dir: 'Daily', icon: CalendarDays },
+  { key: 'learning', dir: 'Learning', icon: BookOpen },
+  { key: 'projects', dir: 'Projects', icon: Rocket },
+  { key: 'resources', dir: 'Resources', icon: Library },
+  { key: 'inbox', dir: 'Inbox', icon: InboxIcon },
+  { key: 'daily', dir: 'Daily', icon: CalendarDays },
 ]
 
 function countMarkdownNotes(children?: FileNode[]): number {
@@ -119,7 +119,7 @@ const activeTab = computed(() => {
   }
   return null
 })
-const canDistill = computed(() => !!activeTab.value && isProjectMarkdown(activeTab.value.path))
+const canDistill = computed(() => !!activeTab.value && isDistillableSource(activeTab.value.path))
 
 // 编辑器只显示正文（front matter 元数据不在正文区渲染）；
 // 编辑/保存时透明地与 front matter 合并，文件中仍保留元数据（兼容 Obsidian / git）。
@@ -243,7 +243,7 @@ async function openFileByPath(filePath: string, fromRoute = false) {
     }
   } catch (e) {
     console.error('Failed to open file:', e)
-    toast.error(`无法打开 ${filePath}：${e instanceof Error ? e.message : String(e)}`)
+    toast.error(t('editor.view.openFailed', { path: filePath, msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
@@ -301,7 +301,7 @@ async function openDistillModal() {
     // Synchronize the source before taking the immutable extraction snapshot.
     await withExternalFileChanges([tab.path], async () => undefined)
     if (currentWorkspace.value?.path !== workspacePath || activeTab.value !== tab || route.path !== '/editor') return
-    if (conflictedPaths.value.has(tab.path)) throw new Error('请先处理来源文档的保存错误或冲突，再沉淀知识。')
+    if (conflictedPaths.value.has(tab.path)) throw new Error(t('editor.view.distillSourceConflict'))
     distillSource.value = { workspacePath, path: tab.path, title: distillNoteTitle(tab.name, tab.content), content: tab.content }
   } catch (cause) {
     if (currentWorkspace.value?.path === workspacePath) toast.warning(cause instanceof Error ? cause.message : String(cause))
@@ -313,17 +313,17 @@ async function openDistillModal() {
 async function persistDistillation(request: DistillRequest) {
   const source = distillSource.value
   if (!source || request.sourceFile !== source.path || currentWorkspace.value?.path !== source.workspacePath) {
-    throw new Error('来源文档或工作区已变化，请重新打开沉淀窗口')
+    throw new Error(t('editor.view.distillSourceChanged'))
   }
   await withExternalFileChanges(distillationPaths(request), async () => {
-    if (currentWorkspace.value?.path !== source.workspacePath) throw new Error('工作区已变化，请重新打开文档')
+    if (currentWorkspace.value?.path !== source.workspacePath) throw new Error(t('editor.view.workspaceChanged'))
     await workbenchStore.distillKnowledge(request)
   })
 }
 
 function onDistilled(path: string) {
-  toast.success(`知识已保存到 ${path}`)
-  if (activeConflictPath.value) toast.warning('文件已更新，另有编辑器草稿需要处理，请查看冲突提示。')
+  toast.success(t('editor.view.distilled', { path }))
+  if (activeConflictPath.value) toast.warning(t('editor.view.distillDraftPending'))
 }
 watch(() => [activeTab.value?.path, activeTab.value?.isDirty, isSaving.value, saveErrors.value, activeConflictPath.value, wordCount.value, tabs.value.filter(tab => tab.isDirty).length], () => {
   if (workspaceStore.currentWorkspace?.path !== sessionWorkspacePath) return
@@ -339,7 +339,7 @@ watch(() => [activeTab.value?.path, activeTab.value?.isDirty, isSaving.value, sa
 onBeforeRouteLeave(async () => {
   openFileVersion++
   if (!await flushAllTabs()) {
-    toast.warning('草稿尚未保存，请先处理保存错误或外部冲突再离开编辑器。')
+    toast.warning(t('editor.view.leaveWithUnsaved'))
     return false
   }
 })
@@ -365,7 +365,7 @@ async function closeTab(index: number, event?: Event) {
   if (!tab) return
 
   if (tab.isDirty && !await saveTab(index)) {
-    toast.warning('保存未完成，草稿已保留；请处理保存错误或外部冲突。')
+    toast.warning(t('editor.view.saveUnfinished'))
     return
   }
 
@@ -401,24 +401,28 @@ const { busy: fileOperationsBusy, handleNewFile, handleNewFolder, handleRename, 
 // 切换视图模式
 
 /**
- * 处理图片粘贴
+ * 处理图片粘贴 / 拖拽 / 工具栏选择（同一管线）
  * 1. 立即在光标处插入"上传中..."占位文本（乐观更新）
  * 2. 上传到 assets/ 后替换为真实路径
  * 3. 失败时回退并提示
  */
 async function handlePasteImage(payload: { file: File; insertText: (text: string) => void }) {
+  await saveAndInsertImage(payload.file, payload.insertText)
+}
+
+async function saveAndInsertImage(file: File, insertText: (text: string) => void) {
   if (!currentWorkspace.value) return
 
-  const fileName = payload.file.name || 'pasted-image.png'
+  const fileName = file.name || 'pasted-image.png'
   const altText = fileName.replace(/\.[^.]+$/, '') || 'image'
   // 临时占位 Markdown 图片语法（alt 标记为"上传中"）
   const placeholder = `\n![${altText}](uploading-${Date.now()})\n`
 
   // 立即插入占位，让用户看到响应
-  payload.insertText(placeholder)
+  insertText(placeholder)
 
   try {
-    const arrayBuffer = await payload.file.arrayBuffer()
+    const arrayBuffer = await file.arrayBuffer()
     const base64Data = arrayBufferToBase64(arrayBuffer)
 
     // 调用后端保存图片（data 参数为 base64 字符串，Wails 会序列化为 []byte）
@@ -901,7 +905,7 @@ async function exportFileHTML(node: FileNode) {
   try {
     content = await FileService.ReadFile(workspacePath, node.path)
   } catch (e) {
-    toast.error(`读取文件失败：${e instanceof Error ? e.message : String(e)}`)
+    toast.error(t('editor.view.readFailed', { msg: e instanceof Error ? e.message : String(e) }))
     return
   }
   const name = node.name.replace(/\.md$/i, '')
@@ -921,8 +925,8 @@ async function exportFileHTML(node: FileNode) {
 async function handleCopyFile(node: FileNode) {
   if (node.isDir || !currentWorkspace.value) return
   const workspacePath = currentWorkspace.value.path
-  const defaultName = node.name.replace(/\.md$/i, '') + ' 副本.md'
-  const name = await promptDialog({ message: `复制「${node.name}」为：`, defaultValue: defaultName })
+  const defaultName = t('editor.view.copyDefaultName', { name: node.name.replace(/\.md$/i, '') })
+  const name = await promptDialog({ message: t('editor.view.copyPrompt', { name: node.name }), defaultValue: defaultName })
   if (!name?.trim()) return
   const fileName = name.trim().endsWith('.md') ? name.trim() : `${name.trim()}.md`
   const parent = node.path.includes('/') ? node.path.slice(0, node.path.lastIndexOf('/')) : ''
@@ -931,9 +935,9 @@ async function handleCopyFile(node: FileNode) {
     const content = await FileService.ReadFile(workspacePath, node.path)
     await FileService.CreateFile(workspacePath, target, content)
     workspaceStore.incrementFileTreeVersion()
-    toast.success(`已复制为「${target}」`)
+    toast.success(t('editor.view.copied', { target }))
   } catch (e) {
-    toast.error(`复制失败：${e instanceof Error ? e.message : String(e)}`)
+    toast.error(t('editor.view.copyFailed', { msg: e instanceof Error ? e.message : String(e) }))
   }
 }
 
@@ -1234,7 +1238,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
         class="tree-resize-handle"
         role="separator"
         aria-orientation="vertical"
-        aria-label="调整文件树宽度"
+        :aria-label="t('editor.view.treeResizeAria')"
         @pointerdown="beginResize($event, 'tree')"
       />
 
@@ -1253,9 +1257,9 @@ watch(() => workspaceStore.fileTreeVersion, () => {
               <p class="vault-eyebrow">
                 KNOWLEDGE BASE
               </p>
-              <h2>知识库</h2>
+              <h2>{{ t('editor.view.vault.title') }}</h2>
               <p class="vault-sub">
-                从左侧文件树选择文档即可在此编辑，或从下面的入口开始。
+                {{ t('editor.view.vault.subtitle') }}
               </p>
             </div>
             <button
@@ -1264,19 +1268,19 @@ watch(() => workspaceStore.fileTreeVersion, () => {
               @click="handleNewFile(newDocumentFolder)"
             >
               <Plus :size="15" />
-              新建文档
+              {{ t('editor.newDoc') }}
             </button>
           </header>
 
           <section class="vault-section">
-            <h3>空间</h3>
+            <h3>{{ t('editor.view.vault.spaces') }}</h3>
             <div class="vault-space-grid">
               <button
                 v-for="space in vaultSpaces"
                 :key="space.key"
                 class="vault-space-card"
                 :data-testid="`vault-space-${space.key}`"
-                :title="`在左侧文件树中定位 ${space.dir}/`"
+                :title="t('editor.view.vault.locateSpace', { dir: space.dir })"
                 @click="focusSpace(space.dir)"
               >
                 <component
@@ -1284,8 +1288,8 @@ watch(() => workspaceStore.fileTreeVersion, () => {
                   :size="16"
                   class="vault-space-icon"
                 />
-                <span class="vault-space-name">{{ space.label }}</span>
-                <span class="vault-space-count">{{ spaceCounts[space.dir.toLowerCase()] || 0 }} 篇</span>
+                <span class="vault-space-name">{{ t(`editor.view.space.${space.key}`) }}</span>
+                <span class="vault-space-count">{{ t('editor.view.vault.noteCount', { count: spaceCounts[space.dir.toLowerCase()] || 0 }) }}</span>
               </button>
             </div>
           </section>
@@ -1294,7 +1298,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
             v-if="recentFiles.length"
             class="vault-section"
           >
-            <h3>最近打开</h3>
+            <h3>{{ t('editor.view.vault.recent') }}</h3>
             <div class="vault-recent-list">
               <button
                 v-for="file in recentFiles"
@@ -1320,7 +1324,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
               data-testid="vault-overview-dashboard"
               @click="router.push('/vault')"
             >
-              查看完整仪表盘 →
+              {{ t('editor.view.vault.dashboard') }}
             </button>
           </footer>
         </div>
@@ -1384,7 +1388,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
               v-if="effectiveViewMode === 'split'"
               class="pane-resizer"
               role="separator"
-              aria-label="调整编辑与预览比例"
+              :aria-label="t('editor.view.splitResizeAria')"
               aria-orientation="vertical"
               :aria-valuenow="splitPercent"
               aria-valuemin="30"

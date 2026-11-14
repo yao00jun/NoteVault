@@ -39,13 +39,18 @@ function createTestRouter() {
 enableAutoUnmount(afterEach)
 
 /** 通过宿主组件在真实 setup 上下文里调用 useAIChat；返回 router 便于断言跳转结果 */
-function mountHostWithRouter(buildContext?: ContextBuilder) {
+function mountHostWithRouter(
+  buildContext?: ContextBuilder,
+  options: { persistHistory?: boolean } = {},
+  prepare?: () => void,
+) {
   const pinia = createPinia()
   setActivePinia(pinia)
+  prepare?.()
   let chat!: ReturnType<typeof useAIChat>
   const Host = defineComponent({
     setup() {
-      chat = useAIChat(buildContext ? { buildContext } : {})
+      chat = useAIChat({ ...(buildContext ? { buildContext } : {}), ...options })
       return () => null
     },
   })
@@ -54,8 +59,8 @@ function mountHostWithRouter(buildContext?: ContextBuilder) {
   return { chat, router }
 }
 
-function mountHost(buildContext?: ContextBuilder) {
-  return mountHostWithRouter(buildContext).chat
+function mountHost(buildContext?: ContextBuilder, options: { persistHistory?: boolean } = {}, prepare?: () => void) {
+  return mountHostWithRouter(buildContext, options, prepare).chat
 }
 
 describe('useAIChat', () => {
@@ -292,6 +297,58 @@ describe('useAIChat', () => {
     expect(answerMock.mock.calls.map(call => call[8])).toEqual(['C:/notes-a', 'C:/notes-b'])
     expect(chat.isAsking.value).toBe(false)
     expect(isAIAnswering.value).toBe(false)
+  })
+
+  it('persistHistory：按工作区保存并在下次挂载恢复', async () => {
+    vi.useFakeTimers()
+    const first = mountHost(undefined, { persistHistory: true }, () => {
+      useWorkspaceStore().setCurrentWorkspace({ id: 'ws', name: '笔记库', path: 'C:/notes', createdAt: '', lastOpenedAt: '' })
+    })
+    useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
+    await first.ask('上次的问题')
+    await flushPromises()
+    expect(first.messages.value).toHaveLength(2)
+    vi.advanceTimersByTime(450)
+    expect(localStorage.getItem('notevault.copilot.history.C%3A%2Fnotes')).not.toBeNull()
+
+    const second = mountHost(undefined, { persistHistory: true }, () => {
+      useWorkspaceStore().setCurrentWorkspace({ id: 'ws', name: '笔记库', path: 'C:/notes', createdAt: '', lastOpenedAt: '' })
+    })
+    expect(second.messages.value.map(message => message.content)).toEqual(['上次的问题', '这是 AI 的回答'])
+    vi.useRealTimers()
+  })
+
+  it('persistHistory：错误消息不入档，clearConversation 清档', async () => {
+    vi.useFakeTimers()
+    answerMock.mockRejectedValueOnce(new Error('boom'))
+    const chat = mountHost(undefined, { persistHistory: true }, () => {
+      useWorkspaceStore().setCurrentWorkspace({ id: 'ws', name: '笔记库', path: 'C:/notes', createdAt: '', lastOpenedAt: '' })
+    })
+    useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
+    await chat.ask('坏问题')
+    await flushPromises()
+    expect(chat.messages.value[1]?.error).toBe(true)
+    vi.advanceTimersByTime(450)
+    expect(localStorage.getItem('notevault.copilot.history.C%3A%2Fnotes')).toBeNull()
+
+    await chat.ask('好问题')
+    await flushPromises()
+    vi.advanceTimersByTime(450)
+    // 内存里错误消息保留（只是不入档）：坏问答(2 条) + 好问答(2 条)
+    expect(chat.messages.value).toHaveLength(4)
+    expect(chat.messages.value[3]).toMatchObject({ role: 'assistant', content: '这是 AI 的回答' })
+    chat.clearConversation()
+    expect(localStorage.getItem('notevault.copilot.history.C%3A%2Fnotes')).toBeNull()
+    vi.useRealTimers()
+  })
+
+  it('未开启 persistHistory 时不读写存档（蒸馏窗口等单次场景不受历史污染）', async () => {
+    const chat = mountHost()
+    useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
+    useWorkspaceStore().setCurrentWorkspace({ id: 'ws', name: '笔记库', path: 'C:/notes', createdAt: '', lastOpenedAt: '' })
+    await chat.ask('单次问题')
+    await flushPromises()
+    expect(localStorage.getItem('notevault.copilot.history.C%3A%2Fnotes')).toBeNull()
   })
 })
 

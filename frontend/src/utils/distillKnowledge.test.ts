@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { distillNoteTitle, distillationPaths, interviewAnswerBody, isProjectMarkdown, parseDistillationDraft } from './distillKnowledge'
+import { distillNoteTitle, distillationPaths, interviewAnswerBody, isDistillableSource, isInboxMarkdown, isProjectMarkdown, parseDistillationDrafts } from './distillKnowledge'
 
 describe('project knowledge distillation', () => {
   it('only exposes distillation for project Markdown documents', () => {
@@ -8,6 +8,17 @@ describe('project knowledge distillation', () => {
     for (const path of ['Learning/Go/笔记.md', 'Projects/empty.md', 'Projects/A/chart.canvas', '../Projects/A/note.md', 'Projects/A/../../Inbox/note.md']) {
       expect(isProjectMarkdown(path)).toBe(false)
     }
+  })
+
+  it('exposes Inbox notes as distillable sources that require a related project', () => {
+    expect(isInboxMarkdown('Inbox/排查记录.md')).toBe(true)
+    expect(isInboxMarkdown('Inbox/剪藏.markdown')).toBe(true)
+    for (const path of ['Inbox/nested/note.md', 'Inbox/chart.canvas', 'Inbox/.md', 'Inbox', 'Inbox/note.md/../x.md', 'learning/Inbox/note.md']) {
+      expect(isInboxMarkdown(path)).toBe(false)
+    }
+    expect(isDistillableSource('Inbox/排查记录.md')).toBe(true)
+    expect(isDistillableSource('Projects/物流/排查.md')).toBe(true)
+    expect(isDistillableSource('Learning/Go/笔记.md')).toBe(false)
   })
 
   it('takes a usable title from the note body without leaking frontmatter into a filename', () => {
@@ -28,14 +39,28 @@ describe('project knowledge distillation', () => {
   })
 
   it('accepts structured AI drafts but ignores model-supplied paths and commands', () => {
-    expect(parseDistillationDraft('```json\n{"title":"并发复盘","summary":"限制 Worker 数量","targetFolder":"../outside"}\n```', 'book')).toEqual({ title: '并发复盘', summary: '限制 Worker 数量', question: '', answer: '' })
-    expect(parseDistillationDraft('{"question":"如何排查？","answer":"使用 pprof"}', 'interview')).toMatchObject({ question: '如何排查？', answer: '使用 pprof' })
+    expect(parseDistillationDrafts('```json\n{"title":"并发复盘","summary":"限制 Worker 数量","targetFolder":"../outside"}\n```', 'book')).toEqual([
+      { title: '并发复盘', summary: '限制 Worker 数量', question: '', answer: '' },
+    ])
+    expect(parseDistillationDrafts('{"question":"如何排查？","answer":"使用 pprof"}', 'interview')).toEqual([
+      { title: '', summary: '', question: '如何排查？', answer: '使用 pprof' },
+    ])
   })
 
-  it('rejects malformed or empty AI drafts instead of replacing a manual summary', () => {
-    expect(() => parseDistillationDraft('Here is a summary', 'book')).toThrow('草稿')
-    expect(() => parseDistillationDraft('{"summary":[]}', 'book')).toThrow('草稿')
-    expect(() => parseDistillationDraft('{"question":"Q","answer":" "}', 'interview')).toThrow('草稿')
+  it('accepts multi-card AI drafts and drops entries missing required fields', () => {
+    const raw = '```json\n[\n{"title":"卡一","summary":"要点一"},\n{"title":"缺摘要"},\n{"title":"卡二","summary":"要点二"}\n]\n```'
+    expect(parseDistillationDrafts(raw, 'book')).toEqual([
+      { title: '卡一', summary: '要点一', question: '', answer: '' },
+      { title: '卡二', summary: '要点二', question: '', answer: '' },
+    ])
+    expect(parseDistillationDrafts('[{"question":"Q1","answer":"A1"},{"question":"Q2","answer":"A2"}]', 'interview')).toHaveLength(2)
+  })
+
+  it('rejects malformed or fully empty AI drafts instead of replacing a manual summary', () => {
+    expect(() => parseDistillationDrafts('Here is a summary', 'book')).toThrow('草稿')
+    expect(() => parseDistillationDrafts('{"summary":[]}', 'book')).toThrow('草稿')
+    expect(() => parseDistillationDrafts('[{"title":"缺摘要"},{"question":"Q","answer":" "}]', 'interview')).toThrow('草稿')
+    expect(() => parseDistillationDrafts('[]', 'book')).toThrow('草稿')
   })
 
   it('nests interview answer headings inside the SRS card without changing fenced examples', () => {

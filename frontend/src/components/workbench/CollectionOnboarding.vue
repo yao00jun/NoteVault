@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { FolderPlus } from '@lucide/vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { requestSourceImport } from '@/composables/useSourceImport'
+
+const { t } = useI18n()
 
 const props = defineProps<{ kind: 'project' | 'book' }>()
 const workbench = useWorkbenchStore()
@@ -28,7 +31,7 @@ function adopt(folder: string) {
     class="collection-onboarding collection-panel"
     data-testid="unregistered-collections"
   >
-    <div><FolderPlus :size="18" /><strong>发现 {{ folders.length }} 个已有目录</strong><span>接入{{ kind === 'book' ? '书架' : '项目看板' }}，保留现有笔记</span></div>
+    <div><FolderPlus :size="18" /><strong>{{ t('workbench.onboarding.found', { count: folders.length }) }}</strong><span>{{ kind === 'book' ? t('workbench.onboarding.hintBook') : t('workbench.onboarding.hintBoard') }}</span></div>
     <div class="onboarding-folders">
       <button
         v-for="folder in folders"
@@ -36,7 +39,7 @@ function adopt(folder: string) {
         class="collection-button"
         @click="adopt(folder)"
       >
-        {{ folder.split('/').pop() }} <span>接入{{ kind === 'book' ? '书架' : '看板' }}</span>
+        {{ folder.split('/').pop() }} <span>{{ kind === 'book' ? t('workbench.onboarding.buttonBook') : t('workbench.onboarding.buttonBoard') }}</span>
       </button>
     </div>
   </section>

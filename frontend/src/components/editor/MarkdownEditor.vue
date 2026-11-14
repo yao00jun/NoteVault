@@ -169,7 +169,53 @@ function openColorPicker(kind: 'color' | 'bg') {
 
 function onCommand(id: string) {
   if (!editorView || props.readonly) return
+  // 图片按钮真实化：打开系统文件选择器，选中后走与粘贴相同的插入管线
+  if (id === 'image') {
+    imageInputRef.value?.click()
+    return
+  }
   applyFormat(editorView, id)
+}
+
+// ===== 图片插入：粘贴 / 拖拽 / 工具栏选择共用同一条 emit 管线 =====
+const imageInputRef = ref<HTMLInputElement | null>(null)
+
+function insertAtCursorFactory(): (text: string) => void {
+  const targetDocument = activeDocumentId
+  return (text: string) => {
+    if (editorView && activeDocumentId === targetDocument) {
+      const cursor = editorView.state.selection.main.head
+      editorView.dispatch({
+        changes: { from: cursor, insert: text },
+        selection: { anchor: cursor + text.length },
+      })
+    }
+  }
+}
+
+function emitImage(file: File) {
+  emit('paste-image', { file, insertText: insertAtCursorFactory() })
+}
+
+function onImagePicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) emitImage(file)
+  input.value = '' // 允许连续选择同一文件
+}
+
+function handleDragOver(event: DragEvent) {
+  if (Array.from(event.dataTransfer?.items ?? []).some(item => item.type.startsWith('image/'))) {
+    event.preventDefault()
+  }
+}
+
+function handleDrop(event: DragEvent) {
+  const file = Array.from(event.dataTransfer?.files ?? []).find(f => f.type.startsWith('image/'))
+  if (!file) return
+  event.preventDefault()
+  event.stopPropagation()
+  emitImage(file)
 }
 
 /** “更多”下拉的 Callout 快捷插入 */
@@ -188,7 +234,7 @@ function onPluginButtonClick(btn: RegisteredPluginToolbarButton, event?: MouseEv
   }
   pluginStore.runToolbarButton(btn.pluginId, btn.id ?? '')
   // 视觉反馈：插件按钮不像内置命令能立刻看到明显的排版变化，给个轻提示
-  const label = btn.title || btn.id || '插件'
+  const label = btn.title || btn.id || t('toolbar.pluginFallback')
   showActionTip(t('toolbar.applied', { name: label }))
 }
 
@@ -411,21 +457,7 @@ function handlePaste(event: ClipboardEvent) {
     if (item.type.startsWith('image/')) {
       event.preventDefault()
       const file = item.getAsFile()
-      if (file) {
-        const targetDocument = activeDocumentId
-        emit('paste-image', {
-          file,
-          insertText: (text: string) => {
-            if (editorView && activeDocumentId === targetDocument) {
-              const cursor = editorView.state.selection.main.head
-              editorView.dispatch({
-                changes: { from: cursor, insert: text },
-                selection: { anchor: cursor + text.length },
-              })
-            }
-          },
-        })
-      }
+      if (file) emitImage(file)
       break
     }
   }
@@ -458,6 +490,8 @@ watch(() => [settingsStore.settings.theme, settingsStore.settings.fontSize, sett
 onMounted(() => {
   createEditor()
   editorRef.value?.addEventListener('paste', handlePaste as EventListener)
+  editorRef.value?.addEventListener('dragover', handleDragOver as EventListener)
+  editorRef.value?.addEventListener('drop', handleDrop as EventListener)
   editorRef.value?.addEventListener('contextmenu', onContextMenu as EventListener)
   // Escape 关格式刷（弹层类的 Escape 在 EditorToolbar 内自治）
   document.addEventListener('keydown', onEditorKeydown)
@@ -476,6 +510,8 @@ onDeactivated(() => { isActive = false; rememberDocument(); setActiveEditor(null
 
 onBeforeUnmount(() => {
   editorRef.value?.removeEventListener('paste', handlePaste as EventListener)
+  editorRef.value?.removeEventListener('dragover', handleDragOver as EventListener)
+  editorRef.value?.removeEventListener('drop', handleDrop as EventListener)
   editorRef.value?.removeEventListener('contextmenu', onContextMenu as EventListener)
   document.removeEventListener('keydown', onEditorKeydown)
   if (tipTimer) window.clearTimeout(tipTimer)
@@ -571,6 +607,16 @@ defineExpose({
       type="color"
       class="tb-color-input"
       @change="(e) => onColorInput('bg', e)"
+    >
+
+    <!-- 隐藏的图片选择器：工具栏图片按钮触发，选中后走与粘贴相同的插入管线 -->
+    <input
+      ref="imageInputRef"
+      type="file"
+      accept="image/*"
+      class="tb-color-input"
+      data-testid="editor-image-picker"
+      @change="onImagePicked"
     >
 
     <!-- 格式刷提示 -->

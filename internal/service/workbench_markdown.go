@@ -25,6 +25,8 @@ var (
 	workbenchFenceRE    = regexp.MustCompile("^[ \\t]*(`{3,}|~{3,})(.*)$")
 	workbenchDateRE     = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 	workbenchHeadingRE  = regexp.MustCompile(`^(?:\x{FEFF})?[ \t]{0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$`)
+	// MCP append_worklog 的行格式：`- 15:04 [agent] 内容`（agent 段可省略）。
+	workbenchAgentEventRE = regexp.MustCompile(`^\s*-\s*(\d{2}:\d{2})(?:\s+\[([^\]\r\n]+)\])?[ \t]+(\S.*)$`)
 )
 
 type workbenchLine struct {
@@ -417,4 +419,26 @@ func removeWorkbenchBlockers(line string) string {
 
 func escapeWorkbenchBlocker(value string) string {
 	return strings.NewReplacer(`\`, `\\`, `(`, `\(`, `)`, `\)`, `（`, `\（`, `）`, `\）`).Replace(html.EscapeString(value))
+}
+
+// readWorkbenchAgentEvents 解析 Daily/Agent/<date>.md（MCP append_worklog 的落盘文件）
+// 为当日 Agent 动态；文件缺失或不可读时返回空切片，不产生警告（该文件可选）。
+func readWorkbenchAgentEvents(workspacePath, date string) []WorkbenchAgentEvent {
+	events := []WorkbenchAgentEvent{}
+	full, _, err := workbenchPath(workspacePath, "Daily/Agent/"+date+".md")
+	if err != nil {
+		return events
+	}
+	content, err := os.ReadFile(full)
+	if err != nil {
+		return events
+	}
+	for _, line := range strings.Split(string(content), "\n") {
+		m := workbenchAgentEventRE.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		events = append(events, WorkbenchAgentEvent{Time: m[1], Agent: m[2], Content: strings.TrimSpace(m[3])})
+	}
+	return events
 }

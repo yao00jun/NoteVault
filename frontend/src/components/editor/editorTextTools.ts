@@ -1,10 +1,13 @@
 // ============================================================================
 // editorTextTools —— “更多”下拉里的文本处理工具（纯字符串变换）。
 //
-// 不依赖 CodeMirror 与 Vue：输入原文、输出变换结果；
+// 不依赖 CodeMirror 与 Vue 响应式状态：输入原文、输出变换结果；
 // 选区定位与 dispatch 由 MarkdownEditor.vue 负责。
+// 生成内容中的文案（如列表转表格的表头）经全局 i18n 单例解析。
 // 工具清单（id + i18n）见 toolbarButtons.ts 的 TEXT_TOOLS，两边 id 必须对齐。
 // ============================================================================
+
+import { i18n } from '@/i18n'
 
 /** 按 id 对文本执行变换；未知 id 原样返回（防御脏数据）。 */
 export function transformText(id: string, text: string): string {
@@ -57,7 +60,8 @@ export function transformText(id: string, text: string): string {
         .map((l) => l.replace(/^([-*+]\s+|\d+\.\s+)/, ''))
         .filter(Boolean)
       if (!items.length) return text
-      return `| 项 |\n| --- |\n${items.map((it) => `| ${it} |`).join('\n')}`
+      // 竖线是 Markdown 表格语法符号，保留在代码侧拼接（vue-i18n 会把 | 当复数分隔符）
+      return `| ${i18n.global.t('editor.commands.tableItem')} |\n| --- |\n${items.map((it) => `| ${it} |`).join('\n')}`
     }
     case 'tableToList': {
       const rows = lines

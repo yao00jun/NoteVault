@@ -1,5 +1,6 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { ReminderService, NotificationsService } from '@/api'
+import { i18n } from '@/i18n'
 import { useSettingsStore } from '@/stores/settings'
 
 interface Reminder {
@@ -108,7 +109,7 @@ export function useReminderNotifications(workspacePath: () => string | undefined
         const remindTime = new Date(reminder.remindAt)
         // 如果提醒时间已到（且在过去 1 小时内），弹出通知
         if (remindTime <= now && now.getTime() - remindTime.getTime() < 3600000) {
-          void showNotification('⏰ NoteVault 提醒', reminder.content, reminder.filePath, reminder.id)
+          void showNotification(i18n.global.t('reminders.notificationTitle'), reminder.content, reminder.filePath, reminder.id)
           notifiedIds.value.add(reminder.id)
         }
       }

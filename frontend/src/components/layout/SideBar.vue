@@ -81,7 +81,7 @@ function toggleWorkspaceMenu() {
 }
 
 async function switchWorkspace(wsId: string) {
-  if (!await flushOpenEditor()) { toast.warning('请先处理未保存的草稿或外部冲突，再切换工作区。'); return }
+  if (!await flushOpenEditor()) { toast.warning(t('sidebar.unsavedDraftsSwitch')); return }
   try {
     // 先设置当前工作区
     await WorkspaceService.SetCurrentWorkspace(wsId)
@@ -100,7 +100,7 @@ async function switchWorkspace(wsId: string) {
 }
 
 async function createWorkspace() {
-  if (!await flushOpenEditor()) { toast.warning('请先处理未保存的草稿或外部冲突，再创建工作区。'); return }
+  if (!await flushOpenEditor()) { toast.warning(t('sidebar.unsavedDraftsCreate')); return }
   const runtime = await import('@wailsio/runtime')
   try {
     const result = await runtime.Dialogs.OpenFile({
@@ -175,7 +175,7 @@ async function createNewDoc(folder?: string) {
   }
   const workspacePath = workspaceStore.currentWorkspace.path
   const destination = folder || context.value.folder || (route.path === '/vault' && typeof route.query.space === 'string' ? route.query.space : '') || (context.value.section === 'projects' ? 'Projects' : context.value.section === 'learning' ? 'Learning' : 'Inbox')
-  const name = await promptDialog({ message: `${t('sidebar.promptFileName')} · 保存到 ${destination}/`, defaultValue: t('sidebar.untitledDoc') })
+  const name = await promptDialog({ message: `${t('sidebar.promptFileName')} · ${t('sidebar.saveTo', { dest: destination })}`, defaultValue: t('sidebar.untitledDoc') })
   if (!name || workspaceStore.currentWorkspace?.path !== workspacePath) return
   try {
     const fileName = name.endsWith('.md') ? name : `${name}.md`
@@ -283,7 +283,7 @@ const navItems = computed<NavItem[]>(() => [
     description: t('sidebar.navDesc.learning'),
     icon: BookOpen,
     route: '/learning',
-    badge: workspaceStore.hasWorkspace && workbenchStore.lastUpdated && workbenchStore.reviewQueue.length ? `待复习 ${workbenchStore.reviewQueue.length}` : undefined,
+    badge: workspaceStore.hasWorkspace && workbenchStore.lastUpdated && workbenchStore.reviewQueue.length ? t('sidebar.reviewBadge', { count: workbenchStore.reviewQueue.length }) : undefined,
   },
   {
     id: 'vault',
@@ -334,13 +334,13 @@ function openPin(item: PinnedItem) {
 
 function pinCurrentFile() {
   if (!workspaceStore.activeFile) return
-  if (!workspaceStore.togglePin(workspaceStore.activeFile)) toast.warning('最多固定 8 项，请先取消一个固定项')
+  if (!workspaceStore.togglePin(workspaceStore.activeFile)) toast.warning(t('sidebar.pinLimit'))
 }
 
 function movePin(item: PinnedItem, index: number) {
   const target = Math.max(0, Math.min(index, pins.value.length - 1))
   workspaceStore.movePin(item.path, target)
-  pinAnnouncement.value = `已将 ${item.title} 移到第 ${target + 1} 位`
+  pinAnnouncement.value = t('sidebar.pinMoved', { title: item.title, position: target + 1 })
 }
 
 function startPinDrag(event: DragEvent, item: PinnedItem) {
@@ -379,7 +379,7 @@ function unpinItem() {
   const item = pinMenu.value?.item
   if (item && workspaceStore.isPinned(item.path)) {
     workspaceStore.togglePin(item.path)
-    pinAnnouncement.value = `已取消固定 ${item.title}`
+    pinAnnouncement.value = t('sidebar.pinRemoved', { title: item.title })
   }
   closePinMenu()
 }
@@ -403,11 +403,11 @@ watch(() => workspaceStore.currentWorkspace?.path, () => {
 })
 
 const indexStatus = computed(() => {
-  if (!workspaceStore.hasWorkspace) return { state: 'idle', label: '选择工作区', detail: '打开工作区后开始索引' }
-  if (workbenchStore.loading || workbenchStore.busy) return { state: 'syncing', label: '更新索引', detail: '正在读取或保存本地工作区内容' }
-  if (workbenchStore.error) return { state: 'error', label: '索引失败', detail: workbenchStore.error }
-  if (workbenchStore.lastUpdated) return { state: 'ready', label: '索引就绪', detail: `上次索引：${workbenchStore.lastUpdated}` }
-  return { state: 'idle', label: '等待索引', detail: '尚未读取工作区内容' }
+  if (!workspaceStore.hasWorkspace) return { state: 'idle', label: t('sidebar.selectWorkspace'), detail: t('sidebar.indexIdleDetail') }
+  if (workbenchStore.loading || workbenchStore.busy) return { state: 'syncing', label: t('sidebar.indexSyncingLabel'), detail: t('sidebar.indexSyncingDetail') }
+  if (workbenchStore.error) return { state: 'error', label: t('sidebar.indexErrorLabel'), detail: workbenchStore.error }
+  if (workbenchStore.lastUpdated) return { state: 'ready', label: t('sidebar.indexReadyLabel'), detail: t('sidebar.indexReadyDetail', { time: workbenchStore.lastUpdated }) }
+  return { state: 'idle', label: t('sidebar.indexWaitingLabel'), detail: t('sidebar.indexWaitingDetail') }
 })
 
 // 侧边栏宽度：折叠固定 56px，展开时用户可拖拽调宽（持久化），窄窗口自动折叠
@@ -430,7 +430,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
       class="sidebar-resize-handle"
       role="separator"
       aria-orientation="vertical"
-      :aria-label="`调整侧边栏宽度，当前 ${resizableWidth} 像素`"
+      :aria-label="t('sidebar.resizeHandleAria', { width: resizableWidth })"
       @pointerdown="beginSidebarResize"
     />
     <!-- 工作区选择器（下拉菜单） -->
@@ -518,26 +518,26 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
 
     <section
       class="sidebar-zone action-zone"
-      aria-label="快捷动作"
+      :aria-label="t('sidebar.action.zone')"
     >
       <div
         v-if="!collapsed"
         class="section-heading"
       >
-        快捷动作
+        {{ t('sidebar.action.zone') }}
       </div>
       <div class="action-grid">
         <div class="new-action-menu">
           <button
             class="action-btn new-btn"
             data-testid="action-new"
-            title="新建"
-            aria-label="新建"
+            :title="t('sidebar.action.new')"
+            :aria-label="t('sidebar.action.new')"
             :aria-expanded="newMenuOpen"
             aria-haspopup="menu"
             @click.stop="newMenuOpen = !newMenuOpen"
           >
-            <Plus :size="15" /><span v-if="!collapsed">新建</span>
+            <Plus :size="15" /><span v-if="!collapsed">{{ t('sidebar.action.new') }}</span>
           </button>
           <div
             v-if="newMenuOpen"
@@ -548,51 +548,51 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
               role="menuitem"
               @click="createNewDoc()"
             >
-              <FileText :size="15" />文档
+              <FileText :size="15" />{{ t('sidebar.action.doc') }}
             </button>
             <button
               role="menuitem"
               @click="createCollection('project')"
             >
-              <Rocket :size="15" />项目
+              <Rocket :size="15" />{{ t('sidebar.action.project') }}
             </button>
             <button
               role="menuitem"
               @click="createCollection('book')"
             >
-              <BookOpen :size="15" />技术分册
+              <BookOpen :size="15" />{{ t('sidebar.action.book') }}
             </button>
             <button
               role="menuitem"
               @click="importSources"
             >
-              <FolderOpen :size="15" />从资料创建
+              <FolderOpen :size="15" />{{ t('sidebar.action.fromSources') }}
             </button>
           </div>
         </div>
         <button
           class="action-btn"
           data-testid="action-daily"
-          title="每日工作日志 / 汇报"
-          aria-label="每日工作日志 / 汇报"
+          :title="t('sidebar.nav.daily')"
+          :aria-label="t('sidebar.nav.daily')"
           @click="openTodayWorkLog"
         >
           <FileCheck2 :size="15" />
-          <span v-if="!collapsed">每日工作日志</span>
+          <span v-if="!collapsed">{{ t('sidebar.action.dailyLog') }}</span>
         </button>
         <button
           class="action-btn report-btn"
           data-testid="action-report"
-          title="生成日报"
-          aria-label="生成日报"
+          :title="t('sidebar.action.report')"
+          :aria-label="t('sidebar.action.report')"
           @click="openReport"
         >
           <BarChart3 :size="15" />
-          <span v-if="!collapsed">生成日报</span>
+          <span v-if="!collapsed">{{ t('sidebar.action.report') }}</span>
           <span
             v-if="!collapsed && workbenchStore.lastUpdated"
             class="report-count"
-            :title="`今日已完成 ${completedToday} 项任务`"
+            :title="t('sidebar.action.reportCountTip', { count: completedToday })"
           >{{ completedToday }}</span>
         </button>
       </div>
@@ -601,13 +601,13 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
     <div class="sidebar-scroll">
       <nav
         class="sidebar-zone nav-list"
-        aria-label="页面导航"
+        :aria-label="t('sidebar.navZoneAria')"
       >
         <div
           v-if="!collapsed"
           class="section-heading"
         >
-          页面
+          {{ t('sidebar.pagesTitle') }}
         </div>
         <!-- 页面入口：功能页导航，紧凑排列 -->
         <div
@@ -622,7 +622,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
             :class="{ collapsed, active: isActive(item) }"
             :aria-current="isActive(item) ? 'page' : undefined"
             :aria-label="item.label"
-            :title="item.alert ? `${item.label} · ${workbenchStore.blockers.length} 个卡点待处理` : `${item.label} · ${item.description}`"
+            :title="item.alert ? t('sidebar.navBlockersTip', { label: item.label, count: workbenchStore.blockers.length }) : `${item.label} · ${item.description}`"
             @click="router.push(item.route)"
           >
             <component
@@ -644,7 +644,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
             <span
               v-if="collapsed && item.alert"
               class="blocker-dot"
-              aria-label="有卡点待处理"
+              :aria-label="t('sidebar.hasBlockersAria')"
             />
           </button>
         </div>
@@ -655,7 +655,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
         v-if="!collapsed"
         class="sidebar-zone accordion-zone extended-zone"
         data-testid="sidebar-extended"
-        aria-label="扩展功能"
+        :aria-label="t('sidebar.extendedZoneAria')"
       >
         <div
           class="section-heading section-heading-clickable"
@@ -704,21 +704,21 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
         v-if="pins.length"
         class="sidebar-zone pins-zone"
         data-testid="sidebar-pins"
-        aria-label="固定内容"
+        :aria-label="t('sidebar.pinsZoneAria')"
       >
         <div
           v-if="!collapsed"
           class="section-heading"
         >
           <Pin :size="12" />
-          <span>固定</span>
+          <span>{{ t('sidebar.pinsTitle') }}</span>
           <span class="zone-count">{{ pins.length }}/8</span>
           <button
             v-if="workspaceStore.activeFile && workspaceStore.hasWorkspace"
             class="pin-current-btn"
             data-testid="sidebar-pin-current"
-            :title="workspaceStore.isPinned(workspaceStore.activeFile) ? '取消固定当前文档' : '固定当前文档'"
-            :aria-label="workspaceStore.isPinned(workspaceStore.activeFile) ? '取消固定当前文档' : '固定当前文档'"
+            :title="workspaceStore.isPinned(workspaceStore.activeFile) ? t('sidebar.unpinCurrent') : t('sidebar.pinCurrent')"
+            :aria-label="workspaceStore.isPinned(workspaceStore.activeFile) ? t('sidebar.unpinCurrent') : t('sidebar.pinCurrent')"
             :aria-pressed="workspaceStore.isPinned(workspaceStore.activeFile)"
             @click="pinCurrentFile"
           >
@@ -731,7 +731,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
           class="file-shortcut pin-item"
           data-testid="sidebar-pin"
           :class="{ 'drag-target': dragOverIndex === index && draggedPin !== item.path, 'is-dragging': draggedPin === item.path }"
-          :title="`${item.title} · Alt+↑/↓ 调整顺序 · 右键取消固定`"
+          :title="t('sidebar.pinItemTip', { title: item.title })"
           :aria-label="item.title"
           draggable="true"
           @click="openPin(item)"
@@ -765,54 +765,54 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
         v-if="!collapsed && workspaceStore.hasWorkspace"
         class="sidebar-zone pulse-zone"
         data-testid="sidebar-pulse"
-        aria-label="今日脉搏"
+        :aria-label="t('sidebar.pulseTitle')"
       >
         <div class="section-heading">
-          今日脉搏
+          {{ t('sidebar.pulseTitle') }}
         </div>
         <div class="pulse-grid">
           <button
             class="pulse-cell"
             :class="{ 'has-active': todayPending > 0 }"
             data-testid="pulse-todos"
-            :title="`今日待办 ${completedToday}/${workbenchStore.todayTasks.length} · 点击打开今日工作台`"
+            :title="t('sidebar.pulseTodosTip', { done: completedToday, total: workbenchStore.todayTasks.length })"
             @click="router.push('/today')"
           >
             <CheckCircle2 :size="13" />
-            <span class="pulse-label">今日待办</span>
+            <span class="pulse-label">{{ t('sidebar.pulseTodosLabel') }}</span>
             <span class="pulse-value">{{ completedToday }}/{{ workbenchStore.todayTasks.length }}</span>
           </button>
           <button
             class="pulse-cell"
             :class="{ 'has-active': workbenchStore.dueReminders.length > 0 }"
             data-testid="pulse-reminders"
-            :title="`到期提醒 ${workbenchStore.dueReminders.length} 项 · 点击打开提醒列表`"
+            :title="t('sidebar.pulseRemindersTip', { count: workbenchStore.dueReminders.length })"
             @click="router.push('/reminders')"
           >
             <Bell :size="13" />
-            <span class="pulse-label">到期提醒</span>
+            <span class="pulse-label">{{ t('sidebar.pulseRemindersLabel') }}</span>
             <span class="pulse-value">{{ workbenchStore.dueReminders.length }}</span>
           </button>
           <button
             class="pulse-cell"
             :class="{ 'has-alert': workbenchStore.blockers.length > 0 }"
             data-testid="pulse-blockers"
-            :title="`阻塞卡点 ${workbenchStore.blockers.length} 处 · 点击打开任务列表`"
+            :title="t('sidebar.pulseBlockersTip', { count: workbenchStore.blockers.length })"
             @click="router.push('/todos')"
           >
             <AlertTriangle :size="13" />
-            <span class="pulse-label">卡点</span>
+            <span class="pulse-label">{{ t('sidebar.pulseBlockersLabel') }}</span>
             <span class="pulse-value">{{ workbenchStore.blockers.length }}</span>
           </button>
           <button
             class="pulse-cell"
             :class="{ 'has-active': workbenchStore.reviewQueue.length > 0 }"
             data-testid="pulse-review"
-            :title="`待复习 ${workbenchStore.reviewQueue.length} 张 · 点击打开学习页`"
+            :title="t('sidebar.pulseReviewTip', { count: workbenchStore.reviewQueue.length })"
             @click="router.push('/learning')"
           >
             <GraduationCap :size="13" />
-            <span class="pulse-label">待复习</span>
+            <span class="pulse-label">{{ t('sidebar.pulseReviewLabel') }}</span>
             <span class="pulse-value">{{ workbenchStore.reviewQueue.length }}</span>
           </button>
         </div>
@@ -822,7 +822,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
       <section
         v-if="!collapsed"
         class="sidebar-zone accordion-zone"
-        aria-label="日历"
+        :aria-label="t('sidebar.calendarZoneAria')"
       >
         <div
           class="section-heading section-heading-clickable"
@@ -840,7 +840,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
             :class="{ expanded: calendarExpanded }"
           />
           <Calendar :size="12" />
-          <span>日历</span>
+          <span>{{ t('sidebar.calendarZoneAria') }}</span>
         </div>
         <SidebarCalendar v-if="calendarExpanded" />
       </section>
@@ -850,7 +850,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
         v-if="!collapsed"
         class="sidebar-zone recent-zone"
         data-testid="sidebar-recent"
-        aria-label="最近文档"
+        :aria-label="t('sidebar.recentZoneAria')"
       >
         <div
           class="section-heading section-heading-clickable"
@@ -858,7 +858,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
           role="button"
           tabindex="0"
           :aria-expanded="recentExpanded"
-          :title="recentExpanded ? '收起最近文档' : '展开最近文档'"
+          :title="recentExpanded ? t('sidebar.collapseRecent') : t('sidebar.expandRecent')"
           @click="toggleRecentExpanded"
           @keydown.enter.prevent="toggleRecentExpanded"
           @keydown.space.prevent="toggleRecentExpanded"
@@ -869,7 +869,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
             :class="{ expanded: recentExpanded }"
           />
           <Clock :size="12" />
-          <span>最近</span>
+          <span>{{ t('sidebar.recentTitle') }}</span>
           <span
             v-if="recentFiles.length"
             class="zone-count"
@@ -883,7 +883,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
             v-if="!recentFiles.length"
             class="recent-empty"
           >
-            打开过的文档会出现在这里。
+            {{ t('sidebar.recentEmpty') }}
           </p>
           <button
             v-for="file in recentFiles"
@@ -918,7 +918,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
         v-if="!collapsed"
         class="shortcut-hints"
       >
-        <span><kbd>Ctrl+K</kbd> 搜索 · <kbd>Ctrl+J</kbd> Copilot</span>
+        <span><kbd>Ctrl+K</kbd> {{ t('sidebar.shortcutSearch') }} · <kbd>Ctrl+J</kbd> Copilot</span>
       </div>
       <div class="footer-actions">
         <button
@@ -964,7 +964,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
         ref="pinMenuRef"
         class="pin-context-menu"
         role="menu"
-        aria-label="固定内容操作"
+        :aria-label="t('sidebar.pinMenuAria')"
         :style="{ left: `${pinMenu.x}px`, top: `${pinMenu.y}px` }"
       >
         <button
@@ -973,7 +973,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
           @click="unpinItem"
         >
           <PinOff :size="14" />
-          取消固定
+          {{ t('sidebar.unpinAction') }}
         </button>
       </div>
     </Teleport>

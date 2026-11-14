@@ -184,6 +184,42 @@ func TestDistillRetryRecognizesPortableMarkdownMarker(t *testing.T) {
 	}
 }
 
+func TestDistillAcceptsInboxSourceWithRelatedProject(t *testing.T) {
+	root := t.TempDir()
+	workbenchWrite(t, root, "Inbox/clip.md", "# 网页剪藏\n要点内容\n")
+	req := DistillRequest{SourceFile: "Inbox/clip.md", TargetMode: "interview", TargetFolder: "Learning/面试宝典", TargetTitle: "Go", Question: "如何限流？", Answer: "令牌桶。"}
+	if err := NewTodoService().DistillKnowledge(root, req); err == nil {
+		t.Fatal("Inbox 来源缺 relatedProject 应被拒绝")
+	}
+	req.RelatedProject = "商城"
+	if err := NewTodoService().DistillKnowledge(root, req); err != nil {
+		t.Fatal(err)
+	}
+	topic := workbenchRead(t, root, "Learning/面试宝典/Go.md")
+	if !strings.Contains(topic, `"source":"Projects/商城"`) {
+		t.Fatalf("srs source 应写入关联项目: %s", topic)
+	}
+	if !strings.Contains(workbenchRead(t, root, "Inbox/clip.md"), "技术资产沉淀") {
+		t.Fatal("来源剪藏应获得沉淀徽章")
+	}
+	snapshot := workbenchSnapshot(t, NewTodoService(), root, time.Now().Format("2006-01-02"))
+	if len(snapshot.Cards) != 1 || snapshot.Cards[0].Source != "Projects/商城" {
+		t.Fatalf("卡片解析应携带来源: %#v", snapshot.Cards)
+	}
+}
+
+func TestDistillBookFromInboxWritesRelatedProject(t *testing.T) {
+	root := t.TempDir()
+	workbenchWrite(t, root, "Inbox/notes.md", "# 资料要点\n正文\n")
+	req := DistillRequest{SourceFile: "Inbox/notes.md", TargetMode: "book", TargetFolder: "Learning/Go", TargetTitle: "排错", Summary: "结论。", RelatedProject: "商城"}
+	if err := NewTodoService().DistillKnowledge(root, req); err != nil {
+		t.Fatal(err)
+	}
+	if book := workbenchRead(t, root, "Learning/Go/book.md"); !strings.Contains(book, `projects: ["商城"]`) {
+		t.Fatalf("book.md 应关联项目: %s", book)
+	}
+}
+
 func TestDistillSourceBadgeExampleDoesNotSuppressMissingLink(t *testing.T) {
 	root := t.TempDir()
 	req := DistillRequest{SourceFile: "Projects/A/debug.md", TargetMode: "book", TargetFolder: "Learning/Go", TargetTitle: "排错", Summary: "正文"}
@@ -238,6 +274,7 @@ func TestDistillRejectsUnsafeOrIncompleteRequestsWithoutWriting(t *testing.T) {
 		{"missing source", "source", ""},
 		{"missing source file", "source", "Projects/A/missing.md"},
 		{"outside project", "source", "Resources/debug.md"},
+		{"inbox source without related project", "source", "Inbox/clip.md"},
 		{"no project directory", "source", "Projects/debug.md"},
 		{"non Markdown source", "source", "Projects/A/debug.txt"},
 		{"source traversal", "source", "Projects/A/../../outside.md"},

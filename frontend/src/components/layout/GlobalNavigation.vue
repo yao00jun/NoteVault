@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { ArrowLeft, ArrowRight, ChevronRight } from '@lucide/vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useNavigationStore } from '@/stores/navigation'
 import { usePageContext } from '@/composables/usePageContext'
 import { sectionFallback } from '@/utils/navigation'
 
+const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const workspace = useWorkspaceStore()
@@ -18,14 +20,14 @@ const backAvailable = computed(() => navigation.canGoBack || sectionFallback(rou
 <template>
   <nav
     class="global-navigation"
-    aria-label="全局导航"
+    :aria-label="t('navigation.ariaLabel')"
   >
     <div class="navigation-controls">
       <button
         class="icon-btn"
         data-testid="global-back"
-        aria-label="返回上一页"
-        title="返回上一页 (Alt+←)"
+        :aria-label="t('navigation.back')"
+        :title="t('navigation.backTitle')"
         :disabled="!backAvailable"
         @click="navigation.back(router)"
       >
@@ -34,8 +36,8 @@ const backAvailable = computed(() => navigation.canGoBack || sectionFallback(rou
       <button
         class="icon-btn"
         data-testid="global-forward"
-        aria-label="前进"
-        title="前进 (Alt+→)"
+        :aria-label="t('navigation.forward')"
+        :title="t('navigation.forwardTitle')"
         :disabled="!navigation.canGoForward"
         @click="navigation.forward(router)"
       >
@@ -45,7 +47,7 @@ const backAvailable = computed(() => navigation.canGoBack || sectionFallback(rou
     <ol
       v-if="workspace.hasWorkspace"
       class="navigation-breadcrumbs"
-      aria-label="当前位置"
+      :aria-label="t('navigation.currentLocation')"
     >
       <li
         v-for="(crumb, index) in breadcrumbs"

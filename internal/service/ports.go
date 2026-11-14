@@ -25,6 +25,8 @@ type FileOperator interface {
 	MoveEntry(workspacePath string, oldRelativePath string, newRelativePath string) (*FileNode, error)
 	CreateFolder(workspacePath string, relativePath string) (*FileNode, error)
 	SaveImage(workspacePath string, fileName string, data []byte) (string, error)
+	// ReadImageBinary 读取工作区图片为 base64 data URL（预览水合 <img> 用）。
+	ReadImageBinary(workspacePath string, relativePath string) (string, error)
 	// ScanOrphanAssets / MoveOrphansToTrash 媒体资产 GC（蓝图专项 6）：
 	// 扫描 assets/ 孤立附件并安全移入回收站
 	ScanOrphanAssets(workspacePath string) ([]string, error)

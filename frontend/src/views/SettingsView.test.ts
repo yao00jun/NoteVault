@@ -223,3 +223,35 @@ describe('SettingsView · P1-6 LLM 端点配置', () => {
     expect(wrapper.find('.setting-input').exists()).toBe(true)
   })
 })
+
+describe('SettingsView · MCP 接入导出', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    ;(i18n.global.locale as any).value = 'zh-CN'
+    mockedPresets.mockReset()
+    mockedPresets.mockResolvedValue([])
+  })
+
+  it('lists the MCP section in settings navigation', async () => {
+    const { wrapper } = mountSettings()
+    await flushPromises()
+    const labels = wrapper.findAll('.settings-nav-item').map(item => item.text())
+    expect(labels).toContain('MCP 接入')
+  })
+
+  it('exports snippets with a placeholder path and reflects the write toggle', async () => {
+    const { wrapper, settingsStore } = mountSettings()
+    await flushPromises()
+    // 无工作区时用占位符，且默认只读（不带 --enable-write）
+    expect(wrapper.get('[data-testid="mcp-cli-snippet"]').text()).toContain('<你的工作区路径>')
+    expect(wrapper.get('[data-testid="mcp-cli-snippet"]').text()).not.toContain('--enable-write')
+
+    settingsStore.settings.mcp.enableWrite = true
+    await flushPromises()
+    expect(wrapper.get('[data-testid="mcp-cli-snippet"]').text()).toContain('--enable-write')
+    const json = wrapper.get('[data-testid="mcp-json-snippet"]').text()
+    expect(json).toContain('"mcpServers"')
+    expect(json).toContain('"notevault"')
+    expect(json).toContain('--enable-write')
+  })
+})

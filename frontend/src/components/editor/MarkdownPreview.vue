@@ -49,6 +49,12 @@ const emit = defineEmits<{
 const previewRef = ref<HTMLElement | null>(null)
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
+// 图片 lightbox：点击预览内的工作区图片全屏查看
+const lightboxSrc = ref('')
+function closeLightbox() { lightboxSrc.value = '' }
+function handleLightboxKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') closeLightbox()
+}
 const previewStyle = computed(() => ({
   fontSize: `${settingsStore.settings.editor.previewFontSize}px`,
   lineHeight: String(settingsStore.settings.editor.lineHeight),
@@ -65,6 +71,34 @@ marked.setOptions({
 const previewRenderer = new marked.Renderer()
 previewRenderer.heading = function ({ tokens, depth }) {
   return `<h${depth} data-markdown-heading="true">${this.parser.parseInline(tokens)}</h${depth}>\n`
+}
+// 标准 ![](assets/x.png)：预览运行在应用内嵌 origin，相对路径命不中工作区文件。
+// 相对路径图片打标（data-workspace-src），DOM 水合阶段经后端读取换 data URL。
+previewRenderer.image = function ({ href, title, text }) {
+  const src = (href ?? '').trim()
+  const alt = escapeHtml(text ?? '')
+  const titleAttr = title ? ` title="${escapeHtml(title)}"` : ''
+  if (!src || /^(https?:|data:|blob:|file:)/i.test(src) || src.startsWith('/')) {
+    return `<img src="${escapeHtml(src)}" alt="${alt}"${titleAttr} />`
+  }
+  return `<img class="nv-workspace-image" data-workspace-src="${escapeHtml(src)}" alt="${alt}"${titleAttr} />`
+}
+
+// ===== 工作区图片 data URL 缓存（LRU，key = workspace::relPath） =====
+const imageDataCache = new Map<string, string>()
+const IMAGE_CACHE_LIMIT = 50
+
+async function loadImageData(workspacePath: string, relPath: string): Promise<string> {
+  const key = `${workspacePath}::${relPath}`
+  const cached = imageDataCache.get(key)
+  if (cached) return cached
+  const dataUrl = await FileService.ReadImageBinary(workspacePath, relPath)
+  imageDataCache.set(key, dataUrl)
+  if (imageDataCache.size > IMAGE_CACHE_LIMIT) {
+    const oldest = imageDataCache.keys().next().value
+    if (oldest) imageDataCache.delete(oldest)
+  }
+  return dataUrl
 }
 
 // ===== 链接解析工具 =====
@@ -272,7 +306,7 @@ const html = computed(() => {
     // XSS 防线：marked 透传原始 HTML，笔记里的 onerror 等会在此执行
     return sanitizeHtml(marked.parse(s, { renderer: previewRenderer }) as string)
   } catch (e) {
-    return '<p style="color:red">Markdown 解析错误</p>'
+    return `<p style="color:red">${escapeHtml(t('editor.preview.parseError'))}</p>`
   }
 })
 
@@ -387,6 +421,14 @@ function handleClickDelegation(e: MouseEvent) {
     e.preventDefault()
     e.stopPropagation()
     void handleCopyAnchorClick(copyBtn)
+    return
+  }
+  // 工作区图片点击 → lightbox 预览
+  const img = (e.target as HTMLElement | null)?.closest<HTMLImageElement>('img.nv-workspace-image, img.nv-embed-image')
+  if (img && root.contains(img) && img.src) {
+    e.preventDefault()
+    e.stopPropagation()
+    lightboxSrc.value = img.src
     return
   }
   const target = (e.target as HTMLElement | null)?.closest<HTMLElement>('.wiki-link')
@@ -627,23 +669,33 @@ function sliceByAnchor(content: string, anchor: string): string {
   return lines.slice(startIdx, endIdx).join('\n')
 }
 
-/** 补全嵌入图片的 src（需要 workspacePath 拼接 file:// 或 wails 协议） */
-function hydrateEmbedImages(root: HTMLElement) {
-  if (!props.workspacePath) return
-  const imgs = root.querySelectorAll<HTMLImageElement>('.nv-embed-image')
-  imgs.forEach((img) => {
-    if (img.dataset.hydrated === '1') return
-    const file = img.getAttribute('data-embed-file') || ''
-    if (!file) return
+/**
+ * 统一水合工作区图片：标准 ![](...)（data-workspace-src）与 ![[...]] 嵌入
+ * （data-embed-file）都经后端 ReadImageBinary 读取为 data URL。
+ * 旧实现拼 file:// 被 CSP img-src 拦截（图片根本显示不出来），data: 已放行。
+ */
+async function hydrateWorkspaceImages(root: HTMLElement) {
+  const wsPath = props.workspacePath
+  if (!wsPath) return
+  const imgs = Array.from(root.querySelectorAll<HTMLImageElement>('img.nv-workspace-image, img.nv-embed-image'))
+  const pending: Promise<void>[] = []
+  for (const img of imgs) {
+    if (img.dataset.hydrated === '1') continue
+    const rel = img.getAttribute('data-workspace-src') || img.getAttribute('data-embed-file') || ''
+    if (!rel) continue
     img.dataset.hydrated = '1'
-    // Wails 文件协议：通过 FileService.ReadFile 拿到 base64 太重，
-    // 简单做法是用 wails 的 file:// 协议。但跨平台路径分隔符问题，
-    // 这里改为把图片当 markdown 嵌入处理：读出来 base64 内联。
-    // 临时方案：标记 src 留空，由用户点击 placeholder 触发加载。
-    // 更稳的做法：直接拼接 file:// URL（Wails WebView 支持）
-    const abs = `${props.workspacePath}/${file}`.replace(/\\/g, '/')
-    img.src = `file:///${abs.replace(/^\//, '')}`
-  })
+    pending.push((async () => {
+      try {
+        img.src = await loadImageData(wsPath, rel)
+      } catch {
+        const tip = document.createElement('span')
+        tip.className = 'nv-image-failed-tip'
+        tip.textContent = t('editor.imageLoadFailed', { file: rel })
+        img.replaceWith(tip)
+      }
+    })())
+  }
+  await Promise.allSettled(pending)
 }
 
 function refreshDom() {
@@ -652,7 +704,8 @@ function refreshDom() {
   annotateHeadingIds(root)
   transformCallouts(root)
   // wiki-link 点击已用根级委托，无需逐个绑
-  hydrateEmbedImages(root)
+  // 图片水合是异步的，不阻塞渲染
+  void hydrateWorkspaceImages(root)
   // 嵌入是异步的，不阻塞渲染
   void loadEmbeds(root, 0)
 }
@@ -667,6 +720,7 @@ onMounted(() => {
   if (root) {
     root.addEventListener('click', handleClickDelegation)
   }
+  window.addEventListener('keydown', handleLightboxKeydown)
   nextTick(refreshDom)
 })
 
@@ -675,6 +729,7 @@ onBeforeUnmount(() => {
   if (root) {
     root.removeEventListener('click', handleClickDelegation)
   }
+  window.removeEventListener('keydown', handleLightboxKeydown)
 })
 </script>
 
@@ -685,6 +740,19 @@ onBeforeUnmount(() => {
     :style="previewStyle"
     v-html="html"
   />
+  <Teleport to="body">
+    <div
+      v-if="lightboxSrc"
+      class="nv-lightbox"
+      data-testid="image-lightbox"
+      @click="closeLightbox"
+    >
+      <img
+        :src="lightboxSrc"
+        alt=""
+      >
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -839,6 +907,37 @@ onBeforeUnmount(() => {
 .markdown-preview :deep(img) {
   max-width: 100%;
   border-radius: var(--radius-md);
+}
+.markdown-preview :deep(img.nv-workspace-image, img.nv-embed-image) {
+  cursor: zoom-in;
+}
+.markdown-preview :deep(.nv-image-failed-tip) {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+/* 图片 lightbox：点击预览图片后的全屏查看层 */
+.nv-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+  cursor: zoom-out;
+  padding: 24px;
+}
+.nv-lightbox img {
+  max-width: min(1600px, 94vw);
+  max-height: 92vh;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.45);
 }
 
 .markdown-preview :deep(hr) {

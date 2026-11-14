@@ -1,4 +1,5 @@
 import type { WorkbenchDocument, WorkbenchProject, WorkbenchTask } from '@/api/workbench'
+import { i18n } from '@/i18n'
 
 export type TaskPeriod = 'all' | 'today' | 'week' | 'overdue'
 export type RadarCategory = 'assess' | 'trial' | 'adopt' | 'hold'
@@ -33,18 +34,18 @@ export function projectSummaryContext(
     return time >= since.getTime() && time < until.getTime()
   }).sort((a, b) => a.at.localeCompare(b.at))
   const taskLine = (task: WorkbenchTask) => '- [' + task.type + '] ' + task.title +
-    (task.completed ? '；完成于 ' + task.completedAt : task.due ? '；截止 ' + task.due : '') +
-    (!task.completed && task.blocker ? '；卡点：' + task.blocker : '')
+    (task.completed ? i18n.global.t('workbench.collections.taskDoneAt', { date: task.completedAt }) : task.due ? i18n.global.t('workbench.collections.taskDue', { date: task.due }) : '') +
+    (!task.completed && task.blocker ? i18n.global.t('workbench.collections.taskBlocker', { blocker: task.blocker }) : '')
   return [
-    '# 项目：' + project.name,
-    '统计区间：' + startDay + ' 至 ' + today,
-    '状态：' + projectStatusLabel(project.status),
-    '下一步：' + (project.nextStep || '尚未记录'),
-    '技术栈：' + project.techStack.join('、'),
-    '## 近一周完成', ...(completed.length ? completed.map(taskLine) : ['暂无完成记录']),
-    '## 当前待办（含后续排期）', ...pending.map(taskLine),
-    '## 近一周进展', ...progress.map((item) => '- ' + item.at + ' · ' + item.taskTitle + '：' + item.note),
-    '## 关联项目笔记（仅提供目录）', ...documents.map((doc) => '- ' + doc.title + ' (' + doc.path + ')'),
+    i18n.global.t('workbench.collections.projectHeader', { name: project.name }),
+    i18n.global.t('workbench.collections.statsRange', { start: startDay, end: today }),
+    i18n.global.t('workbench.collections.statusLine', { status: projectStatusLabel(project.status) }),
+    i18n.global.t('workbench.collections.nextStepLine', { next: project.nextStep || i18n.global.t('workbench.collections.notRecorded') }),
+    i18n.global.t('workbench.collections.techStackLine', { items: project.techStack.join(i18n.global.t('common.listJoiner')) }),
+    i18n.global.t('workbench.collections.sectionDone'), ...(completed.length ? completed.map(taskLine) : [i18n.global.t('workbench.collections.noDoneRecord')]),
+    i18n.global.t('workbench.collections.sectionTodo'), ...pending.map(taskLine),
+    i18n.global.t('workbench.collections.sectionProgress'), ...progress.map((item) => i18n.global.t('workbench.collections.progressLine', { at: item.at, title: item.taskTitle, note: item.note })),
+    i18n.global.t('workbench.collections.sectionDocs'), ...documents.map((doc) => '- ' + doc.title + ' (' + doc.path + ')'),
   ].join('\n')
 }
 
@@ -81,6 +82,8 @@ export function tasksForProject(
   })
 }
 
+// 项目状态标签不接 i18n：返回值同时被 ProjectsView / defaultTaskProject 当作
+// 匹配令牌（=== '进行中' 等）参与筛选，且属于后端状态值的领域词，保持原样。
 export function projectStatusLabel(status: string): string {
   const value = status.trim().toLowerCase()
   if (['done', 'completed', 'complete', '已完成', '完成'].includes(value)) return '已完成'
@@ -92,9 +95,9 @@ export function projectStatusLabel(status: string): string {
 }
 
 export function collectionDateLabel(value: string): string {
-  if (!value) return '暂无记录'
+  if (!value) return i18n.global.t('workbench.collections.noRecord')
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '暂无记录'
+  if (Number.isNaN(date.getTime())) return i18n.global.t('workbench.collections.noRecord')
   return date.toLocaleString('zh-CN', {
     month: 'numeric',
     day: 'numeric',
@@ -128,10 +131,10 @@ function radarEntry(value: string): RadarEntry {
 
 export function parseTechnologyRadar(markdown: string): RadarGroup[] {
   const groups: RadarGroup[] = [
-    { id: 'assess', label: '评估中', description: '先理解收益与成本', entries: [] },
-    { id: 'trial', label: '尝试中', description: '用小范围实践验证', entries: [] },
-    { id: 'adopt', label: '采用推荐', description: '经过实践，可放心采用', entries: [] },
-    { id: 'hold', label: '放弃废弃', description: '保留取舍与迁移理由', entries: [] },
+    { id: 'assess', label: i18n.global.t('workbench.collections.radar.assess.label'), description: i18n.global.t('workbench.collections.radar.assess.description'), entries: [] },
+    { id: 'trial', label: i18n.global.t('workbench.collections.radar.trial.label'), description: i18n.global.t('workbench.collections.radar.trial.description'), entries: [] },
+    { id: 'adopt', label: i18n.global.t('workbench.collections.radar.adopt.label'), description: i18n.global.t('workbench.collections.radar.adopt.description'), entries: [] },
+    { id: 'hold', label: i18n.global.t('workbench.collections.radar.hold.label'), description: i18n.global.t('workbench.collections.radar.hold.description'), entries: [] },
   ]
   let current: RadarCategory | undefined
   let categoryHeadingLevel = 0

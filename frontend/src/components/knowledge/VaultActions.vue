@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { Plus, Import, MoreHorizontal, FileText, Download, Zap } from '@lucide/vue'
 import { FileService, ExportService } from '@/api'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -11,6 +12,7 @@ import { isImeComposing } from '@/utils/ime'
 import TemplateCreateDialog from './TemplateCreateDialog.vue'
 
 const props = defineProps<{ folder?: string }>()
+const { t } = useI18n()
 const workspace = useWorkspaceStore()
 const router = useRouter()
 const toast = useToast()
@@ -32,13 +34,13 @@ async function exportWorkspace() {
   exporting.value = true
   try {
     const { Dialogs } = await import('@wailsio/runtime')
-    const result = await Dialogs.SaveFile({ Title: '导出工作区 Markdown', Filename: `${ws.name}-export.zip`, Filters: [{ DisplayName: 'ZIP 压缩包', Pattern: '*.zip' }] })
+    const result = await Dialogs.SaveFile({ Title: t('knowledge.vaultActions.exportMdTitle'), Filename: `${ws.name}-export.zip`, Filters: [{ DisplayName: t('knowledge.vaultActions.zipFilterName'), Pattern: '*.zip' }] })
     let destination = Array.isArray(result) ? result[0] : result
     if (!destination || ws.path !== workspace.currentWorkspace?.path) return
     if (!destination.toLowerCase().endsWith('.zip')) destination += '.zip'
     await ExportService.ExportWorkspaceMarkdown(ws.path, destination)
-    toast.success(`已导出至 ${destination}`)
-  } catch (error) { toast.error(`导出失败：${error instanceof Error ? error.message : String(error)}`) }
+    toast.success(t('knowledge.vaultActions.exportedTo', { path: destination }))
+  } catch (error) { toast.error(t('knowledge.exportFailed', { msg: error instanceof Error ? error.message : String(error) })) }
   finally { exporting.value = false }
 }
 async function quickCapture(event: KeyboardEvent) {
@@ -56,9 +58,9 @@ async function quickCapture(event: KeyboardEvent) {
     if (workspace.currentWorkspace?.path === ws.path) {
       capture.value = ''
       workspace.incrementFileTreeVersion()
-      toast.success('已记入收集箱')
+      toast.success(t('knowledge.vaultActions.captured'))
     }
-  } catch (error) { toast.error(`记录失败：${error instanceof Error ? error.message : String(error)}`) }
+  } catch (error) { toast.error(t('knowledge.vaultActions.captureFailed', { msg: error instanceof Error ? error.message : String(error) })) }
   finally { capturing.value = false }
 }
 watch(() => workspace.currentWorkspace?.path, () => { showTemplate.value = false; capture.value = ''; if (menu.value) menu.value.open = false })
@@ -72,14 +74,14 @@ watch(() => workspace.currentWorkspace?.path, () => { showTemplate.value = false
       data-testid="vault-new-document"
       @click="newDocument"
     >
-      <Plus :size="15" />新建文档
+      <Plus :size="15" />{{ t('knowledge.newDoc') }}
     </button>
     <button
       class="collection-button"
       type="button"
       @click="requestSourceImport({ kind: 'topic', sourceType: 'folder' })"
     >
-      <Import :size="15" />从资料创建
+      <Import :size="15" />{{ t('knowledge.vaultActions.fromSources') }}
     </button>
     <details
       ref="menu"
@@ -87,24 +89,24 @@ watch(() => workspace.currentWorkspace?.path, () => { showTemplate.value = false
     >
       <summary
         class="collection-button"
-        aria-label="更多文档操作"
+        :aria-label="t('knowledge.vaultActions.moreActionsAria')"
       >
         <MoreHorizontal :size="17" />
       </summary>
       <div class="vault-action-popover">
         <button @click="showTemplate = true; menu!.open = false">
-          <FileText :size="15" />从模板创建
+          <FileText :size="15" />{{ t('knowledge.vaultActions.fromTemplate') }}
         </button>
         <button
           :disabled="exporting"
           @click="exportWorkspace"
         >
-          <Download :size="15" />{{ exporting ? '正在导出…' : '导出工作区 Markdown' }}
+          <Download :size="15" />{{ exporting ? t('knowledge.vaultActions.exporting') : t('knowledge.vaultActions.exportMdTitle') }}
         </button>
-        <label><span><Zap :size="14" />快速记录</span><input
+        <label><span><Zap :size="14" />{{ t('knowledge.vaultActions.quickCapture') }}</span><input
           v-model="capture"
-          aria-label="快速记录"
-          placeholder="记下想法，回车存入收集箱"
+          :aria-label="t('knowledge.vaultActions.quickCapture')"
+          :placeholder="t('knowledge.vaultActions.quickCapturePlaceholder')"
           :disabled="capturing"
           @keydown.enter="quickCapture"
         ></label>

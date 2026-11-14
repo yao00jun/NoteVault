@@ -1,9 +1,9 @@
 import { ref, computed, watch, onScopeDispose } from 'vue'
-import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { marked } from 'marked'
 import { QnAService } from '@/api'
 import type { QnACitation, RerankProvider } from '@/api'
+import { i18n } from '@/i18n'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
@@ -19,7 +19,7 @@ import { openDocument } from '@/utils/navigation'
  * QnAView 与 AICopilotDrawer 共享同一份纯粹的状态逻辑，零冗余。
  *
  * 本组合函数不含任何 DOM（消息区滚动条由消费方自己持有），
- * 且必须在组件 setup 上下文中调用（内部使用 useI18n / useRouter）。
+ * 且必须在组件 setup 上下文中调用（内部使用 useRouter）。
  */
 
 export interface ChatMessage {
@@ -42,6 +42,8 @@ export type ContextBuilder = (force: boolean) => Promise<string | null> | string
 
 export interface UseAIChatOptions {
   buildContext?: ContextBuilder
+  /** 把对话持久化到本地（按工作区隔离），重开页面时恢复；仅抽屉 / QnA 全页开启，蒸馏窗口等单次场景关闭。 */
+  persistHistory?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -53,13 +55,55 @@ export interface UseAIChatOptions {
 const activeAskCount = ref(0)
 export const isAIAnswering = computed(() => activeAskCount.value > 0)
 
+// ---------------------------------------------------------------------------
+// 会话持久化（按工作区隔离）：开启后重开抽屉/页面可接续上一段对话。
+// 错误消息不入档（属瞬态提示）；写入失败（配额/禁用）静默放弃——对话仍在内存可用。
+// ---------------------------------------------------------------------------
+const HISTORY_KEY_PREFIX = 'notevault.copilot.history.'
+const HISTORY_MAX_MESSAGES = 50
+
+function historyKey(workspacePath: string | undefined): string {
+  return HISTORY_KEY_PREFIX + encodeURIComponent(workspacePath || 'default')
+}
+
+function loadHistory(workspacePath: string | undefined): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(historyKey(workspacePath))
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    const restorable = parsed.filter(
+      (entry): entry is ChatMessage =>
+        !!entry && typeof entry === 'object' &&
+        ((entry as ChatMessage).role === 'user' || (entry as ChatMessage).role === 'assistant') &&
+        typeof (entry as ChatMessage).content === 'string' && !(entry as ChatMessage).error,
+    )
+    return restorable.slice(-HISTORY_MAX_MESSAGES)
+  } catch {
+    return []
+  }
+}
+
+function saveHistory(workspacePath: string | undefined, messages: ChatMessage[]) {
+  try {
+    const restorable = messages.filter(message => !message.error)
+    // 尾部悬空的用户消息（回答尚未落定或已失败）不入档，避免恢复出"无回应的提问"
+    while (restorable.length && restorable[restorable.length - 1]!.role === 'user') restorable.pop()
+    const capped = restorable.slice(-HISTORY_MAX_MESSAGES)
+    if (!capped.length) localStorage.removeItem(historyKey(workspacePath))
+    else localStorage.setItem(historyKey(workspacePath), JSON.stringify(capped))
+  } catch {
+    // 配额满或存储被禁用时静默放弃
+  }
+}
+
 export function useAIChat(options: UseAIChatOptions = {}) {
-  const { t } = useI18n()
+  const t = i18n.global.t
   const router = useRouter()
   const workspaceStore = useWorkspaceStore()
   const settingsStore = useSettingsStore()
 
-  const messages = ref<ChatMessage[]>([])
+  const messages = ref<ChatMessage[]>(options.persistHistory ? loadHistory(workspaceStore.currentWorkspace?.path) : [])
   const question = ref('')
   const isAsking = ref(false)
   let workspaceGeneration = 0
@@ -72,7 +116,30 @@ export function useAIChat(options: UseAIChatOptions = {}) {
     isAsking.value = false
   }
 
-  watch(() => workspaceStore.currentWorkspace?.path, resetWorkspaceConversation, { flush: 'sync' })
+  // 持久化开启时：切换前把当前对话写入旧工作区档案，再载入新工作区的历史。
+  watch(() => workspaceStore.currentWorkspace?.path, (path, previous) => {
+    if (options.persistHistory) saveHistory(previous, messages.value)
+    resetWorkspaceConversation()
+    if (options.persistHistory) messages.value = loadHistory(path)
+  }, { flush: 'sync' })
+
+  // 防抖落盘；卸载前先落盘（注册顺序保证先于下方 reset 存到完整对话）
+  let saveTimer: ReturnType<typeof setTimeout> | null = null
+  if (options.persistHistory) {
+    watch(messages, (current) => {
+      if (saveTimer) clearTimeout(saveTimer)
+      saveTimer = setTimeout(() => {
+        saveTimer = null
+        saveHistory(workspaceStore.currentWorkspace?.path, current)
+      }, 400)
+    }, { deep: true })
+    onScopeDispose(() => {
+      if (saveTimer) {
+        clearTimeout(saveTimer)
+        saveHistory(workspaceStore.currentWorkspace?.path, messages.value)
+      }
+    })
+  }
   onScopeDispose(() => {
     disposed = true
     resetWorkspaceConversation()
@@ -168,6 +235,7 @@ export function useAIChat(options: UseAIChatOptions = {}) {
   function clearConversation() {
     if (isAsking.value) return
     messages.value = []
+    if (options.persistHistory) saveHistory(workspaceStore.currentWorkspace?.path, [])
   }
 
   function onKeydown(e: KeyboardEvent) {

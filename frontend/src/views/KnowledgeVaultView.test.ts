@@ -5,6 +5,7 @@ import { defineComponent, KeepAlive, onUnmounted } from 'vue'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter, RouterView, useRouter } from 'vue-router'
 import type { WorkbenchDocument, WorkbenchSnapshot } from '@/api/workbench'
+import { i18n } from '@/i18n'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useNavigationStore } from '@/stores/navigation'
@@ -34,7 +35,7 @@ function documents(count: number, folder = 'Projects/分页'): WorkbenchDocument
 
 function snapshot(entries = documents(24)): WorkbenchSnapshot {
   return {
-    date: '2026-09-09', tasks: [], projects: [], books: [], cards: [], progress: [],
+    date: '2026-09-09', tasks: [], projects: [], books: [], cards: [], progress: [], agentEvents: [],
     radar: { path: 'Learning/技术雷达.md', content: '' },
     documents: entries, indexedAt: '2026-09-09T10:00:00+08:00', warnings: [],
   }
@@ -77,7 +78,7 @@ async function renderVault(path = '/vault', options: { shell?: boolean; restoreW
   })
   await router.push(path)
   await router.isReady()
-  const wrapper = mount(options.shell ? Shell : KnowledgeVaultView, { global: { plugins: [pinia, router] } })
+  const wrapper = mount(options.shell ? Shell : KnowledgeVaultView, { global: { plugins: [pinia, router, i18n] } })
   await flushPromises()
   return { wrapper, router, workspace, workbench: useWorkbenchStore() }
 }

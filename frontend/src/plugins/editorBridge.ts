@@ -10,6 +10,7 @@ import {
 import { EditorSelection, RangeSetBuilder, type Extension } from '@codemirror/state'
 import { indentLess, indentMore, redo, undo } from '@codemirror/commands'
 import { insertCallout } from '@/components/editor/editorCommands'
+import { i18n } from '@/i18n'
 import type {
   CompiledDecoration,
   CompiledWidget,
@@ -330,10 +331,10 @@ export function applyInlineFormat(format: InlineFormat): void {
   }
   const spec: PluginTextTransform =
     format === 'bold'
-      ? { prefix: '**', suffix: '**', placeholder: '粗体文本' }
+      ? { prefix: '**', suffix: '**', placeholder: i18n.global.t('editor.commands.boldPlaceholder') }
       : format === 'italic'
-        ? { prefix: '*', suffix: '*', placeholder: '斜体文本' }
-        : { prefix: '`', suffix: '`', placeholder: '代码' }
+        ? { prefix: '*', suffix: '*', placeholder: i18n.global.t('editor.commands.italicPlaceholder') }
+        : { prefix: '`', suffix: '`', placeholder: i18n.global.t('editor.commands.codePlaceholder') }
   applyTransform(spec)
 }
 
@@ -353,8 +354,9 @@ function applyLink(): void {
         range: EditorSelection.range(urlStart, urlStart + 3),
       }
     }
-    const insert = '[链接文本](url)'
-    const urlStart = range.from + '链接文本'.length + 3
+    const linkText = i18n.global.t('editor.commands.linkText')
+    const insert = `[${linkText}](url)`
+    const urlStart = range.from + linkText.length + 3
     return {
       changes: { from: range.from, insert },
       range: EditorSelection.range(urlStart, urlStart + 3),

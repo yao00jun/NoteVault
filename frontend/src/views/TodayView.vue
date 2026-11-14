@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowRight, FileCheck2, CheckCircle2, CircleAlert, Clock3, FileText, Plus, RefreshCw, Sparkles, X, BookOpen, MessageSquarePlus } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
+import { ArrowRight, FileCheck2, CheckCircle2, CircleAlert, Clock3, FileText, Plus, RefreshCw, Sparkles, X, BookOpen, MessageSquarePlus, Bot, Loader2 } from '@lucide/vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkLog } from '@/composables/useWorkLog'
+import { renderBriefingHtml, useBriefing } from '@/composables/useBriefing'
 import { isImeComposing } from '@/utils/ime'
 import { isCarryoverTask } from '@/utils/workbench'
 import { defaultTaskProject, GENERAL_PROJECT_FOLDER } from '@/utils/defaultTaskProject'
@@ -15,7 +17,10 @@ const store = useWorkbenchStore()
 const workspace = useWorkspaceStore()
 const router = useRouter()
 const route = useRoute()
+const { t, locale } = useI18n()
 const { openTodayWorkLog } = useWorkLog()
+const { briefingText, briefingLoading, briefingError, restoreBriefing, generateBriefing } = useBriefing()
+const briefingHtml = computed(() => briefingText.value ? renderBriefingHtml(briefingText.value) : '')
 const filter = ref('all')
 const creating = ref(false)
 const newTitle = ref('')
@@ -38,6 +43,10 @@ watch(() => workspace.currentWorkspace?.path, () => {
   newDue.value = store.today
   createError.value = ''
 }, { flush: 'sync' })
+// 简报缓存按 工作区+日期 隔离：换工作区或跨日自动恢复为当日缓存（可能为空）
+watch(() => [workspace.currentWorkspace?.path, store.today], () => {
+  restoreBriefing(store.today)
+}, { immediate: true })
 watch(() => [suggestedProject.value, ...store.projects.map(project => project.folder)], () => {
   const selectionExists = newProject.value === GENERAL_PROJECT_FOLDER || store.projects.some(project => project.folder === newProject.value)
   if (!projectSelected.value || !selectionExists) {
@@ -53,21 +62,32 @@ watch(() => [route.path, route.query.action, workspace.hasWorkspace], () => {
   creating.value = true
   void router.replace({ path: '/today', query: { ...route.query, action: undefined } })
 }, { immediate: true })
-const greeting = new Date().getHours() < 12 ? '早安' : new Date().getHours() < 18 ? '午安' : '晚安'
-const dateLabel = computed(() => new Date(`${store.today}T12:00:00`).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }))
+const greeting = computed(() => {
+  const hour = new Date().getHours()
+  return hour < 12 ? t('today.greeting.morning') : hour < 18 ? t('today.greeting.afternoon') : t('today.greeting.evening')
+})
+const dateLabel = computed(() => new Date(`${store.today}T12:00:00`).toLocaleDateString(locale.value, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }))
 const completed = computed(() => store.todayTasks.filter(task => task.completed).length)
 const completionRate = computed(() => store.todayTasks.length ? Math.round(completed.value / store.todayTasks.length * 100) : 0)
 const carryovers = computed(() => store.todayTasks.filter(task => isCarryoverTask(task, store.today)).length)
 const visibleTasks = computed(() => filter.value === 'blocked' ? store.blockers : store.todayTasks.filter(task => filter.value === 'all' || task.type === filter.value))
+const taskFilters = computed(() => [
+  { value: 'all', label: t('today.filter.all') },
+  { value: 'US', label: t('today.filter.us') },
+  { value: 'DTS', label: t('today.filter.dts') },
+  { value: '额外', label: t('today.filter.extra') },
+  { value: 'blocked', label: t('today.filter.blocked') },
+])
 
 function openReport() { window.dispatchEvent(new CustomEvent('notevault:daily-report')) }
 function openFile(path: string) { workspace.openFile(path); void router.push({ path: '/editor', query: { file: path } }) }
+function openAgentLog() { openFile(`Daily/Agent/${store.today}.md`) }
 async function addTask() {
   if (!newTitle.value.trim() || store.busy) return
   const generation = formGeneration
   createError.value = ''
   try {
-    if (newProject.value !== GENERAL_PROJECT_FOLDER && !store.projects.some(project => project.folder === newProject.value)) throw new Error('项目已变更，请重新选择归属项目')
+    if (newProject.value !== GENERAL_PROJECT_FOLDER && !store.projects.some(project => project.folder === newProject.value)) throw new Error(t('today.projectChanged'))
     await store.addTask(newProject.value, newTitle.value, newType.value, newDue.value)
     if (generation !== formGeneration) return
     newTitle.value = ''
@@ -86,12 +106,12 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
       <header class="today-header">
         <div>
           <p class="eyebrow">
-            TODAY · {{ workspace.currentWorkspace?.name || '我的工作台' }}
-          </p><h1>{{ greeting }}，把今天安排好。</h1><p class="date-line">
+            TODAY · {{ workspace.currentWorkspace?.name || t('today.defaultWorkspaceName') }}
+          </p><h1>{{ greeting }}{{ t('today.greetingSuffix') }}</h1><p class="date-line">
             {{ dateLabel }}<span
               class="index-state"
               :class="{ syncing: store.loading || store.busy, failed: !!store.error }"
-            ><i />{{ store.error ? '索引暂不可用' : store.loading || store.busy ? '正在同步进展' : '本地索引实时' }}</span>
+            ><i />{{ store.error ? t('today.indexFailed') : store.loading || store.busy ? t('today.indexSyncing') : t('today.indexLive') }}</span>
           </p>
         </div>
         <div class="header-actions">
@@ -100,7 +120,7 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
             class="soft-button"
             @click="openTodayWorkLog"
           >
-            <FileCheck2 :size="15" />查看今日日志
+            <FileCheck2 :size="15" />{{ t('today.viewLog') }}
           </button><button
             type="button"
             class="primary-button"
@@ -108,7 +128,7 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
             data-testid="today-report"
             @click="openReport"
           >
-            <FileText :size="15" />生成日报
+            <FileText :size="15" />{{ t('today.genReport') }}
           </button>
         </div>
       </header>
@@ -117,11 +137,11 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
         v-if="!workspace.hasWorkspace"
         class="notice"
       >
-        打开一个工作区，开始管理项目、任务和学习进展。<button
+        {{ t('today.noWorkspaceTip') }}<button
           type="button"
           @click="router.push('/')"
         >
-          打开工作区 <ArrowRight :size="13" />
+          {{ t('today.openWorkspace') }} <ArrowRight :size="13" />
         </button>
       </div>
       <div
@@ -134,7 +154,7 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
           :disabled="store.loading"
           @click="store.refresh()"
         >
-          重新读取
+          {{ t('today.reload') }}
         </button>
       </div>
       <div
@@ -147,11 +167,11 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
 
       <section
         class="metrics"
-        aria-label="今日概览"
+        :aria-label="t('today.metricsAria')"
       >
         <div class="metric">
-          <span class="metric-label"><CheckCircle2 :size="15" />今日任务</span><div class="metric-value">
-            {{ completed }}<small>/ {{ store.todayTasks.length }} 完成</small><span class="rate">{{ completionRate }}%</span>
+          <span class="metric-label"><CheckCircle2 :size="15" />{{ t('today.metricTasks') }}</span><div class="metric-value">
+            {{ completed }}<small>{{ t('today.completedOf', { n: store.todayTasks.length }) }}</small><span class="rate">{{ completionRate }}%</span>
           </div><div class="metric-track">
             <span :style="{ width: `${completionRate}%` }" />
           </div>
@@ -162,27 +182,27 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
           :class="{ danger: store.blockers.length }"
           @click="showBlockers"
         >
-          <span class="metric-label"><CircleAlert :size="15" />阻塞卡点</span><div class="metric-value">
-            {{ store.blockers.length }}<small>项待协调</small>
-          </div><span class="metric-foot">{{ store.blockers.length ? '优先解决，让工作继续' : '当前没有阻塞事项' }}</span>
+          <span class="metric-label"><CircleAlert :size="15" />{{ t('today.metricBlockers') }}</span><div class="metric-value">
+            {{ store.blockers.length }}<small>{{ t('today.itemsToCoordinate') }}</small>
+          </div><span class="metric-foot">{{ store.blockers.length ? t('today.blockersHint') : t('today.noBlockers') }}</span>
         </button>
         <button
           type="button"
           class="metric"
           @click="router.push('/learning?tab=review')"
         >
-          <span class="metric-label"><BookOpen :size="15" />面试待复习</span><div class="metric-value">
-            {{ store.reviewQueue.length }}<small>题 / 今日五题</small>
-          </div><span class="metric-foot">{{ store.reviewedToday ? `今天已复习 ${store.reviewedToday} 题` : '留 10 分钟，巩固一个知识点' }}</span>
+          <span class="metric-label"><BookOpen :size="15" />{{ t('today.metricReview') }}</span><div class="metric-value">
+            {{ store.reviewQueue.length }}<small>{{ t('today.reviewUnit') }}</small>
+          </div><span class="metric-foot">{{ store.reviewedToday ? t('today.reviewedToday', { n: store.reviewedToday }) : t('today.reviewHint') }}</span>
         </button>
         <button
           type="button"
           class="metric"
           @click="router.push('/reminders')"
         >
-          <span class="metric-label"><Clock3 :size="15" />到期提醒</span><div class="metric-value">
-            {{ store.reminderError ? '—' : store.dueReminders.length }}<small>项待处理</small>
-          </div><span class="metric-foot">{{ store.reminderError || '把需要记住的事交给提醒' }}</span>
+          <span class="metric-label"><Clock3 :size="15" />{{ t('today.metricReminders') }}</span><div class="metric-value">
+            {{ store.reminderError ? '—' : store.dueReminders.length }}<small>{{ t('today.itemsPending') }}</small>
+          </div><span class="metric-foot">{{ store.reminderError || t('today.remindersHint') }}</span>
         </button>
       </section>
 
@@ -193,11 +213,11 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
             class="task-section"
           >
             <header class="section-header">
-              <div><h2>今日待办 <span>{{ visibleTasks.length }}</span></h2><p>{{ carryovers ? `${carryovers} 项昨日或逾期任务已顺延，优先处理。` : '专注一件事，完成一件事。' }}</p></div><div class="section-actions">
+              <div><h2>{{ t('today.tasksTitle') }} <span>{{ visibleTasks.length }}</span></h2><p>{{ carryovers ? t('today.carryoverTip', { n: carryovers }) : t('today.focusTip') }}</p></div><div class="section-actions">
                 <button
                   type="button"
                   class="refresh-button"
-                  aria-label="刷新工作台"
+                  :aria-label="t('today.refreshAria')"
                   :disabled="store.loading"
                   @click="store.refresh()"
                 >
@@ -211,16 +231,16 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
                   :disabled="!workspace.hasWorkspace"
                   @click="creating = !creating"
                 >
-                  <Plus :size="14" />新任务
+                  <Plus :size="14" />{{ t('today.newTask') }}
                 </button>
               </div>
             </header>
             <div
               class="task-filters"
-              aria-label="任务类型筛选"
+              :aria-label="t('today.filterAria')"
             >
               <button
-                v-for="item in [{ value: 'all', label: '全部' }, { value: 'US', label: 'US 用户故事' }, { value: 'DTS', label: 'DTS 问题单' }, { value: '额外', label: '额外' }, { value: 'blocked', label: '阻塞' }]"
+                v-for="item in taskFilters"
                 :key="item.value"
                 type="button"
                 :class="{ active: filter === item.value }"
@@ -235,9 +255,9 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
               class="new-task"
             >
               <div class="new-task-title">
-                <span>安排一个具体的行动</span><button
+                <span>{{ t('today.newTaskTitle') }}</span><button
                   type="button"
-                  aria-label="取消新任务"
+                  :aria-label="t('today.cancelNewTask')"
                   @click="creating = false"
                 >
                   <X :size="15" />
@@ -246,26 +266,26 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
               <input
                 v-model="newTitle"
                 type="text"
-                aria-label="任务标题"
-                placeholder="例如：完成订单结算接口联调"
+                :aria-label="t('today.taskTitleAria')"
+                :placeholder="t('today.taskTitlePlaceholder')"
                 :disabled="store.busy"
                 @keydown.enter="onAddEnter"
               >
               <div class="new-task-fields">
                 <select
                   v-model="newType"
-                  aria-label="任务类型"
+                  :aria-label="t('today.typeAria')"
                 >
-                  <option>US</option><option>DTS</option><option>额外</option><option value="todo">
-                    普通待办
+                  <option>US</option><option>DTS</option><option value="额外">{{ t('today.filter.extra') }}</option><option value="todo">
+                    {{ t('today.typeTodo') }}
                   </option>
                 </select><select
                   v-model="newProject"
-                  aria-label="归属项目"
+                  :aria-label="t('today.projectAria')"
                   @change="projectSelected = true"
                 >
                   <option :value="GENERAL_PROJECT_FOLDER">
-                    通用事务
+                    {{ t('today.generalProject') }}
                   </option><option
                     v-for="project in otherProjects"
                     :key="project.path"
@@ -276,14 +296,14 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
                 </select><input
                   v-model="newDue"
                   type="date"
-                  aria-label="任务截止日期"
+                  :aria-label="t('today.dueAria')"
                 ><button
                   type="button"
                   class="primary-button small"
                   :disabled="store.busy || !newTitle.trim()"
                   @click="addTask"
                 >
-                  {{ store.busy ? '保存中' : '添加任务' }}
+                  {{ store.busy ? t('today.saving') : t('today.addTask') }}
                 </button>
               </div>
               <p
@@ -291,7 +311,7 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
                 data-testid="task-destination"
                 role="status"
               >
-                保存到 <span>{{ newProject }}/Tasks.md</span>
+                {{ t('today.savedTo') }} <span>{{ newProject }}/Tasks.md</span>
               </p>
               <p
                 v-if="createError"
@@ -306,13 +326,13 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
               class="loading-state"
               role="status"
             >
-              正在读取今天的任务…
+              {{ t('today.loadingTasks') }}
             </p>
             <div
               v-else-if="!visibleTasks.length && !store.error"
               class="empty-tasks"
             >
-              <CheckCircle2 :size="30" /><h3>{{ filter === 'blocked' ? '没有阻塞的任务' : '给今天留一个明确的目标' }}</h3><p>在项目中安排任务，今天的行动会自动汇聚到这里。</p>
+              <CheckCircle2 :size="30" /><h3>{{ filter === 'blocked' ? t('today.emptyBlocked') : t('today.emptyTitle') }}</h3><p>{{ t('today.emptyHint') }}</p>
             </div>
             <div class="task-list">
               <TaskCard
@@ -325,7 +345,7 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
 
           <section class="timeline-section">
             <header class="section-header">
-              <div><h2><MessageSquarePlus :size="16" />进展时间线</h2><p>每一笔进展，都会成为今天日报的依据。</p></div><span class="timeline-count">{{ store.progress.length }} 条记录</span>
+              <div><h2><MessageSquarePlus :size="16" />{{ t('today.timelineTitle') }}</h2><p>{{ t('today.timelineTip') }}</p></div><span class="timeline-count">{{ t('today.recordCount', { n: store.progress.length }) }}</span>
             </header>
             <ol
               v-if="store.progress.length"
@@ -349,7 +369,7 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
               v-else
               class="timeline-empty"
             >
-              完成一个小步骤时，在任务下「随手记一笔」。
+              {{ t('today.timelineEmpty') }}
             </p>
           </section>
         </div>
@@ -360,24 +380,100 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
               <FileText :size="21" />
             </div><p class="eyebrow">
               DAILY REPORT
-            </p><h2>收好今天的进展</h2><p>完成了什么、推进到哪里、需要哪些协助，整理成一封清晰的日报。</p><div class="report-summary">
-              <span>{{ completed }} 项完成</span><span>{{ store.progress.length }} 条进展</span><span>{{ store.blockers.length }} 处卡点</span>
+            </p><h2>{{ t('today.reportTitle') }}</h2><p>{{ t('today.reportDesc') }}</p><div class="report-summary">
+              <span>{{ t('today.reportDone', { n: completed }) }}</span><span>{{ t('today.reportProgress', { n: store.progress.length }) }}</span><span>{{ t('today.reportBlockers', { n: store.blockers.length }) }}</span>
             </div><button
               type="button"
               :disabled="!workspace.hasWorkspace"
               @click="openReport"
             >
-              预览邮件日报<ArrowRight :size="15" />
-            </button><small><Sparkles :size="11" />支持 Copilot 润色 · 自动归档</small>
+              {{ t('today.previewReport') }}<ArrowRight :size="15" />
+            </button><small><Sparkles :size="11" />{{ t('today.reportFootnote') }}</small>
+          </section>
+          <section
+            class="briefing-card"
+            data-testid="today-briefing"
+          >
+            <header>
+              <h3><Sparkles :size="15" />{{ t('today.briefing.title') }}</h3>
+              <button
+                type="button"
+                class="briefing-action"
+                :disabled="briefingLoading || !workspace.hasWorkspace"
+                data-testid="briefing-generate"
+                @click="generateBriefing(store.today)"
+              >
+                <Loader2
+                  v-if="briefingLoading"
+                  :size="12"
+                  class="spin"
+                /><RefreshCw
+                  v-else
+                  :size="12"
+                />{{ briefingText ? t('today.briefing.regenerate') : t('today.briefing.generate') }}
+              </button>
+            </header>
+            <div
+              v-if="briefingText"
+              class="briefing-body"
+              v-html="briefingHtml"
+            />
+            <p
+              v-else-if="briefingError"
+              class="briefing-error"
+              role="alert"
+            >
+              {{ briefingError }}
+            </p>
+            <p
+              v-else
+              class="briefing-hint"
+            >
+              {{ t('today.briefing.hint') }}
+            </p>
+          </section>
+          <section
+            v-if="store.agentEvents.length"
+            class="agent-card"
+            data-testid="agent-card"
+          >
+            <header>
+              <h3><Bot :size="15" />{{ t('today.agentTitle') }}</h3>
+              <button
+                type="button"
+                class="agent-log-btn"
+                @click="openAgentLog"
+              >
+                {{ t('today.agentViewLog') }} <ArrowRight :size="11" />
+              </button>
+            </header>
+            <button
+              v-for="(event, index) in store.agentEvents.slice(-6).slice().reverse()"
+              :key="index + event.time + event.content"
+              type="button"
+              class="agent-item"
+              :title="event.agent ? `${event.agent} · ${event.content}` : event.content"
+              @click="openAgentLog"
+            >
+              <time>{{ event.time }}</time><span class="agent-content">{{ event.content }}</span><em
+                v-if="event.agent"
+              >{{ event.agent }}</em>
+            </button>
+            <p
+              v-if="store.agentEvents.length > 6"
+              class="agent-more"
+            >
+              {{ t('today.agentMore', { n: store.agentEvents.length - 6 }) }}
+            </p>
           </section>
           <InterviewReview compact />
           <section class="reminder-card">
             <header>
-              <h3><Clock3 :size="15" />需要留意</h3><button
+              <h3><Clock3 :size="15" />{{ t('today.attention') }}</h3><button
                 type="button"
                 @click="router.push('/reminders')"
               >
-                全部 <ArrowRight :size="12" />
+                {{ t('today.all') }} <ArrowRight :size="12" />
               </button>
             </header><p
               v-if="store.reminderError"
@@ -389,7 +485,7 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
               v-else-if="!store.dueReminders.length"
               class="reminder-empty"
             >
-              今天没有到期提醒，安心专注。
+              {{ t('today.noReminders') }}
             </p><button
               v-for="reminder in store.dueReminders.slice(0, 4)"
               :key="reminder.id"
@@ -397,7 +493,7 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
               class="reminder-item"
               @click="reminder.filePath ? openFile(reminder.filePath) : router.push('/reminders')"
             >
-              <i /><span>{{ reminder.content }}</span><time>{{ new Date(reminder.remindAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }) }}</time>
+              <i /><span>{{ reminder.content }}</span><time>{{ new Date(reminder.remindAt).toLocaleDateString(locale, { month: 'numeric', day: 'numeric' }) }}</time>
             </button>
           </section>
         </aside>
@@ -479,6 +575,31 @@ h1 { font-size: 22px; font-weight: 600; letter-spacing: -.03em; margin: 0 0 8px;
 .report-summary { display: flex; flex-wrap: wrap; gap: 10px; font-size: 10px; color: var(--text-secondary); margin-bottom: 14px; }
 .report-card>button { display: flex; align-items: center; justify-content: space-between; width: 100%; color: var(--text-primary); font-size: 11px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 7px; padding: 9px 12px; }
 .report-card>small { display: flex; justify-content: center; gap: 5px; align-items: center; font-size: 10px; color: var(--text-muted); margin-top: 8px; }
+.agent-card { padding: 14px 16px; border: 1px solid color-mix(in srgb, #78a2c8 30%, var(--border)); border-radius: 12px; background: linear-gradient(145deg, color-mix(in srgb, #8bb4ca 8%, var(--bg-card)), var(--bg-card)); }
+.briefing-card { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--accent) 5%, var(--bg-card)); }
+.briefing-card header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.briefing-card h3 { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text-primary); }
+.briefing-action { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); font-size: 11px; white-space: nowrap; }
+.briefing-action:disabled { opacity: .5; cursor: default; }
+.briefing-body { font-size: 12px; line-height: 1.8; color: var(--text-secondary); overflow-wrap: anywhere; }
+.briefing-body :deep(ul), .briefing-body :deep(ol) { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.briefing-body :deep(p) { margin: 0; }
+.briefing-body :deep(pre) { white-space: pre-wrap; background: var(--bg-content); border-radius: 6px; padding: 8px; }
+.briefing-error { margin: 0; color: #cf5a56; font-size: 11px; overflow-wrap: anywhere; }
+.briefing-hint { margin: 0; color: var(--text-muted); font-size: 11px; }
+.spin { animation: briefing-spin 1s linear infinite; }
+@keyframes briefing-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.agent-card header { display: flex; align-items: center; margin-bottom: 6px; }
+.agent-card h3 { margin: 0; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; flex: 1; }
+.agent-log-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-muted); }
+.agent-log-btn:hover { color: var(--text-primary); }
+.agent-item { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left; font-size: 11px; padding: 4px 0; color: var(--text-secondary); }
+.agent-item:hover { color: var(--text-primary); }
+.agent-item time { font-size: 10px; color: var(--text-muted); min-width: 34px; flex-shrink: 0; }
+.agent-item .agent-content { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-item em { font-style: normal; font-size: 9px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; white-space: nowrap; flex-shrink: 0; }
+.agent-more { font-size: 10px; color: var(--text-muted); margin: 6px 0 0; }
 .reminder-card { background: var(--bg-card); border: 1px solid var(--border); padding: 14px 16px; border-radius: 12px; }
 .reminder-card header, .reminder-card h3, .reminder-card header button { display: flex; align-items: center; gap: 6px; }
 .reminder-card header { justify-content: space-between; }
@@ -495,6 +616,6 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 50% { opacity: .3; } }
 @media (max-width: 1200px) { .today-content { padding: 16px 18px; } .today-header { align-items: flex-start; } .header-actions { flex-wrap: wrap; justify-content: end; } .workday-grid { gap: 14px; } .metric { padding: 10px 12px; } .metric-foot { line-height: 1.6; } }
-@media (max-width: 980px) { .workday-grid { grid-template-columns: 1fr; } .focus-column { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; max-width: none; } .metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } .reminder-card { grid-column: 1/-1; } }
+@media (max-width: 980px) { .workday-grid { grid-template-columns: 1fr; } .focus-column { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; max-width: none; } .metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } .reminder-card { grid-column: 1/-1; } .agent-card { grid-column: 1/-1; } }
 @media (max-width: 620px) { .today-content { padding: 14px 12px; } .today-header { flex-direction: column; } .header-actions { justify-content: start; } h1 { font-size: 20px; } .focus-column { display: flex; } .new-task-fields { grid-template-columns: 1fr 1fr; } .metrics { gap: 8px; } .metric-value { font-size: 22px; } }
 </style>
