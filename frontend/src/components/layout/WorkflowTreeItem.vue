@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import {
   ChevronRight,
   FileText,
+  FileCog,
   Folder,
   FolderOpen,
   BookOpen,
@@ -138,10 +139,29 @@ function folderIcon(node: FileNode) {
 }
 
 function fileIcon(node: FileNode) {
+  if (metaDisplayKey(node)) return FileCog
   const lower = node.name.toLowerCase()
-  if (lower === 'book.md') return BookOpen
   if (lower.endsWith('.canvas')) return Sparkles
   return FileText
+}
+
+// 功能托管文件的本地化显示名（学习/项目闭环自动创建与读写，非用户笔记）。
+// 按路径限定作用域：用户在自己目录里创建同名文件不受影响。
+const META_FILE_DISPLAY: Array<{ test: RegExp; key: string }> = [
+  { test: /^Learning\/[^/]+\/book\.md$/i, key: 'editor.tree.meta.book' },
+  { test: /^Learning\/[^/]+\/sources\.md$/i, key: 'editor.tree.meta.sources' },
+  { test: /^Learning\/[^/]+\/ai-plan\.md$/i, key: 'editor.tree.meta.aiPlan' },
+  { test: /^Projects\/[^/]+\/project\.md$/i, key: 'editor.tree.meta.project' },
+  { test: /^Projects\/[^/]+\/tasks\.md$/i, key: 'editor.tree.meta.tasks' },
+]
+
+function metaDisplayKey(node: FileNode): string | null {
+  if (props.kind !== 'filetree' || node.isDir) return null
+  const norm = normalizeNotePath(node.path)
+  for (const meta of META_FILE_DISPLAY) {
+    if (meta.test.test(norm)) return meta.key
+  }
+  return null
 }
 
 const displayName = computed(() => {
@@ -158,8 +178,10 @@ const displayName = computed(() => {
       if (label && label !== labelKey) return label
     }
   }
-  // 编辑器文件树：文件名不向用户暴露扩展名（真实路径仍在行 title 中）
+  // 编辑器文件树：功能托管文件显示中文名；普通文件不暴露扩展名（真实路径仍在行 title 中）
   if (props.kind === 'filetree' && !node.isDir) {
+    const metaKey = metaDisplayKey(node)
+    if (metaKey) return t(metaKey)
     return node.name.replace(/\.(md|markdown|canvas)$/i, '')
   }
   return props.stripExtension ? node.name.replace(/\.md$/i, '') : node.name

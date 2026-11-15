@@ -1127,6 +1127,13 @@ export default {
       revealActive: '定位当前文档',
       collapseTree: '收起文件树',
       looseFiles: '未整理',
+      meta: {
+        book: '分册档案',
+        sources: '来源记录',
+        aiPlan: 'AI 学习计划',
+        project: '项目档案',
+        tasks: '任务清单',
+      },
       systemSection: '系统与模板',
       newFile: '新建文档',
       newFolder: '新建文件夹',

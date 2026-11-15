@@ -1127,6 +1127,13 @@ export default {
       revealActive: 'Reveal current note',
       collapseTree: 'Collapse file tree',
       looseFiles: 'Unsorted',
+      meta: {
+        book: 'Book profile',
+        sources: 'Source records',
+        aiPlan: 'AI study plan',
+        project: 'Project profile',
+        tasks: 'Task list',
+      },
       systemSection: 'System & Templates',
       newFile: 'New document',
       newFolder: 'New folder',
