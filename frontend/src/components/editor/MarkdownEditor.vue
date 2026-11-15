@@ -30,11 +30,14 @@ import {
   buildPluginDecorationExtension,
   buildPluginKeymapExtension,
   setActiveEditor,
+  getActiveEditor,
   applyInlineFormat,
 } from '@/plugins/editorBridge'
 import type { CustomCommand } from '@/types'
 import type { RegisteredPluginToolbarButton } from '@/plugins/types'
 import { updateEditorCursor } from '@/composables/useEditorSession'
+import { requestCopilot } from '@/composables/useCopilotRequest'
+import SelectionAIToolbar from './SelectionAIToolbar.vue'
 
 const props = defineProps<{
   modelValue: string
@@ -319,6 +322,59 @@ const floatingStyle = ref<{ left: string; top: string }>({ left: '0px', top: '0p
 const floatingMid = ref(0)
 const floatingTop = ref(0)
 
+// ===== 划词 AI 浮动工具栏 =====
+const showAISelection = ref(false)
+const aiSelectionStyle = ref<{ left: string; top: string }>({ left: '0px', top: '0px' })
+const aiSelectionRange = ref<{ from: number; to: number }>({ from: 0, to: 0 })
+
+function updateAISelection(view: EditorView) {
+  const sel = view.state.selection.main
+  aiSelectionRange.value = { from: sel.from, to: sel.to }
+  if (sel.empty || props.readonly) {
+    showAISelection.value = false
+    return
+  }
+  const coords = view.coordsAtPos(sel.from)
+  if (!coords) {
+    showAISelection.value = false
+    return
+  }
+  const half = 70
+  let left = (coords.left + coords.right) / 2
+  left = Math.max(half + 8, Math.min(left, window.innerWidth - half - 8))
+  let top: number
+  if (settingsStore.settings.toolbar.mode === 'floating') {
+    // 格式工具栏占据选区上方，AI 气泡放选区下方
+    top = coords.bottom + 8
+  } else {
+    top = coords.top - 44
+    if (top < 8) top = coords.bottom + 8
+  }
+  aiSelectionStyle.value = { left: left + 'px', top: top + 'px' }
+  showAISelection.value = true
+}
+
+function onAISelectionAction(kind: 'polish' | 'translate' | 'explain' | 'continue') {
+  const view = getActiveEditor()
+  if (!view) return
+  const { from, to } = aiSelectionRange.value
+  const selected = view.state.sliceDoc(from, to).trim()
+  if (!selected) return
+  requestCopilot({
+    source: 'editor-selection',
+    prompt: t(`copilot.sel.${kind}`),
+    context: selected,
+    onApply: (content) => {
+      // 用 AI 结果替换原选区（CM6 history 可撤销）
+      view.dispatch({
+        changes: { from, to, insert: content },
+        selection: { anchor: from + content.length },
+        userEvent: 'ai.replace',
+      })
+    },
+  })
+}
+
 function updateFloating(view: EditorView) {
   const sel = view.state.selection.main
   if (sel.empty) {
@@ -413,6 +469,7 @@ function createEditor(saved?: { state: EditorState; scrollTop: number }) {
           ) {
             applyBrushAuto()
           }
+          if (update.selectionSet || update.geometryChanged) updateAISelection(update.view)
           if (settingsStore.settings.toolbar.mode === 'floating') {
             if (update.selectionSet || update.geometryChanged) updateFloating(update.view)
           } else if (showFloating.value) {
@@ -591,6 +648,14 @@ defineExpose({
       @callout="onCallout"
       @custom="runCustom"
       @plugin-button="onPluginButtonClick"
+    />
+
+    <!-- 划词 AI 浮动工具栏：选区非空时出现（浮动模式在选区下方、其它模式在上方），
+         动作经 Copilot 流水线流式回答，结果可一键替换原选区 -->
+    <SelectionAIToolbar
+      v-if="showAISelection"
+      :floating-style="aiSelectionStyle"
+      @action="onAISelectionAction"
     />
 
     <!-- 隐藏的颜色选择器：被工具栏 label[for] 原生触发，避免 WebView2 拒绝 input.click() -->

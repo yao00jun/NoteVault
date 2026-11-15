@@ -287,7 +287,7 @@ export const useSettingsStore = defineStore('settings', () => {
   )
 
   // 主题切换（支持跟随系统深浅色：亮→macOS、暗→Islands Dark）
-  const systemPrefersDark = ref(typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  const systemPrefersDark = ref(typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   function setTheme(theme: ThemeType) {
     settings.value.theme = theme
     settings.value.followSystemTheme = false
@@ -311,8 +311,9 @@ export const useSettingsStore = defineStore('settings', () => {
     return settings.value.theme
   }
 
-  // 系统深浅色监听：跟随模式下一变化即切换主题（store 与应用同生命周期，无需注销）
-  if (typeof window.matchMedia === 'function') {
+  // 系统深浅色监听：跟随模式下一变化即切换主题（store 与应用同生命周期，无需注销）。
+  // Node 测试环境无 window，跳过监听（速查浮层/主题单测不依赖 matchMedia）。
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
     systemPrefersDark.value = media.matches
     media.addEventListener('change', (event) => {

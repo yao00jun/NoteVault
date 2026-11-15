@@ -4,6 +4,7 @@ import { Search, FileText, Folder, Palette, Settings, Save, X, Columns, ChevronR
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { isImeComposing } from '@/utils/ime'
+import { fuzzyScore } from '@/utils/fuzzyMatch'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { usePluginRuntimeStore } from '@/stores/pluginRuntime'
@@ -37,6 +38,7 @@ interface Command {
   icon: any
   action: () => void
   shortcut?: string
+  group?: PaletteGroup
 }
 
 interface PluginCommand extends Command {
@@ -44,7 +46,10 @@ interface PluginCommand extends Command {
   id: string
   label: string
   pluginId: string
+  group: 'plugin'
 }
+
+type PaletteGroup = 'navigate' | 'editor' | 'appearance' | 'settings' | 'plugin'
 
 const allCommands = computed<Command[]>(() => [
   {
@@ -227,20 +232,85 @@ const runtimeCommands = computed<PluginCommand[]>(() => pluginRuntimeStore.comma
   description: command.description || '',
   icon: Puzzle,
   pluginId: command.pluginId,
+  group: 'plugin' as const,
   action: () => { void pluginRuntimeStore.runCommand(command.pluginId, command.id) },
 })))
 
 const mergedCommands = computed<Command[]>(() => [...allCommands.value, ...runtimeCommands.value])
 
+// ---- 分组：表驱动（id → 组），未命中的默认归入「导航」；插件命令独立成组 ----
+const GROUP_BY_ID: Record<string, PaletteGroup> = {
+  'new-file': 'editor',
+  save: 'editor',
+  'toggle-view': 'editor',
+  'toggle-theme-macos': 'appearance',
+  'toggle-theme-winui': 'appearance',
+  'toggle-theme-islands': 'appearance',
+  settings: 'settings',
+}
+const GROUP_LABEL_KEYS: Record<PaletteGroup, string> = {
+  navigate: 'palette.groups.navigate',
+  editor: 'palette.groups.editor',
+  appearance: 'palette.groups.appearance',
+  settings: 'palette.groups.settings',
+  plugin: 'palette.groups.plugin',
+}
+function groupOf(cmd: Command): PaletteGroup {
+  return cmd.group ?? GROUP_BY_ID[cmd.id] ?? 'navigate'
+}
+
+// ---- 使用频率记忆：执行即计数，空 query 时按频率降序 ----
+const USAGE_STORAGE_KEY = 'notevault:palette-usage'
+function loadUsage(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(USAGE_STORAGE_KEY) || '{}') as Record<string, number>
+  } catch {
+    return {}
+  }
+}
+const usage = loadUsage()
+function recordUsage(id: string) {
+  usage[id] = (usage[id] || 0) + 1
+  try {
+    localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(usage))
+  } catch { /* 配额满时静默放弃 */ }
+}
+
 const filteredCommands = computed(() => {
-  if (!searchQuery.value.trim()) return mergedCommands.value
-  const query = searchQuery.value.toLowerCase()
-  return mergedCommands.value.filter(
-    (cmd) =>
-      cmd.label.toLowerCase().includes(query) ||
-      cmd.description.toLowerCase().includes(query)
-  )
+  const query = searchQuery.value.trim()
+  if (!query) {
+    // 无输入：保持原始顺序（内置命令在前、插件命令在后），不做频率重排
+    return mergedCommands.value
+  }
+  return mergedCommands.value
+    .map((cmd) => ({ cmd, score: fuzzyScore(query, `${cmd.label} ${cmd.description}`) }))
+    .filter((entry): entry is { cmd: Command; score: number } => entry.score !== null)
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.cmd)
 })
+
+// 分组渲染模型：保持命令顺序，按组切片（组头由模板渲染）
+const groupedCommands = computed(() => {
+  const groups: Array<{ group: PaletteGroup; label: string; items: Array<{ cmd: Command; index: number }> }> = []
+  filteredCommands.value.forEach((cmd, index) => {
+    const group = groupOf(cmd)
+    let bucket = groups.find((g) => g.group === group)
+    if (!bucket) {
+      bucket = { group, label: t(GROUP_LABEL_KEYS[group]), items: [] }
+      groups.push(bucket)
+    }
+    bucket.items.push({ cmd, index })
+  })
+  return groups
+})
+
+function selectCommand(index: number) {
+  if (index >= 0 && index < filteredCommands.value.length) {
+    const cmd = filteredCommands.value[index]
+    recordUsage(cmd.id)
+    cmd.action()
+  }
+}
 
 watch(() => props.visible, (val) => {
   if (val) {
@@ -260,22 +330,23 @@ function close() {
   emit('close')
 }
 
-function selectCommand(index: number) {
-  if (index >= 0 && index < filteredCommands.value.length) {
-    filteredCommands.value[index].action()
-  }
-}
-
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     e.preventDefault()
     close()
   } else if (e.key === 'ArrowDown') {
     e.preventDefault()
-    selectedIndex.value = Math.min(selectedIndex.value + 1, filteredCommands.value.length - 1)
+    // 循环滚动：到底后回到第一条
+    selectedIndex.value = (selectedIndex.value + 1) % Math.max(filteredCommands.value.length, 1)
+    nextTick(() => {
+      document.querySelector('.command-item.selected')?.scrollIntoView({ block: 'nearest' })
+    })
   } else if (e.key === 'ArrowUp') {
     e.preventDefault()
-    selectedIndex.value = Math.max(selectedIndex.value - 1, 0)
+    selectedIndex.value = (selectedIndex.value - 1 + filteredCommands.value.length) % Math.max(filteredCommands.value.length, 1)
+    nextTick(() => {
+      document.querySelector('.command-item.selected')?.scrollIntoView({ block: 'nearest' })
+    })
   } else if (e.key === 'Enter') {
     // IME 守卫：拼音合成态的 Enter 是「确认候选字」，不是执行命令
     if (isImeComposing(e)) return
@@ -331,37 +402,45 @@ onBeforeUnmount(() => {
           >
             {{ t('palette.noMatch') }}
           </div>
-          <div
-            v-for="(cmd, index) in filteredCommands"
-            :key="cmd.id"
-            class="command-item"
-            v-bind="'pluginId' in cmd ? {
-              'data-testid': 'plugin-command',
-              'data-plugin-id': cmd.pluginId,
-            } : { 'data-testid': 'command-item' }"
-            :class="{ selected: index === selectedIndex }"
-            @click="selectCommand(index)"
-            @mouseenter="selectedIndex = index"
+          <template
+            v-for="group in groupedCommands"
+            :key="group.group"
           >
-            <div class="command-icon">
-              <component
-                :is="cmd.icon"
-                :size="16"
-              />
+            <div class="palette-group-label">
+              {{ group.label }}
             </div>
-            <div class="command-info">
-              <div class="command-label">
-                {{ cmd.label }}
+            <div
+              v-for="entry in group.items"
+              :key="entry.cmd.id"
+              class="command-item"
+              v-bind="'pluginId' in entry.cmd ? {
+                'data-testid': 'plugin-command',
+                'data-plugin-id': entry.cmd.pluginId,
+              } : { 'data-testid': 'command-item' }"
+              :class="{ selected: entry.index === selectedIndex }"
+              @click="selectCommand(entry.index)"
+              @mouseenter="selectedIndex = entry.index"
+            >
+              <div class="command-icon">
+                <component
+                  :is="entry.cmd.icon"
+                  :size="16"
+                />
               </div>
-              <div class="command-desc">
-                {{ cmd.description }}
+              <div class="command-info">
+                <div class="command-label">
+                  {{ entry.cmd.label }}
+                </div>
+                <div class="command-desc">
+                  {{ entry.cmd.description }}
+                </div>
               </div>
+              <kbd
+                v-if="entry.cmd.shortcut"
+                class="command-shortcut"
+              >{{ entry.cmd.shortcut }}</kbd>
             </div>
-            <kbd
-              v-if="cmd.shortcut"
-              class="command-shortcut"
-            >{{ cmd.shortcut }}</kbd>
-          </div>
+          </template>
         </div>
         <div
           v-if="pluginRuntimeStore.failedPlugins.length > 0"
@@ -449,7 +528,15 @@ onBeforeUnmount(() => {
   padding: var(--space-2);
 }
 
-.no-results {
+.palette-group-label {
+  padding: 8px 12px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted, #999);
+}
+.command-item {
   padding: var(--space-6);
   text-align: center;
   color: var(--text-muted);

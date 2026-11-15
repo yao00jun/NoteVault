@@ -357,6 +357,56 @@ const { backlinks, loadBacklinks, openBacklink } = useEditorBacklinks({
   openFile,
 })
 
+// ---- 出链（本文 [[引用]] 的目标文档）----
+interface DrawerOutlink {
+  path: string
+  name: string
+  exists: boolean
+}
+const WIKI_LINK_RE = /\[\[([^\]\n]+)\]\]/g
+
+function parseWikiLinkFile(target: string): string {
+  // 剥别名（首个 |）→ 剥块（最后一个 ^）→ 剥锚点（首个 #），与 MarkdownPreview 同口径
+  let file = target.split('|')[0]!
+  const caret = file.lastIndexOf('^')
+  if (caret >= 0) file = file.slice(0, caret)
+  const hash = file.indexOf('#')
+  if (hash >= 0) file = file.slice(0, hash)
+  return file.trim()
+}
+
+const outlinks = computed<DrawerOutlink[]>(() => {
+  const content = fileContent.value
+  if (!content) return []
+  const seen = new Set<string>()
+  const result: DrawerOutlink[] = []
+  for (const match of content.matchAll(WIKI_LINK_RE)) {
+    const file = parseWikiLinkFile(match[1]!)
+    if (!file || seen.has(file)) continue
+    seen.add(file)
+    const node = findFileByName(fileTree.value, file)
+    if (node) {
+      result.push({ path: node.path, name: node.name.replace(/\.(md|markdown)$/i, ''), exists: true })
+    } else {
+      // 未创建的引用目标也列出（虚链），点击后由 open-path 的兜底逻辑处理
+      result.push({ path: file.endsWith('.md') || file.endsWith('.canvas') ? file : `${file}.md`, name: file, exists: false })
+    }
+  }
+  return result
+})
+
+function closeOthers(index: number) {
+  for (let i = tabs.value.length - 1; i >= 0; i--) {
+    if (i !== index) void closeTab(i)
+  }
+}
+
+function closeRight(index: number) {
+  for (let i = tabs.value.length - 1; i > index; i--) {
+    void closeTab(i)
+  }
+}
+
 // 关闭标签页
 async function closeTab(index: number, event?: Event) {
   if (event) event.stopPropagation()
@@ -614,7 +664,7 @@ function ensureWritableMode() {
 
 // ---- 右侧辅助抽屉（Context Drawer）：大纲 + 反向链接 ----
 const drawerOpen = ref(false)
-const drawerTab = ref<'outline' | 'backlinks'>('outline')
+const drawerTab = ref<'outline' | 'backlinks' | 'outlinks'>('outline')
 const userManuallyToggledDrawer = ref(false)
 // Use the same Markdown parser as preview and count body lines, excluding frontmatter.
 const outline = computed<OutlineItem[]>(() => {
@@ -643,7 +693,7 @@ function setDrawerOpen(open: boolean) {
   drawerOpen.value = open
 }
 
-function selectDrawerTab(tab: 'outline' | 'backlinks') {
+function selectDrawerTab(tab: 'outline' | 'backlinks' | 'outlinks') {
   userManuallyToggledDrawer.value = true
   drawerTab.value = tab
 }
@@ -1174,6 +1224,8 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       @distill="openDistillModal"
       @switch-tab="switchToTab"
       @close-tab="closeTab"
+      @close-others="closeOthers"
+      @close-right="closeRight"
       @new-file="handleNewFile(newDocumentFolder)"
       @summarize="handleSummarize"
       @compile="handleCompile"
@@ -1448,6 +1500,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
         :open="drawerOpen"
         :outline="outline"
         :backlinks="backlinks"
+        :outlinks="outlinks"
         @update:tab="selectDrawerTab"
         @jump-line="jumpToLine"
         @open-path="openDrawerPath"

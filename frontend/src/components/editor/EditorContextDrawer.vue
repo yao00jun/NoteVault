@@ -6,7 +6,7 @@
  */
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ListTree, Link2, PanelRight, FileText } from '@lucide/vue'
+import { ListTree, Link2, PanelRight, FileText, ArrowUpRight } from '@lucide/vue'
 
 const { t } = useI18n()
 
@@ -19,11 +19,17 @@ export interface DrawerBacklink {
   path: string
   name: string
 }
+export interface DrawerOutlink {
+  path: string
+  name: string
+  exists: boolean
+}
 
 const props = defineProps<{
   open: boolean
   outline: OutlineItem[]
   backlinks: DrawerBacklink[]
+  outlinks: DrawerOutlink[]
 }>()
 
 const emit = defineEmits<{
@@ -32,15 +38,17 @@ const emit = defineEmits<{
   (e: 'open-path', path: string): void
 }>()
 
-type DrawerTab = 'outline' | 'backlinks'
+type DrawerTab = 'outline' | 'backlinks' | 'outlinks'
 const activeTab = defineModel<DrawerTab>('tab', { default: 'outline' })
 
 const TABS = [
   { id: 'outline', icon: ListTree },
   { id: 'backlinks', icon: Link2 },
+  { id: 'outlinks', icon: ArrowUpRight },
 ] as const
 
 const backlinkCount = computed(() => props.backlinks.length)
+const outlinkCount = computed(() => props.outlinks.length)
 </script>
 
 <template>
@@ -71,6 +79,10 @@ const backlinkCount = computed(() => props.backlinks.length)
             v-if="x.id === 'backlinks' && backlinkCount > 0"
             class="ctx-badge"
           >{{ backlinkCount }}</span>
+          <span
+            v-else-if="x.id === 'outlinks' && outlinkCount > 0"
+            class="ctx-badge"
+          >{{ outlinkCount }}</span>
         </button>
       </nav>
       <button
@@ -111,7 +123,7 @@ const backlinkCount = computed(() => props.backlinks.length)
 
       <!-- 反向链接 -->
       <div
-        v-else
+        v-else-if="activeTab === 'backlinks'"
         class="ctx-pane"
       >
         <div
@@ -124,6 +136,33 @@ const backlinkCount = computed(() => props.backlinks.length)
           v-for="link in backlinks"
           :key="link.path"
           class="ctx-backlink-item"
+          :title="link.path"
+          @click="emit('open-path', link.path)"
+        >
+          <FileText :size="14" class="ctx-backlink-icon" />
+          <div class="ctx-backlink-meta">
+            <span class="ctx-backlink-title">{{ link.name }}</span>
+            <span v-if="link.path" class="ctx-backlink-path">{{ link.path }}</span>
+          </div>
+        </button>
+      </div>
+
+      <!-- 出链 -->
+      <div
+        v-else
+        class="ctx-pane"
+      >
+        <div
+          v-if="outlinks.length === 0"
+          class="ctx-empty"
+        >
+          {{ t('editor.drawer.outlinksEmpty') }}
+        </div>
+        <button
+          v-for="link in outlinks"
+          :key="link.path"
+          class="ctx-backlink-item"
+          :class="{ 'is-missing': !link.exists }"
           :title="link.path"
           @click="emit('open-path', link.path)"
         >

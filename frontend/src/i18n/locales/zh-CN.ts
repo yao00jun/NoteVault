@@ -360,7 +360,14 @@ export default {
   },
   palette: {
     placeholder: '输入命令名称...',
-    noMatch: '未找到匹配的命令',
+      noMatch: '未找到匹配的命令',
+      groups: {
+        navigate: '导航',
+        editor: '编辑器',
+        appearance: '外观',
+        settings: '设置',
+        plugin: '插件命令',
+      },
     commands: {
       newFile: { label: '新建文档', desc: '创建一个新的 Markdown 文档' },
       knowledge: { label: '工作台', desc: '今日概览、最近文档与快速入口' },
@@ -996,7 +1003,7 @@ export default {
     openNodeAria: '打开 {title}',
   },
   editor: {
-    drawer: { toggle: '辅助抽屉', collapse: '收起侧栏', outline: '大纲', backlinks: '反向链接', outlineEmpty: '没有标题', backlinksEmpty: '暂无反向链接' },
+    drawer: { toggle: '辅助抽屉', collapse: '收起侧栏', outline: '大纲', backlinks: '反向链接', outlinks: '出链', outlineEmpty: '没有标题', backlinksEmpty: '暂无反向链接', outlinksEmpty: '本文没有引用其他笔记' },
     conflict: {
       banner: '⚠️ 「{name}」在外部被修改（如 Git 同步），本地有未保存草稿。请选择处理方式：',
       reload: '放弃草稿并重载',
@@ -1160,6 +1167,9 @@ export default {
     },
     tabbar: {
       expandTree: '展开文件树',
+      overflow: '更多标签页',
+      closeOthers: '关闭其他标签',
+      closeRight: '关闭右侧标签',
       distill: '沉淀为知识',
       distillHint: '把项目经验沉淀为技术笔记或面试题卡',
     },
@@ -1522,6 +1532,13 @@ export default {
     currentContext: '当前上下文',
     backToDocContext: '回到当前文档上下文',
     applyToReport: '应用到日报',
+    applySelection: '替换选中文本',
+    sel: {
+      polish: '请润色以下文字，保持原意与 Markdown 格式，直接输出润色结果',
+      translate: '请翻译以下文字：中文译为英文、英文译为中文，保持 Markdown 格式，直接输出译文',
+      explain: '请解释以下内容的关键概念与要点，面向开发者',
+      continue: '请基于以下内容继续写作，补充 1-2 段，保持风格一致，直接输出续写内容',
+    },
     createFromSources: '从资料创建',
     sourceActionHint: '目录、链接或文件 → 项目 / 技术分册',
     ctxDoc: '当前文档：{path}\n\n{content}',

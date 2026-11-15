@@ -3,11 +3,12 @@
  * EditorTabBar - 编辑器顶部标签页栏 + 右侧工具栏
  * 纯展示组件：标签页与工具栏交互通过 emit 交还父组件处理。
  */
-import { computed } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { isDistillableSource } from '@/utils/distillKnowledge'
 import {
   FileText,
+  MoreVertical,
   Plus,
   X,
   Save,
@@ -51,6 +52,8 @@ const emit = defineEmits<{
   (e: 'toggle-tree'): void
   (e: 'switch-tab', index: number): void
   (e: 'close-tab', index: number, event: Event): void
+  (e: 'close-others', index: number): void
+  (e: 'close-right', index: number): void
   (e: 'new-file'): void
   (e: 'summarize'): void
   (e: 'compile'): void
@@ -60,6 +63,19 @@ const emit = defineEmits<{
   (e: 'toggle-view'): void
   (e: 'distill'): void
 }>()
+
+// Tab 溢出菜单：tab 数量超过 6 个时出现，列出全部标签与批量关闭动作
+const overflowOpen = ref(false)
+const overflowRef = ref<HTMLElement | null>(null)
+
+function closeOverflowOnOutside(e: MouseEvent) {
+  if (overflowOpen.value && overflowRef.value && !overflowRef.value.contains(e.target as Node)) {
+    overflowOpen.value = false
+  }
+}
+
+onMounted(() => { document.addEventListener('click', closeOverflowOnOutside) })
+onBeforeUnmount(() => { document.removeEventListener('click', closeOverflowOnOutside) })
 
 // 编译流水线仅处理 Inbox/ 下的笔记（后端 CompileNote 亦强校验），
 // 不在 Inbox 时禁用按钮并给出明确提示，避免误点后收到后端报错。
@@ -109,6 +125,63 @@ const compileTooltip = computed(() => {
         >
           <X :size="12" />
         </button>
+      </div>
+      <!-- Tab 溢出菜单：tab 数量较多时收进下拉列表，附批量关闭动作 -->
+      <div
+        v-if="tabs.length > 6"
+        ref="overflowRef"
+        class="tab-overflow"
+      >
+        <button
+          class="tab-overflow-toggle"
+          :title="t('editor.tabbar.overflow')"
+          data-testid="editor-tab-overflow"
+          @click.stop="overflowOpen = !overflowOpen"
+        >
+          <MoreVertical :size="14" />
+        </button>
+        <div
+          v-if="overflowOpen"
+          class="tab-overflow-menu"
+          data-testid="editor-tab-overflow-menu"
+        >
+          <button
+            v-for="(tab, index) in tabs"
+            :key="tab.path"
+            class="tab-overflow-item"
+            :class="{ active: index === activeTabIndex }"
+            @click.stop="emit('switch-tab', index); overflowOpen = false"
+          >
+            <span
+              v-if="tab.isDirty"
+              class="tab-dirty"
+            >●</span>
+            <span class="tab-overflow-name">{{ tab.name }}</span>
+            <button
+              class="tab-overflow-close"
+              :aria-label="t('common.close')"
+              @click.stop="emit('close-tab', index, $event); overflowOpen = false"
+            >
+              <X :size="11" />
+            </button>
+          </button>
+          <div class="tab-overflow-actions">
+            <button
+              type="button"
+              :disabled="activeTabIndex < 1"
+              @click.stop="emit('close-others', activeTabIndex); overflowOpen = false"
+            >
+              {{ t('editor.tabbar.closeOthers') }}
+            </button>
+            <button
+              type="button"
+              :disabled="activeTabIndex >= tabs.length - 1"
+              @click.stop="emit('close-right', activeTabIndex); overflowOpen = false"
+            >
+              {{ t('editor.tabbar.closeRight') }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -275,6 +348,20 @@ const compileTooltip = computed(() => {
   color: var(--text-primary);
 }
 
+.tab-overflow { position: relative; flex-shrink: 0; }
+.tab-overflow-toggle { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); cursor: pointer; }
+.tab-overflow-toggle:hover, .tab-overflow-toggle[aria-expanded='true'] { background: var(--bg-hover); color: var(--text-primary); }
+.tab-overflow-menu { position: absolute; top: 100%; right: 0; z-index: 40; min-width: 200px; max-height: 320px; display: flex; flex-direction: column; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-sm, 6px); background: var(--bg-card, #232323); box-shadow: 0 8px 24px rgb(0 0 0 / .3); overflow: auto; }
+.tab-overflow-item { display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 8px; border: none; border-radius: 4px; background: transparent; color: var(--text-secondary); font-size: 12px; cursor: pointer; text-align: left; }
+.tab-overflow-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.tab-overflow-item.active { color: var(--accent); font-weight: 500; }
+.tab-overflow-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-overflow-close { display: grid; place-items: center; width: 18px; height: 18px; flex-shrink: 0; padding: 0; border: none; border-radius: 3px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.tab-overflow-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+.tab-overflow-actions { display: flex; gap: 6px; border-top: 1px solid var(--border); padding-top: 6px; margin-top: 4px; }
+.tab-overflow-actions button { flex: 1; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--text-secondary); font-size: 11px; cursor: pointer; white-space: nowrap; }
+.tab-overflow-actions button:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-hover); }
+.tab-overflow-actions button:disabled { opacity: .4; cursor: default; }
 .tabs-container::-webkit-scrollbar {
   height: 3px;
 }

@@ -448,7 +448,7 @@ onBeforeUnmount(() => {
             class="msg-actions"
           >
             <button
-              v-if="activeRequest?.source === 'daily-report' && activeRequest.onApply && i >= requestAnswerStart"
+              v-if="(activeRequest?.source === 'daily-report' || activeRequest?.source === 'editor-selection') && activeRequest.onApply && i >= requestAnswerStart"
               type="button"
               class="insert-btn"
               data-testid="apply-report-answer"
@@ -456,7 +456,7 @@ onBeforeUnmount(() => {
               @click="applyToReport(msg.content)"
             >
               <FileText :size="13" />
-              <span>{{ t('copilot.applyToReport') }}</span>
+              <span>{{ activeRequest?.source === 'editor-selection' ? t('copilot.applySelection') : t('copilot.applyToReport') }}</span>
             </button>
             <button
               type="button"

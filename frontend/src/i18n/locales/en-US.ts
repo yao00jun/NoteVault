@@ -361,6 +361,13 @@ export default {
   palette: {
     placeholder: 'Type a command...',
     noMatch: 'No matching commands',
+    groups: {
+      navigate: 'Navigate',
+      editor: 'Editor',
+      appearance: 'Appearance',
+      settings: 'Settings',
+      plugin: 'Plugin commands',
+    },
     commands: {
       newFile: { label: 'New Document', desc: 'Create a new Markdown document' },
       knowledge: { label: 'Knowledge Hub', desc: 'Stats and recent documents overview' },
@@ -996,7 +1003,7 @@ export default {
     openNodeAria: 'Open {title}',
   },
   editor: {
-    drawer: { toggle: 'Context drawer', collapse: 'Collapse side panel', outline: 'Outline', backlinks: 'Backlinks', outlineEmpty: 'No headings', backlinksEmpty: 'No backlinks yet' },
+    drawer: { toggle: 'Context drawer', collapse: 'Collapse side panel', outline: 'Outline', backlinks: 'Backlinks', outlinks: 'Outgoing links', outlineEmpty: 'No headings', backlinksEmpty: 'No backlinks yet', outlinksEmpty: 'This note does not reference other notes' },
     conflict: {
       banner: '⚠️ "{name}" was modified externally (e.g. Git sync) with unsaved local draft. Choose an action:',
       reload: 'Discard & reload',
@@ -1160,6 +1167,9 @@ export default {
     },
     tabbar: {
       expandTree: 'Show file tree',
+      overflow: 'More tabs',
+      closeOthers: 'Close others',
+      closeRight: 'Close to the right',
       distill: 'Distill into knowledge',
       distillHint: 'Distill project experience into tech notes or interview cards',
     },
@@ -1522,6 +1532,13 @@ export default {
     currentContext: 'Current context',
     backToDocContext: 'Back to current document context',
     applyToReport: 'Apply to report',
+    applySelection: 'Replace selection',
+    sel: {
+      polish: 'Polish the following text, keeping the meaning and Markdown format. Output only the polished result',
+      translate: 'Translate the following text: Chinese to English, English to Chinese. Keep Markdown format. Output only the translation',
+      explain: 'Explain the key concepts and takeaways of the following content, for developers',
+      continue: 'Continue writing based on the following content, adding 1-2 paragraphs in the same style. Output only the continuation',
+    },
     createFromSources: 'Create from sources',
     sourceActionHint: 'Folders, links or files → projects / tech books',
     ctxDoc: 'Current document: {path}\n\n{content}',

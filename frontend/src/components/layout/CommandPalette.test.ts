@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { flushPromises, mount, enableAutoUnmount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter as createVueRouter } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import { i18n } from '@/i18n'
@@ -29,6 +29,8 @@ function createRouter() {
 }
 
 describe('CommandPalette', () => {
+  // 失败路径也要卸载实例：组件挂了 window keydown 监听，僵尸实例会污染后续用例
+  enableAutoUnmount(afterEach)
   afterEach(() => {
     document.body.innerHTML = ''
   })
