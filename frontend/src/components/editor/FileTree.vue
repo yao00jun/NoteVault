@@ -26,6 +26,7 @@ import {
   LocateFixed,
   PanelLeft,
 } from '@lucide/vue'
+import { isMetaFile } from '@/utils/fileTreeMeta'
 import { normalizeNotePath } from '@/utils/navigation'
 import WorkflowTreeItem from '@/components/layout/WorkflowTreeItem.vue'
 import { useFileTreeExpansion } from '@/composables/useFileTreeExpansion'
@@ -144,7 +145,15 @@ function isSystemNode(node: FileNode): boolean {
   return node.isDir && SYSTEM_DIR_NAMES.has(node.name.toLowerCase())
 }
 
-const primaryNodes = computed(() => (props.isRoot ? props.nodes.filter((n) => !isSystemNode(n)) : props.nodes))
+// 功能托管文件（book/sources/ai-plan/project/Tasks）不进树：入口在对应功能页。
+// 递归剥离后目录徽章计数自动排除它们。
+function stripMetaFiles(nodes: FileNode[]): FileNode[] {
+  return nodes
+    .filter((n) => !isMetaFile(n.path))
+    .map((n) => (n.isDir && n.children ? { ...n, children: stripMetaFiles(n.children) } : n))
+}
+
+const primaryNodes = computed(() => (props.isRoot ? stripMetaFiles(props.nodes.filter((n) => !isSystemNode(n))) : props.nodes))
 const systemNodes = computed(() => (props.isRoot ? props.nodes.filter((n) => isSystemNode(n)) : []))
 const systemExpanded = ref(false)
 
@@ -153,8 +162,8 @@ const rootLooseFiles = computed(() => (props.isRoot ? primaryNodes.value.filter(
 const looseExpanded = ref(false)
 
 const displayPrimaryNodes = computed(() => {
-  if (!props.isRoot || !searchQuery.value.trim()) return primaryNodes.value.filter((n) => n.isDir || n.path.includes('/'))
-  return filterNodeList(primaryNodes.value.filter((n) => n.isDir || n.path.includes('/')), searchQuery.value.trim(), props.folderDisplayNames)
+  if (!props.isRoot || !searchQuery.value.trim()) return primaryNodes.value.filter((n) => n.isDir)
+  return filterNodeList(primaryNodes.value.filter((n) => n.isDir), searchQuery.value.trim(), props.folderDisplayNames)
 })
 
 const displaySystemNodes = computed(() => {

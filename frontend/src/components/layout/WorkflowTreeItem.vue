@@ -4,7 +4,6 @@ import { useI18n } from 'vue-i18n'
 import {
   ChevronRight,
   FileText,
-  FileCog,
   Folder,
   FolderOpen,
   BookOpen,
@@ -139,29 +138,9 @@ function folderIcon(node: FileNode) {
 }
 
 function fileIcon(node: FileNode) {
-  if (metaDisplayKey(node)) return FileCog
   const lower = node.name.toLowerCase()
   if (lower.endsWith('.canvas')) return Sparkles
   return FileText
-}
-
-// 功能托管文件的本地化显示名（学习/项目闭环自动创建与读写，非用户笔记）。
-// 按路径限定作用域：用户在自己目录里创建同名文件不受影响。
-const META_FILE_DISPLAY: Array<{ test: RegExp; key: string }> = [
-  { test: /^Learning\/[^/]+\/book\.md$/i, key: 'editor.tree.meta.book' },
-  { test: /^Learning\/[^/]+\/sources\.md$/i, key: 'editor.tree.meta.sources' },
-  { test: /^Learning\/[^/]+\/ai-plan\.md$/i, key: 'editor.tree.meta.aiPlan' },
-  { test: /^Projects\/[^/]+\/project\.md$/i, key: 'editor.tree.meta.project' },
-  { test: /^Projects\/[^/]+\/tasks\.md$/i, key: 'editor.tree.meta.tasks' },
-]
-
-function metaDisplayKey(node: FileNode): string | null {
-  if (props.kind !== 'filetree' || node.isDir) return null
-  const norm = normalizeNotePath(node.path)
-  for (const meta of META_FILE_DISPLAY) {
-    if (meta.test.test(norm)) return meta.key
-  }
-  return null
 }
 
 const displayName = computed(() => {
@@ -178,10 +157,8 @@ const displayName = computed(() => {
       if (label && label !== labelKey) return label
     }
   }
-  // 编辑器文件树：功能托管文件显示中文名；普通文件不暴露扩展名（真实路径仍在行 title 中）
+  // 编辑器文件树：文件名不向用户暴露扩展名（真实路径仍在行 title 中）
   if (props.kind === 'filetree' && !node.isDir) {
-    const metaKey = metaDisplayKey(node)
-    if (metaKey) return t(metaKey)
     return node.name.replace(/\.(md|markdown|canvas)$/i, '')
   }
   return props.stripExtension ? node.name.replace(/\.md$/i, '') : node.name
@@ -248,11 +225,10 @@ const displayName = computed(() => {
       :class="{
         active: isNodeActive,
         'is-active': isNodeActive,
-        'is-meta': !!metaDisplayKey(node),
       }"
       :data-path="node.path"
       :style="{ paddingLeft: `${depth * 14 + 26}px` }"
-      :title="metaDisplayKey(node) ? t('editor.tree.meta.tooltip', { path: node.path }) : node.path"
+      :title="node.path"
       :draggable="true"
       @click="emit('open-file', node)"
       @contextmenu.prevent="emit('context-menu', $event, node)"
@@ -425,24 +401,6 @@ const displayName = computed(() => {
 .file-row.is-active .file-icon {
   color: var(--accent, #eab308);
   opacity: 1;
-}
-
-/* 功能托管文件（分册档案/来源记录/…）：整行弱化为次级信息，图标用冷色齿轮 */
-.file-row.is-meta {
-  color: var(--text-muted, #9d9d9d);
-}
-
-.file-row.is-meta .node-name {
-  opacity: 0.85;
-}
-
-.file-row.is-meta .item-icon {
-  color: #7a93b8;
-  opacity: 1;
-}
-
-.file-row.is-meta:hover {
-  color: var(--text-secondary, #b5b5b5);
 }
 
 /* 空间卡直达的高亮（短暂）：用 accent 描边吸睛，2.4s 后自动消退 */

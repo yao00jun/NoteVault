@@ -66,6 +66,30 @@ describe('FileTree', () => {
     expect(wrapper.get('[data-path="Daily"] .node-name').text()).toBe('工作日志/日报')
   })
 
+  it('hides managed metadata files (book/sources/ai-plan/project/Tasks) from the tree and its counts', async () => {
+    const withMeta: FileNode[] = [
+      { name: 'Java', path: 'Learning/Java', fullPath: '', isDir: true, children: [
+        { name: 'book.md', path: 'Learning/Java/book.md', fullPath: '', isDir: false },
+        { name: 'sources.md', path: 'Learning/Java/sources.md', fullPath: '', isDir: false },
+        { name: 'Java基础.md', path: 'Learning/Java/Java基础.md', fullPath: '', isDir: false },
+      ] },
+      { name: '通用事务', path: 'Projects/通用事务', fullPath: '', isDir: true, children: [
+        { name: 'project.md', path: 'Projects/通用事务/project.md', fullPath: '', isDir: false },
+        { name: 'Tasks.md', path: 'Projects/通用事务/Tasks.md', fullPath: '', isDir: false },
+      ] },
+    ]
+    const wrapper = mount(FileTree, { props: { nodes: withMeta, activeFilePath: 'Learning/Java/Java基础.md' } })
+    expect(wrapper.find('[data-path="Learning/Java/book.md"]').exists()).toBe(false)
+    expect(wrapper.find('[data-path="Learning/Java/sources.md"]').exists()).toBe(false)
+    expect(wrapper.find('[data-path="Projects/通用事务/project.md"]').exists()).toBe(false)
+    expect(wrapper.find('[data-path="Projects/通用事务/Tasks.md"]').exists()).toBe(false)
+    // 普通笔记不受影响；目录徽章计数排除托管文件（3 个子项 - 2 个托管 = 1）
+    expect(wrapper.find('[data-path="Learning/Java/Java基础.md"]').exists()).toBe(true)
+    expect(wrapper.find('[data-path="Learning/Java"] .count-badge').text()).toBe('1')
+    // 子项全为托管文件的项目：徽章直接不渲染（避免出现 0 计数的空壳目录观感）
+    expect(wrapper.find('[data-path="Projects/通用事务"] .count-badge').exists()).toBe(false)
+  })
+
   it('groups root-level loose files into the Unsorted section with localized builtin names intact', async () => {
     const mixed: FileNode[] = [
       { name: 'Learning', path: 'Learning', fullPath: '', isDir: true, children: [] },
