@@ -78,12 +78,12 @@ const compileTooltip = computed(() => {
 
 <template>
   <div class="tab-bar">
-    <!-- 文件树收起后的恢复入口：树展开时隐藏（收起按钮在树面板自己的工具条上） -->
+    <!-- 文件树开合（常驻固定位置：收起后也能一眼找到它重新展开） -->
     <button
-      v-if="!treeOpen"
       class="tab-back"
       data-testid="editor-tree-toggle"
-      :title="t('editor.tabbar.expandTree')"
+      :title="treeOpen ? t('editor.tree.collapseTree') : t('editor.tabbar.expandTree')"
+      :aria-expanded="treeOpen"
       @click="emit('toggle-tree')"
     >
       <PanelLeft :size="15" />
