@@ -1133,6 +1133,7 @@ export default {
         aiPlan: 'AI 学习计划',
         project: '项目档案',
         tasks: '任务清单',
+        tooltip: '应用托管文件：{path}',
       },
       systemSection: '系统与模板',
       newFile: '新建文档',

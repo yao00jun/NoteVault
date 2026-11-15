@@ -248,10 +248,11 @@ const displayName = computed(() => {
       :class="{
         active: isNodeActive,
         'is-active': isNodeActive,
+        'is-meta': !!metaDisplayKey(node),
       }"
       :data-path="node.path"
       :style="{ paddingLeft: `${depth * 14 + 26}px` }"
-      :title="node.path"
+      :title="metaDisplayKey(node) ? t('editor.tree.meta.tooltip', { path: node.path }) : node.path"
       :draggable="true"
       @click="emit('open-file', node)"
       @contextmenu.prevent="emit('context-menu', $event, node)"
@@ -424,6 +425,24 @@ const displayName = computed(() => {
 .file-row.is-active .file-icon {
   color: var(--accent, #eab308);
   opacity: 1;
+}
+
+/* 功能托管文件（分册档案/来源记录/…）：整行弱化为次级信息，图标用冷色齿轮 */
+.file-row.is-meta {
+  color: var(--text-muted, #9d9d9d);
+}
+
+.file-row.is-meta .node-name {
+  opacity: 0.85;
+}
+
+.file-row.is-meta .item-icon {
+  color: #7a93b8;
+  opacity: 1;
+}
+
+.file-row.is-meta:hover {
+  color: var(--text-secondary, #b5b5b5);
 }
 
 /* 空间卡直达的高亮（短暂）：用 accent 描边吸睛，2.4s 后自动消退 */

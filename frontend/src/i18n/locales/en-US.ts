@@ -1133,6 +1133,7 @@ export default {
         aiPlan: 'AI study plan',
         project: 'Project profile',
         tasks: 'Task list',
+        tooltip: 'Managed file: {path}',
       },
       systemSection: 'System & Templates',
       newFile: 'New document',
