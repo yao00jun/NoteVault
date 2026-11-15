@@ -865,6 +865,8 @@ export default {
       desc: '扫描全库 Markdown 未引用的孤立附件（图片）。',
       scanLabel: '孤立附件扫描',
       scan: '扫描孤立附件',
+      noOrphans: '扫描完成：没有发现孤立附件',
+      scanFailed: '扫描失败：{msg}',
       clean: '移入回收站（{count} 个）',
       cleanConfirm: '确认把 {count} 个孤立附件移入回收站吗？之后可在回收站恢复。',
       cleanConfirmBtn: '移入回收站',

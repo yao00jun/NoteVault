@@ -865,6 +865,8 @@ export default {
       desc: 'Scan for orphaned assets (images) not referenced by any note.',
       scanLabel: 'Orphan scan',
       scan: 'Scan orphans',
+      noOrphans: 'Scan complete: no orphaned assets found',
+      scanFailed: 'Scan failed: {msg}',
       clean: 'Move to trash ({count})',
       cleanConfirm: 'Move {count} orphaned assets to trash? They can be restored later.',
       cleanConfirmBtn: 'Move to trash',

@@ -34,9 +34,11 @@ async function scanOrphanAssets() {
   try {
     const list = await FileService.ScanOrphanAssets(ws.path)
     orphanAssets.value = Array.isArray(list) ? (list as string[]) : []
+    // 空结果也要有回音，否则看起来像"点击无反应"
+    if (orphanAssets.value.length === 0) toast.success(t('settings.assets.noOrphans'))
   } catch (e) {
     orphanAssets.value = []
-    console.error('[assets] scan failed:', e)
+    toast.error(t('settings.assets.scanFailed', { msg: (e as Error).message }))
   } finally {
     assetsScanning.value = false
   }
