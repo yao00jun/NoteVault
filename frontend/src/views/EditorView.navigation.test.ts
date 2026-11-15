@@ -94,19 +94,17 @@ describe('EditorView outline navigation', () => {
     expect(wrapper.find('[data-testid="ctx-drawer"]').exists()).toBe(true)
   })
 
-  it('toggles the file tree from the always-visible tab bar button (collapsed sessions included)', async () => {
+  it('shows the tab-bar tree toggle only when the tree is collapsed (no duplicate while open)', async () => {
     const { wrapper } = await renderEditor('split', undefined, { treeOpen: false })
     const hidden = () => (wrapper.find('.file-tree-pane').attributes('style') || '').includes('none')
     const toggle = () => wrapper.get('[data-testid="editor-tree-toggle"]')
-    // 收起的会话里按钮仍常驻同一位位置，再点即展开
+    // 收起态：TabBar 恢复入口出现
     expect(hidden()).toBe(true)
+    expect(toggle().isVisible()).toBe(true)
     await toggle().trigger('click')
     expect(hidden()).toBe(false)
-    // 展开后同一按钮变为收起（树工具条里的收起按钮走 FileTree 自己的 emit）
-    await toggle().trigger('click')
-    expect(hidden()).toBe(true)
-    await toggle().trigger('click')
-    expect(hidden()).toBe(false)
+    // 树展开后按钮让位给树工具条自带的收起按钮，不再重复出现
+    expect(wrapper.find('[data-testid="editor-tree-toggle"]').exists()).toBe(false)
     expect(wrapper.findComponent(FileTree).props('collapsible')).toBe(true)
   })
 
