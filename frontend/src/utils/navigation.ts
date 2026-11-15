@@ -112,16 +112,20 @@ export function contextBreadcrumbs(context: PageContext, route: RouteContextInpu
       crumbs.push({ label: sectionLabels('learning'), to: '/learning' })
       crumbs.push({ label: parts[1]!, to: { path: '/learning', query: { book: parts.slice(0, 2).join('/') } } })
       for (let i = 2; i < parts.length; i++) {
-        crumbs.push({ label: parts[i]! })
+        // 深层目录段可点击：回到编辑器并在树中定位该目录
+        crumbs.push({ label: parts[i]!, to: { path: '/editor', query: { file: context.file, folder: parts.slice(0, i + 1).join('/') } } })
       }
     } else if (parts[0] === 'Projects' && parts.length >= 2) {
       crumbs.push({ label: sectionLabels('projects'), to: '/projects' })
       crumbs.push({ label: parts[1]!, to: { path: '/projects', query: { project: parts.slice(0, 2).join('/') } } })
       for (let i = 2; i < parts.length; i++) {
-        crumbs.push({ label: parts[i]! })
+        crumbs.push({ label: parts[i]!, to: { path: '/editor', query: { file: context.file, folder: parts.slice(0, i + 1).join('/') } } })
       }
     } else if (parts[0] === 'Daily') {
       crumbs.push({ label: sectionLabels('today'), to: '/today' })
+      for (let i = 1; i < parts.length; i++) {
+        crumbs.push({ label: parts[i]!, to: { path: '/editor', query: { file: context.file, folder: parts.slice(0, i + 1).join('/') } } })
+      }
     } else {
       crumbs.push({ label: sectionLabels('vault'), to: '/vault' })
       let cumulative = ''

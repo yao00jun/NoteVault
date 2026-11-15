@@ -30,7 +30,6 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useToast } from '@/composables/useToast'
 import { requestCopilot } from '@/composables/useCopilotRequest'
 import {
-  collectionDateLabel,
   matchesTaskPeriod,
   normalizedCollectionPath,
   projectStatusLabel,
@@ -40,6 +39,7 @@ import {
 } from '@/utils/workbenchCollections'
 import '@/styles/workbench-collections.css'
 import { requestSourceImport } from '@/composables/useSourceImport'
+import { formatRelativeTime } from '@/utils/relativeTime'
 import CollectionOnboarding from '@/components/workbench/CollectionOnboarding.vue'
 
 const workbench = useWorkbenchStore()
@@ -603,7 +603,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
                     <FileText :size="19" /><span class="collection-document-copy"><strong>{{ doc.title }}</strong><small>{{ doc.path }}</small></span>
                   </button>
                   <span class="collection-document-date">{{
-                    collectionDateLabel(doc.modifiedAt)
+                    formatRelativeTime(doc.modifiedAt)
                   }}</span>
                   <button
                     class="collection-icon-button"
@@ -795,7 +795,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
               </div>
             </div>
             <div class="collection-card-footer">
-              <span class="project-active-time"><Clock :size="12" />{{ collectionDateLabel(card.project.modifiedAt) }}</span><button
+              <span class="project-active-time"><Clock :size="12" />{{ formatRelativeTime(card.project.modifiedAt) }}</span><button
                 type="button"
                 @click="selectProject(card.project)"
               >

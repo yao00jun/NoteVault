@@ -48,6 +48,7 @@ import { useSidebarResize } from '@/composables/useSidebarResize'
 import SidebarCalendar from './SidebarCalendar.vue'
 import { flushOpenEditor } from '@/composables/useEditorSession'
 import { requestSourceImport } from '@/composables/useSourceImport'
+import { formatRelativeTime } from '@/utils/relativeTime'
 
 const toast = useToast()
 const { openTodayWorkLog } = useWorkLog()
@@ -232,6 +233,14 @@ const recentExpanded = ref(localStorage.getItem('notevault:sidebar-recent-expand
 function toggleCalendarExpanded() {
   calendarExpanded.value = !calendarExpanded.value
   localStorage.setItem('notevault:sidebar-calendar-expanded', String(calendarExpanded.value))
+}
+
+// 今日脉搏折叠（默认展开），与日历/最近同款 localStorage 记忆
+const pulseExpanded = ref(localStorage.getItem('notevault:sidebar-pulse-expanded') !== 'false')
+
+function togglePulseExpanded() {
+  pulseExpanded.value = !pulseExpanded.value
+  localStorage.setItem('notevault:sidebar-pulse-expanded', String(pulseExpanded.value))
 }
 
 function toggleRecentExpanded() {
@@ -768,10 +777,24 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
         data-testid="sidebar-pulse"
         :aria-label="t('sidebar.pulseTitle')"
       >
-        <div class="section-heading">
-          {{ t('sidebar.pulseTitle') }}
+        <div
+          class="section-heading section-heading-clickable"
+          data-testid="sidebar-pulse-toggle"
+          role="button"
+          tabindex="0"
+          :aria-expanded="pulseExpanded"
+          @click="togglePulseExpanded"
+          @keydown.enter.prevent="togglePulseExpanded"
+          @keydown.space.prevent="togglePulseExpanded"
+        >
+          <ChevronRight
+            :size="12"
+            class="section-chevron"
+            :class="{ expanded: pulseExpanded }"
+          />
+          <span>{{ t('sidebar.pulseTitle') }}</span>
         </div>
-        <div class="pulse-grid">
+        <div v-if="pulseExpanded" class="pulse-grid">
           <button
             class="pulse-cell"
             :class="{ 'has-active': todayPending > 0 }"
@@ -898,6 +921,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
           >
             <FileText :size="14" />
             <span class="file-shortcut-label">{{ file.title }}</span>
+            <span class="file-shortcut-time">{{ formatRelativeTime(file.openedAt) }}</span>
           </button>
         </div>
       </section>
@@ -1195,6 +1219,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
 .file-shortcut:hover { background: var(--bg-hover); color: var(--text-primary); }
 .file-shortcut.active { background: var(--accent-alpha, rgba(0, 122, 255, 0.08)); color: var(--accent); }
 .file-shortcut-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-shortcut-time { flex-shrink: 0; color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
 
 /* 扩展区：长尾功能页纵向列表（默认折叠，展开后与最近文档同款行样式） */
 .extended-list { display: flex; flex-direction: column; gap: 2px; padding: 2px 0 4px; }

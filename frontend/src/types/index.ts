@@ -122,6 +122,8 @@ export interface ToolbarSettings {
 
 export interface AppSettings {
   theme: ThemeType
+  /** 跟随系统深浅色：亮→macOS、暗→Islands Dark；开启后 theme 字段被运行时接管 */
+  followSystemTheme?: boolean
   language: 'zh-CN' | 'en-US'
   sidebarCollapsed: boolean
   autoSaveInterval: number

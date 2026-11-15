@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useAiEndpointSettings } from '@/composables/useAiEndpointSettings'
+import { useShortcuts } from '@/composables/useShortcuts'
 import { useEditorToolbarSettings } from '@/composables/useEditorToolbarSettings'
 import type { ThemeType } from '@/types'
 import type { Locale } from '@/i18n'
@@ -125,19 +126,9 @@ const sections = computed(() => [
   { id: 'about', label: t('settings.nav.about'), icon: Info },
 ])
 
-// 真实生效的快捷键（全局 App.vue + 编辑器组件级 CM6 keymap）。
-// B/I/K/\ 已由两处共同注册，这里如实列出。
-const shortcuts = computed(() => [
-  { keys: 'Ctrl + P', desc: t('settings.shortcuts.commandPalette') },
-  { keys: 'Ctrl + ,', desc: t('settings.shortcuts.openSettings') },
-  { keys: 'Ctrl + N', desc: t('settings.shortcuts.newFile') },
-  { keys: 'Ctrl + S', desc: t('settings.shortcuts.inEditor', { action: t('settings.shortcuts.saveDoc') }) },
-  { keys: 'Ctrl + B', desc: t('settings.shortcuts.inEditor', { action: t('settings.shortcuts.bold') }) },
-  { keys: 'Ctrl + I', desc: t('settings.shortcuts.inEditor', { action: t('settings.shortcuts.italic') }) },
-  { keys: 'Ctrl + K', desc: t('settings.shortcuts.inEditor', { action: t('settings.shortcuts.link') }) },
-  { keys: 'Ctrl + \\', desc: t('settings.shortcuts.inEditor', { action: t('settings.shortcuts.code') }) },
-  { keys: 'Esc', desc: t('settings.shortcuts.paletteOpen', { action: t('settings.shortcuts.esc') }) },
-])
+// 真实生效的快捷键（全局 App.vue + 编辑器组件级 CM6 keymap）——
+// 唯一清单数据源在 useShortcuts（速查浮层与设置页共用），B/I/K/\ 已由两处共同注册。
+const { flat: shortcuts } = useShortcuts()
 
 function onLanguageChange(e: Event) {
   const value = (e.target as HTMLSelectElement).value as Locale
@@ -198,7 +189,7 @@ async function scrollToSection(id: string) {
             <span class="setting-label">{{ t('settings.appearance.theme') }}</span>
             <span class="setting-desc">{{ t('settings.appearance.themeDesc') }}</span>
           </div>
-          <div class="theme-previews">
+          <div class="theme-previews" :class="{ dimmed: settingsStore.settings.followSystemTheme }">
             <ThemePreview
               v-for="th in themes"
               :key="th.value"
@@ -207,6 +198,14 @@ async function scrollToSection(id: string) {
               @select="settingsStore.setTheme"
             />
           </div>
+          <label class="follow-system-toggle" data-testid="follow-system-toggle">
+            <input
+              type="checkbox"
+              :checked="settingsStore.settings.followSystemTheme"
+              @change="settingsStore.setFollowSystemTheme(($event.target as HTMLInputElement).checked)"
+            >
+            <span>{{ t('settings.appearance.followSystem') }}</span>
+          </label>
         </div>
 
         <div class="setting-item">

@@ -31,7 +31,8 @@ import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { SPACE_DEFS } from '@/composables/useWorkbenchSpaces'
 import { useToast } from '@/composables/useToast'
-import { collectionDateLabel, normalizedCollectionPath } from '@/utils/workbenchCollections'
+import { normalizedCollectionPath } from '@/utils/workbenchCollections'
+import { formatRelativeTime } from '@/utils/relativeTime'
 import '@/styles/workbench-collections.css'
 import { useViewRoute } from '@/composables/useViewRoute'
 import VaultActions from '@/components/knowledge/VaultActions.vue'
@@ -387,7 +388,7 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
                   <FileText :size="19" /><span class="collection-document-copy"><strong>{{ doc.title }}</strong><small>{{ doc.path }}</small></span>
                 </button>
                 <span class="collection-document-date">{{
-                  collectionDateLabel(doc.modifiedAt)
+                  formatRelativeTime(doc.modifiedAt)
                 }}</span>
                 <button
                   class="collection-icon-button"

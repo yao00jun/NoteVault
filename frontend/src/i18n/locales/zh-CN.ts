@@ -1,5 +1,10 @@
 export default {
   common: {
+    justNow: '刚刚',
+    minutesAgo: '{n} 分钟前',
+    hoursAgo: '{n} 小时前',
+    daysAgo: '{n} 天前',
+    noRecord: '无记录',
     backToKnowledge: '返回知识库',
     loading: '加载中...',
     cancel: '取消',
@@ -12,6 +17,12 @@ export default {
     pinLimit: '固定区最多容纳 8 项，请先取消一个固定项。',
     retry: '重试',
     noWorkspaceTitle: '先打开一个工作区',
+  },
+  cheatsheet: {
+    title: '快捷键速查',
+    hint: '熟练使用快捷键，让整理快人一步',
+    groupGlobal: '全局',
+    groupEditor: '编辑器',
   },
   sidebar: {
     nav: {
@@ -701,6 +712,8 @@ export default {
       title: '外观',
       theme: '主题',
       themeDesc: '选择应用界面主题风格',
+      followSystem: '跟随系统深浅色',
+      followSystemDesc: '系统切换深浅色时自动换用对应主题（亮→macOS、暗→Islands Dark）',
       language: '语言',
       languageDesc: '界面显示语言',
       langZh: '简体中文',
@@ -851,6 +864,11 @@ export default {
       commandPalette: '打开命令面板（搜索与命令）',
       openSettings: '打开设置',
       newFile: '新建文档（仅编辑器页）',
+      aiSearch: 'AI 搜索与问答（OmniSearch）',
+      copilot: 'AI 助手抽屉',
+      cheatSheet: '快捷键速查',
+      back: '后退',
+      forward: '前进',
       esc: '关闭弹窗 / 返回',
       inEditor: '{action} (编辑器内)',
       paletteOpen: '{action} (命令面板打开时)',

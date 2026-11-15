@@ -8,6 +8,7 @@ import CommandPalette from '@/components/layout/CommandPalette.vue'
 import ToastHost from '@/components/layout/ToastHost.vue'
 import ConfirmDialog from '@/components/layout/ConfirmDialog.vue'
 import OmniSearch from '@/components/layout/OmniSearch.vue'
+import ShortcutCheatSheet from '@/components/layout/ShortcutCheatSheet.vue'
 import PromptDialog from '@/components/layout/PromptDialog.vue'
 import FloatingAssistantOrb from '@/components/layout/FloatingAssistantOrb.vue'
 import AICopilotDrawer from '@/components/layout/AICopilotDrawer.vue'
@@ -38,6 +39,8 @@ const stopNavigation = navigation.connect(router, workspaceStore)
 const showCommandPalette = ref(false)
 // 全局检索与 AI 问答浮层（蓝图 2.4）：任意界面 Ctrl+K 唤起
 const showOmniSearch = ref(false)
+// 快捷键速查浮层：? 或 Ctrl+/ 唤起
+const showCheatSheet = ref(false)
 // 全局 AI 悬浮球 + Copilot 伴生抽屉（AI-COPILOT-FLOATING-ORB 蓝图）：Ctrl+J 唤起
 const showCopilot = ref(false)
 const showDailyReport = ref(false)
@@ -116,6 +119,15 @@ function handleGlobalKeydown(e: KeyboardEvent) {
   if (e.ctrlKey && e.key === ',') {
     e.preventDefault()
     router.push('/settings')
+    return
+  }
+  // ?（Shift+/）或 Ctrl+/：快捷键速查浮层（输入态不拦截）
+  const isTypingTarget = ['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement | null)?.tagName || '') ||
+    (e.target as HTMLElement | null)?.isContentEditable
+  if ((e.key === '?' && !e.ctrlKey && !e.altKey && !e.metaKey) || (e.ctrlKey && e.key === '/')) {
+    if (isTypingTarget) return
+    e.preventDefault()
+    showCheatSheet.value = !showCheatSheet.value
     return
   }
   // Ctrl+N：新建文档（仅在编辑器页）
@@ -273,6 +285,10 @@ function handleNewFileFromPalette(event?: Event) {
       :visible="showCopilot"
       :request="copilotRequest"
       @close="showCopilot = false"
+    />
+    <ShortcutCheatSheet
+      :visible="showCheatSheet"
+      @close="showCheatSheet = false"
     />
     <DailyReportModal
       :visible="showDailyReport"

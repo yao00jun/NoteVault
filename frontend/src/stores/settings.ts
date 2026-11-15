@@ -286,15 +286,45 @@ export const useSettingsStore = defineStore('settings', () => {
     { deep: true },
   )
 
-  // 主题切换
+  // 主题切换（支持跟随系统深浅色：亮→macOS、暗→Islands Dark）
+  const systemPrefersDark = ref(typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   function setTheme(theme: ThemeType) {
     settings.value.theme = theme
-    applyTheme(theme)
+    settings.value.followSystemTheme = false
+    applyTheme()
   }
 
-  function applyTheme(theme: ThemeType) {
-    document.documentElement.setAttribute('data-theme', theme)
+  function setFollowSystemTheme(enabled: boolean) {
+    settings.value.followSystemTheme = enabled
+    applyTheme()
   }
+
+  function applyTheme() {
+    // 只作用 DOM 属性：settings.theme 保留用户手动选择，跟随模式运行时接管
+    document.documentElement.setAttribute('data-theme', effectiveTheme())
+  }
+
+  function effectiveTheme(): ThemeType {
+    if (settings.value.followSystemTheme) {
+      return systemPrefersDark.value ? 'islands-dark' : 'macos'
+    }
+    return settings.value.theme
+  }
+
+  // 系统深浅色监听：跟随模式下一变化即切换主题（store 与应用同生命周期，无需注销）
+  if (typeof window.matchMedia === 'function') {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    systemPrefersDark.value = media.matches
+    media.addEventListener('change', (event) => {
+      systemPrefersDark.value = event.matches
+      if (settings.value.followSystemTheme) applyTheme()
+    })
+  }
+
+  watch(
+    () => settings.value.followSystemTheme,
+    () => applyTheme(),
+  )
 
   // 字体应用：预设命中就内联覆盖 CSS 变量（内联优先级压过主题样式表），
   // 'theme' 则移除覆盖，回落到主题自己的 --font-sans / --font-mono。
@@ -328,12 +358,13 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   // 初始化时应用主题与字体
-  applyTheme(settings.value.theme)
+  applyTheme()
   applyFont()
 
   return {
     settings,
     setTheme,
+    setFollowSystemTheme,
     toggleSidebar,
     setEditorMode,
     setLanguage,

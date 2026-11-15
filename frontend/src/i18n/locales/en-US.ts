@@ -1,5 +1,10 @@
 export default {
   common: {
+    justNow: 'Just now',
+    minutesAgo: '{n} min ago',
+    hoursAgo: '{n} h ago',
+    daysAgo: '{n} days ago',
+    noRecord: 'No record',
     backToKnowledge: 'Back to Knowledge',
     loading: 'Loading...',
     cancel: 'Cancel',
@@ -12,6 +17,12 @@ export default {
     pinLimit: 'Up to 8 pinned items — unpin one first.',
     retry: 'Retry',
     noWorkspaceTitle: 'Open a workspace first',
+  },
+  cheatsheet: {
+    title: 'Keyboard shortcuts',
+    hint: 'Master the shortcuts to stay in flow',
+    groupGlobal: 'Global',
+    groupEditor: 'Editor',
   },
   sidebar: {
     nav: {
@@ -701,6 +712,8 @@ export default {
       title: 'Appearance',
       theme: 'Theme',
       themeDesc: 'Choose the interface theme',
+      followSystem: 'Follow system color scheme',
+      followSystemDesc: 'Switch themes automatically with the OS (light → macOS, dark → Islands Dark)',
       language: 'Language',
       languageDesc: 'Interface display language',
       langZh: '简体中文',
@@ -851,6 +864,11 @@ export default {
       commandPalette: 'Open command palette (search and commands)',
       openSettings: 'Open settings',
       newFile: 'New document (editor page only)',
+      aiSearch: 'AI search & Q&A (OmniSearch)',
+      copilot: 'AI copilot drawer',
+      cheatSheet: 'Shortcut cheat sheet',
+      back: 'Go back',
+      forward: 'Go forward',
       esc: 'Close dialog / Go back',
       inEditor: '{action} (in editor)',
       paletteOpen: '{action} (while command palette is open)',
