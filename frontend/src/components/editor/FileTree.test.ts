@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount, enableAutoUnmount, config } from '@vue/test-utils'
 import { afterEach } from 'vitest'
 import { nextTick } from 'vue'
@@ -46,6 +46,30 @@ describe('FileTree', () => {
 
     const pinned = mount(FileTree, { props: { nodes, collapsible: false } })
     expect(pinned.find('[data-testid="tree-collapse"]').exists()).toBe(false)
+  })
+
+  it('collapses and re-expands all folders, and reveals the active note ancestors', async () => {
+    window.HTMLElement.prototype.scrollIntoView = vi.fn()
+    // attachTo：reveal 用 document.querySelector 滚动定位，脱离文档查不到
+    const wrapper = mount(FileTree, { props: { nodes, activeFilePath: 'notes/nested.md' }, attachTo: document.body })
+    expect(wrapper.find('[data-path="notes/nested.md"]').exists()).toBe(true)
+
+    // 折叠/展开是一个随状态切换的按钮：全部折叠后节点消失，再点全部展开恢复
+    const toggle = () => wrapper.get('[data-testid="tree-expand-toggle"]')
+    expect(toggle().attributes('title')).toBe('全部折叠')
+    await toggle().trigger('click')
+    expect(wrapper.find('[data-path="notes/nested.md"]').exists()).toBe(false)
+    expect(toggle().attributes('title')).toBe('全部展开')
+    await toggle().trigger('click')
+    expect(wrapper.find('[data-path="notes/nested.md"]').exists()).toBe(true)
+
+    // 再全部折叠后，「定位当前文档」重新展开祖先链并滚到当前文件
+    await toggle().trigger('click')
+    expect(wrapper.find('[data-path="notes/nested.md"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="tree-reveal-active"]').trigger('click')
+    await nextTick()
+    expect(wrapper.find('[data-path="notes/nested.md"]').exists()).toBe(true)
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled()
   })
 
   it('uses display aliases only for matching directories and preserves paths for opening and renaming', async () => {

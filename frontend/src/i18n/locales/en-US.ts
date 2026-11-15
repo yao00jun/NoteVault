@@ -1123,6 +1123,8 @@ export default {
       filterAria: 'Filter documents',
       clearSearch: 'Clear',
       collapseAll: 'Collapse all',
+      expandAll: 'Expand all',
+      revealActive: 'Reveal current note',
       collapseTree: 'Collapse file tree',
       systemSection: 'System & Templates',
       newFile: 'New document',

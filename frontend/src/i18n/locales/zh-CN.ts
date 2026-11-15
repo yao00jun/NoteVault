@@ -1123,6 +1123,8 @@ export default {
       filterAria: '过滤文档',
       clearSearch: '清空',
       collapseAll: '全部折叠',
+      expandAll: '全部展开',
+      revealActive: '定位当前文档',
       collapseTree: '收起文件树',
       systemSection: '系统与模板',
       newFile: '新建文档',

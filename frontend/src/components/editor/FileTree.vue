@@ -5,7 +5,7 @@
   - 状态抽取：展开/折叠逻辑位于 useFileTreeExpansion，搜索过滤位于 useFileTreeSearch，右键操作位于 useFileTreeContextMenu。
 -->
 <script setup lang="ts">
-import { computed, ref, watch, toRef } from 'vue'
+import { computed, nextTick, ref, watch, toRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   ChevronRight,
@@ -19,8 +19,10 @@ import {
   X,
   FolderCog,
   ChevronsDownUp,
+  ChevronsUpDown,
   Copy,
   Download,
+  LocateFixed,
   PanelLeft,
 } from '@lucide/vue'
 import { normalizeNotePath } from '@/utils/navigation'
@@ -87,13 +89,23 @@ function onTreeDrop(dragged: FileNode, target: FileNode) {
 const { searchQuery, clearSearch, filterNodeList } = useFileTreeSearch({ isRoot: props.isRoot })
 
 // 2. 目录展开/收起与定位
-const { expandedDirs, focusedDir, activePath, toggleDir, collapseAll } = useFileTreeExpansion({
+const { expandedDirs, focusedDir, activePath, toggleDir, collapseAll, expandAll, isAnyExpanded, revealActive } = useFileTreeExpansion({
   nodes: toRef(props, 'nodes'),
   activeFilePath: toRef(props, 'activeFilePath'),
   focusFolder: toRef(props, 'focusFolder'),
   searchQuery,
   isRoot: props.isRoot,
 })
+
+/** 「定位当前文档」：展开其祖先目录并把该节点滚到视野中央 */
+async function revealActiveDocument() {
+  revealActive()
+  await nextTick()
+  if (!props.activeFilePath) return
+  const normalized = normalizeNotePath(props.activeFilePath)
+  const target = document.querySelector(`[data-path="${normalized.replace(/["\\]/g, '\\$&')}"]`)
+  target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
 
 // 3. 右键菜单与操作分发
 const {
@@ -241,8 +253,31 @@ const menuItems = computed(() => {
         >
           <PanelLeft :size="14" />
         </button>
-        <button class="tree-action-btn" :title="t('editor.tree.collapseAll')" @click="collapseAll">
-          <ChevronsDownUp :size="14" />
+        <button
+          v-if="activeFilePath"
+          class="tree-action-btn"
+          :title="t('editor.tree.revealActive')"
+          :aria-label="t('editor.tree.revealActive')"
+          data-testid="tree-reveal-active"
+          @click="revealActiveDocument"
+        >
+          <LocateFixed :size="14" />
+        </button>
+        <button
+          class="tree-action-btn"
+          :title="isAnyExpanded ? t('editor.tree.collapseAll') : t('editor.tree.expandAll')"
+          :aria-label="isAnyExpanded ? t('editor.tree.collapseAll') : t('editor.tree.expandAll')"
+          data-testid="tree-expand-toggle"
+          @click="isAnyExpanded ? collapseAll() : expandAll()"
+        >
+          <ChevronsDownUp
+            v-if="isAnyExpanded"
+            :size="14"
+          />
+          <ChevronsUpDown
+            v-else
+            :size="14"
+          />
         </button>
       </div>
     </div>

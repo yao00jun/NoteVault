@@ -97,6 +97,43 @@ export function useFileTreeExpansion(options: UseFileTreeExpansionOptions) {
     expandedDirs.value.clear()
   }
 
+  // 递归收集树中全部目录路径（normalized + 原始大小写）
+  function collectAllDirs(nodes: FileNode[], set: Set<string>) {
+    for (const node of nodes) {
+      if (!node.isDir) continue
+      const norm = normalizeNotePath(node.path)
+      set.add(norm)
+      set.add(node.path)
+      if (node.children) collectAllDirs(node.children, set)
+    }
+  }
+
+  function expandAll() {
+    const dirs = new Set<string>()
+    collectAllDirs(options.nodes.value, dirs)
+    for (const dir of dirs) expandedDirs.value.add(dir)
+    manuallyCollapsedDirs.clear()
+  }
+
+  const isAnyExpanded = computed(() => expandedDirs.value.size > 0)
+
+  /** 重新展开当前激活文档的祖先目录（"定位当前文档"）：无视手动收起记录，清除之 */
+  function revealActive() {
+    const path = activePath.value
+    if (!path) return
+    const segments = path.split('/').filter(Boolean)
+    const ancestors = new Set<string>()
+    for (let i = 1; i < segments.length; i++) {
+      ancestors.add(segments.slice(0, i).join('/'))
+    }
+    collectAncestors(options.nodes.value, path, ancestors)
+    for (const dir of ancestors) {
+      expandedDirs.value.add(dir)
+      manuallyCollapsedDirs.delete(normalizeNotePath(dir))
+      manuallyCollapsedDirs.delete(dir)
+    }
+  }
+
   function isExpanded(node: FileNode): boolean {
     if (options.searchQuery?.value.trim()) return true
     const norm = normalizeNotePath(node.path)
@@ -146,6 +183,9 @@ export function useFileTreeExpansion(options: UseFileTreeExpansionOptions) {
     activePath,
     toggleDir,
     collapseAll,
+    expandAll,
+    isAnyExpanded,
+    revealActive,
     isExpanded,
   }
 }
