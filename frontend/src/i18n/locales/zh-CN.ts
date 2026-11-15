@@ -978,7 +978,7 @@ export default {
     openNodeAria: '打开 {title}',
   },
   editor: {
-    drawer: { toggle: '辅助抽屉', outline: '大纲', backlinks: '反向链接', outlineEmpty: '没有标题', backlinksEmpty: '暂无反向链接' },
+    drawer: { toggle: '辅助抽屉', collapse: '收起侧栏', outline: '大纲', backlinks: '反向链接', outlineEmpty: '没有标题', backlinksEmpty: '暂无反向链接' },
     conflict: {
       banner: '⚠️ 「{name}」在外部被修改（如 Git 同步），本地有未保存草稿。请选择处理方式：',
       reload: '放弃草稿并重载',
@@ -1123,6 +1123,7 @@ export default {
       filterAria: '过滤文档',
       clearSearch: '清空',
       collapseAll: '全部折叠',
+      collapseTree: '收起文件树',
       systemSection: '系统与模板',
       newFile: '新建文档',
       newFolder: '新建文件夹',
@@ -1137,8 +1138,7 @@ export default {
       deleteForever: '永久删除',
     },
     tabbar: {
-      collapseSidebar: '收起侧边栏 (Ctrl+B)',
-      expandSidebar: '展开侧边栏 (Ctrl+B)',
+      expandTree: '展开文件树',
       distill: '沉淀为知识',
       distillHint: '把项目经验沉淀为技术笔记或面试题卡',
     },

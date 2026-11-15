@@ -32,6 +32,11 @@ export function useEditorLayout() {
     if (overlayTree.value) compactTreeOpen.value = !compactTreeOpen.value
     else treeOpen.value = !treeOpen.value
   }
+  /** 直接设定树的开合（收起按钮用）；覆盖 overlay / 常驻两种模式。showTree 是 computed，不能直接赋值。 */
+  function setTreeOpen(open: boolean) {
+    if (overlayTree.value) compactTreeOpen.value = open
+    else treeOpen.value = open
+  }
   function toggleViewMode() {
     // Compact windows have one useful writing pane; preview remains one click away.
     if (contentWidth.value < 720) viewMode.value = effectiveViewMode.value === 'preview' ? 'editor' : 'preview'
@@ -71,5 +76,5 @@ export function useEditorLayout() {
   onActivated(() => { measure(); if (mainRef.value) observer?.observe(mainRef.value) })
   onDeactivated(() => { observer?.disconnect(); compactTreeOpen.value = false; stopResize?.() })
   onBeforeUnmount(() => { observer?.disconnect(); stopResize?.() })
-  return { mainRef, panesRef, treeWidth, showTree, overlayTree, splitPercent, viewMode, effectiveViewMode, toggleTree, toggleViewMode, beginResize, adjust }
+  return { mainRef, panesRef, treeWidth, showTree, overlayTree, splitPercent, viewMode, effectiveViewMode, toggleTree, setTreeOpen, toggleViewMode, beginResize, adjust }
 }

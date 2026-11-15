@@ -78,24 +78,15 @@ const compileTooltip = computed(() => {
 
 <template>
   <div class="tab-bar">
+    <!-- 文件树收起后的恢复入口：树展开时隐藏（收起按钮在树面板自己的工具条上） -->
     <button
+      v-if="!treeOpen"
       class="tab-back"
       data-testid="editor-tree-toggle"
-      :title="treeOpen ? t('editor.tabbar.collapseSidebar') : t('editor.tabbar.expandSidebar')"
-      :aria-pressed="treeOpen"
+      :title="t('editor.tabbar.expandTree')"
       @click="emit('toggle-tree')"
     >
       <PanelLeft :size="15" />
-    </button>
-    <button
-      class="tab-back"
-      data-testid="editor-drawer-toggle"
-      :title="t('editor.drawer.toggle')"
-      :aria-expanded="!!drawerOpen"
-      aria-controls="editor-context-drawer"
-      @click="emit('toggle-drawer')"
-    >
-      <PanelRight :size="15" />
     </button>
     <div class="tabs-container">
       <div
@@ -209,6 +200,17 @@ const compileTooltip = computed(() => {
           v-else
           :size="14"
         />
+      </button>
+      <!-- 右侧辅助抽屉收起后的恢复入口：抽屉展开时按钮在抽屉自己的头部 -->
+      <button
+        v-if="!drawerOpen"
+        class="tool-btn"
+        data-testid="editor-drawer-toggle"
+        :title="t('editor.drawer.toggle')"
+        :aria-expanded="!!drawerOpen"
+        @click="emit('toggle-drawer')"
+      >
+        <PanelRight :size="14" />
       </button>
     </div>
   </div>

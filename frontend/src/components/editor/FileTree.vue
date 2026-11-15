@@ -21,6 +21,7 @@ import {
   ChevronsDownUp,
   Copy,
   Download,
+  PanelLeft,
 } from '@lucide/vue'
 import { normalizeNotePath } from '@/utils/navigation'
 import WorkflowTreeItem from '@/components/layout/WorkflowTreeItem.vue'
@@ -49,8 +50,10 @@ const props = withDefaults(
     focusFolder?: string | null
     folderDisplayNames?: Record<string, string>
     isRoot?: boolean
+    /** 是否显示「收起文件树」按钮（知识库浏览模式下树固定展开，不提供） */
+    collapsible?: boolean
   }>(),
-  { isRoot: true },
+  { isRoot: true, collapsible: false },
 )
 
 const emit = defineEmits<{
@@ -65,6 +68,7 @@ const emit = defineEmits<{
   'export-md': [node: FileNode]
   'export-html': [node: FileNode]
   'move-entry': [dragged: FileNode, target: FileNode]
+  'collapse-tree': []
 }>()
 
 // 跨目录拖拽移动：负载走 dataTransfer（WorkflowTreeItem 的 onDrop 读取此 key），校验在宿主层完成
@@ -227,6 +231,16 @@ const menuItems = computed(() => {
         </button>
       </div>
       <div class="tree-actions">
+        <button
+          v-if="collapsible"
+          class="tree-action-btn"
+          :title="t('editor.tree.collapseTree')"
+          :aria-label="t('editor.tree.collapseTree')"
+          data-testid="tree-collapse"
+          @click="emit('collapse-tree')"
+        >
+          <PanelLeft :size="14" />
+        </button>
         <button class="tree-action-btn" :title="t('editor.tree.collapseAll')" @click="collapseAll">
           <ChevronsDownUp :size="14" />
         </button>

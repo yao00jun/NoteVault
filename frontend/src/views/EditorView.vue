@@ -66,7 +66,7 @@ const activeTabIndex = ref(-1)
 const focusFolder = ref<string | null>(null)
 const distillSource = ref<DistillationSource | null>(null)
 const preparingDistillation = ref(false)
-const { mainRef, panesRef, treeWidth, showTree, overlayTree, splitPercent, viewMode, effectiveViewMode, toggleTree, toggleViewMode, beginResize, adjust } = useEditorLayout()
+const { mainRef, panesRef, treeWidth, showTree, overlayTree, splitPercent, viewMode, effectiveViewMode, toggleTree, setTreeOpen, toggleViewMode, beginResize, adjust } = useEditorLayout()
 let openFileVersion = 0
 let fileTreeRequest = 0
 let deferredOpen: string | null = null
@@ -1166,7 +1166,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       :is-saving="isSaving"
       :active-tab="activeTab"
       :view-mode="effectiveViewMode"
-      :tree-open="!settingsStore.settings.sidebarCollapsed"
+      :tree-open="effectiveShowTree"
       :drawer-open="drawerOpen"
       :is-exporting="isExporting"
       :is-compiling="isCompiling"
@@ -1181,7 +1181,7 @@ watch(() => workspaceStore.fileTreeVersion, () => {
       @export-html="exportSingleHTML"
       @save="saveCurrentTab"
       @toggle-view="toggleViewMode"
-      @toggle-tree="toggleSidebar"
+      @toggle-tree="toggleTree"
       @toggle-drawer="setDrawerOpen(!drawerOpen)"
     />
 
@@ -1237,6 +1237,8 @@ watch(() => workspaceStore.fileTreeVersion, () => {
           :active-file-path="activeTab?.path"
           :focus-folder="focusFolder"
           :folder-display-names="settingsStore.settings.editor.folderDisplayNames"
+          :collapsible="!vaultBrowseMode"
+          @collapse-tree="setTreeOpen(false)"
           @open-file="openFile"
           @new-file="handleNewFile"
           @new-folder="handleNewFolder"

@@ -11,6 +11,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { FileService } from '@/api'
 import EditorView from './EditorView.vue'
 import EditorContextDrawer from '@/components/editor/EditorContextDrawer.vue'
+import FileTree from '@/components/editor/FileTree.vue'
 
 const mocks = vi.hoisted(() => ({ activeEditor: vi.fn(), toggleSidebar: vi.fn() }))
 vi.mock('@/plugins/editorBridge', () => ({ getActiveEditor: mocks.activeEditor }))
@@ -44,8 +45,8 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
-async function renderEditor(mode = 'preview', content = '# Start\n\n## Next\n') {
-  localStorage.setItem('notevault:editor-layout:v1', JSON.stringify({ viewMode: mode }))
+async function renderEditor(mode = 'preview', content = '# Start\n\n## Next\n', savedLayout: Record<string, unknown> = {}) {
+  localStorage.setItem('notevault:editor-layout:v1', JSON.stringify({ viewMode: mode, ...savedLayout }))
   vi.mocked(FileService.ReadFile).mockImplementation(() => Promise.resolve(content) as CancellablePromise<string>)
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -80,15 +81,30 @@ describe('EditorView outline navigation', () => {
     expect(wrapper.find('[data-testid="ctx-drawer"]').exists()).toBe(false)
   })
 
-  it.each(['ctx-drawer-close', 'editor-drawer-toggle'])('remembers a manual close through %s when changing documents', async (control) => {
+  it('remembers a manual close through the drawer header and reopens from the tab bar', async () => {
     const { wrapper, router } = await renderEditor()
     expect(wrapper.find('[data-testid="ctx-drawer"]').exists()).toBe(true)
-    await wrapper.get(`[data-testid="${control}"]`).trigger('click')
+    // 抽屉展开时 TabBar 不应有恢复入口（按钮跟着面板走：展开在抽屉头部，收起在 TabBar 右端）
+    expect(wrapper.find('[data-testid="editor-drawer-toggle"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="ctx-drawer-close"]').trigger('click')
     await router.push('/editor?file=Learning/Other.md')
     await flushPromises()
     expect(wrapper.find('[data-testid="ctx-drawer"]').exists()).toBe(false)
     await wrapper.get('[data-testid="editor-drawer-toggle"]').trigger('click')
     expect(wrapper.find('[data-testid="ctx-drawer"]').exists()).toBe(true)
+  })
+
+  it('restores the file tree from the tab bar after a collapsed session', async () => {
+    const { wrapper } = await renderEditor('split', undefined, { treeOpen: false })
+    const hidden = () => (wrapper.find('.file-tree-pane').attributes('style') || '').includes('none')
+    // 收起态：恢复入口出现在 TabBar，树面板工具条自身不重复提供（收起按钮属于树面板）
+    expect(hidden()).toBe(true)
+    expect(wrapper.get('[data-testid="editor-tree-toggle"]').isVisible()).toBe(true)
+
+    await wrapper.get('[data-testid="editor-tree-toggle"]').trigger('click')
+    expect(hidden()).toBe(false)
+    expect(wrapper.find('[data-testid="editor-tree-toggle"]').exists()).toBe(false)
+    expect(wrapper.findComponent(FileTree).props('collapsible')).toBe(true)
   })
 
   it('respects a manually selected backlinks tab when entering preview', async () => {

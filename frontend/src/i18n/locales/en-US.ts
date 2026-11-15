@@ -978,7 +978,7 @@ export default {
     openNodeAria: 'Open {title}',
   },
   editor: {
-    drawer: { toggle: 'Context drawer', outline: 'Outline', backlinks: 'Backlinks', outlineEmpty: 'No headings', backlinksEmpty: 'No backlinks yet' },
+    drawer: { toggle: 'Context drawer', collapse: 'Collapse side panel', outline: 'Outline', backlinks: 'Backlinks', outlineEmpty: 'No headings', backlinksEmpty: 'No backlinks yet' },
     conflict: {
       banner: '⚠️ "{name}" was modified externally (e.g. Git sync) with unsaved local draft. Choose an action:',
       reload: 'Discard & reload',
@@ -1123,6 +1123,7 @@ export default {
       filterAria: 'Filter documents',
       clearSearch: 'Clear',
       collapseAll: 'Collapse all',
+      collapseTree: 'Collapse file tree',
       systemSection: 'System & Templates',
       newFile: 'New document',
       newFolder: 'New folder',
@@ -1137,8 +1138,7 @@ export default {
       deleteForever: 'Delete permanently',
     },
     tabbar: {
-      collapseSidebar: 'Collapse sidebar (Ctrl+B)',
-      expandSidebar: 'Expand sidebar (Ctrl+B)',
+      expandTree: 'Show file tree',
       distill: 'Distill into knowledge',
       distillHint: 'Distill project experience into tech notes or interview cards',
     },

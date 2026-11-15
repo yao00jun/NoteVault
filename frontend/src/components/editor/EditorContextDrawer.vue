@@ -6,7 +6,7 @@
  */
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ListTree, Link2, X, FileText } from '@lucide/vue'
+import { ListTree, Link2, PanelRight, FileText } from '@lucide/vue'
 
 const { t } = useI18n()
 
@@ -75,11 +75,12 @@ const backlinkCount = computed(() => props.backlinks.length)
       </nav>
       <button
         class="ctx-close"
-        :title="t('common.cancel')"
+        :title="t('editor.drawer.collapse')"
+        :aria-label="t('editor.drawer.collapse')"
         data-testid="ctx-drawer-close"
         @click="emit('close')"
       >
-        <X :size="14" />
+        <PanelRight :size="14" />
       </button>
     </div>
 

@@ -7,6 +7,7 @@ import {
   BarChart3,
   Trash2,
   ChevronRight,
+  PanelLeft,
   Plus,
   Settings as SettingsIcon,
   ChevronsUpDown,
@@ -947,10 +948,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
           :aria-label="collapsed ? t('sidebar.expandSidebar') : t('sidebar.collapseSidebar')"
           @click="settingsStore.toggleSidebar()"
         >
-          <ChevronRight
-            :size="15"
-            :style="{ transform: collapsed ? 'rotate(0deg)' : 'rotate(180deg)' }"
-          />
+          <PanelLeft :size="15" />
         </button>
       </div>
     </div>

@@ -39,6 +39,15 @@ const learningTree: FileNode[] = [{
 }, { name: 'Learning-Archive', path: 'Learning-Archive', fullPath: '', isDir: true, children: [] }]
 
 describe('FileTree', () => {
+  it('offers a collapse control only when collapsible and emits collapse-tree', async () => {
+    const wrapper = mount(FileTree, { props: { nodes, collapsible: true } })
+    await wrapper.get('[data-testid="tree-collapse"]').trigger('click')
+    expect(wrapper.emitted('collapse-tree')).toHaveLength(1)
+
+    const pinned = mount(FileTree, { props: { nodes, collapsible: false } })
+    expect(pinned.find('[data-testid="tree-collapse"]').exists()).toBe(false)
+  })
+
   it('uses display aliases only for matching directories and preserves paths for opening and renaming', async () => {
     const wrapper = mount(FileTree, { props: {
       nodes: learningTree, activeFilePath: 'Learning/Go/Chapter.md',
