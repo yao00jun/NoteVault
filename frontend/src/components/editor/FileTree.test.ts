@@ -48,7 +48,45 @@ describe('FileTree', () => {
     expect(pinned.find('[data-testid="tree-collapse"]').exists()).toBe(false)
   })
 
-  it('collapses and re-expands all folders, and reveals the active note ancestors', async () => {
+  it('shows builtin PARA folders with localized names unless the user overrides them', async () => {
+    const spaceNodes: FileNode[] = [
+      { name: 'Daily', path: 'Daily', fullPath: '', isDir: true, children: [] },
+      { name: 'Inbox', path: 'Inbox', fullPath: '', isDir: true, children: [] },
+      { name: 'MyNotes', path: 'MyNotes', fullPath: '', isDir: true, children: [] },
+    ]
+    const wrapper = mount(FileTree, { props: { nodes: spaceNodes } })
+    expect(wrapper.get('[data-path="Daily"] .node-name').text()).toBe('工作日志/日报')
+    expect(wrapper.get('[data-path="Inbox"] .node-name').text()).toBe('收集箱')
+    // 非内置目录保持原名
+    expect(wrapper.get('[data-path="MyNotes"] .node-name').text()).toBe('MyNotes')
+
+    // 用户自定义显示名优先于内置预置
+    await wrapper.setProps({ folderDisplayNames: { Inbox: '我的收件箱' } })
+    expect(wrapper.get('[data-path="Inbox"] .node-name').text()).toBe('我的收件箱')
+    expect(wrapper.get('[data-path="Daily"] .node-name').text()).toBe('工作日志/日报')
+  })
+
+  it('groups root-level loose files into the Unsorted section with localized builtin names intact', async () => {
+    const mixed: FileNode[] = [
+      { name: 'Learning', path: 'Learning', fullPath: '', isDir: true, children: [] },
+      { name: '开始使用.md', path: '开始使用.md', fullPath: '', isDir: false },
+      { name: '测试.canvas', path: '测试.canvas', fullPath: '', isDir: false },
+    ]
+    const wrapper = mount(FileTree, { props: { nodes: mixed, activeFilePath: '开始使用.md' } })
+    // 目录仍在主列表，散文件收进「未整理」分组（默认收起，激活散文件时自动展开）
+    expect(wrapper.get('[data-testid="loose-files-section"]').text()).toContain('未整理')
+    expect(wrapper.get('[data-testid="loose-files-header"]').text()).toContain('2')
+    expect(wrapper.find('[data-path="开始使用.md"]').exists()).toBe(true)
+    expect(wrapper.find('[data-path="测试.canvas"]').exists()).toBe(true)
+    // 显示名剥扩展名；空白板 canvas 由图标区分
+    expect(wrapper.get('[data-path="开始使用.md"] .node-name').text()).toBe('开始使用')
+    expect(wrapper.get('[data-path="测试.canvas"] .node-name').text()).toBe('测试')
+
+    await wrapper.get('[data-testid="loose-files-header"]').trigger('click')
+    expect(wrapper.find('[data-path="开始使用.md"]').exists()).toBe(false)
+  })
+
+  it('offers a collapse control only when collapsible and emits collapse-tree', async () => {
     window.HTMLElement.prototype.scrollIntoView = vi.fn()
     // attachTo：reveal 用 document.querySelector 滚动定位，脱离文档查不到
     const wrapper = mount(FileTree, { props: { nodes, activeFilePath: 'notes/nested.md' }, attachTo: document.body })
@@ -79,14 +117,16 @@ describe('FileTree', () => {
     } })
     expect(wrapper.get('[data-path="Learning"] .node-name').text()).toBe('学习书架')
     expect(wrapper.get('[data-path="Learning/Go"] .node-name').text()).toBe('Go 技术')
-    expect(wrapper.get('[data-path="Learning/Go/Chapter.md"] .node-name').text()).toBe('Chapter.md')
+    // 编辑器文件树不向用户暴露扩展名（方案 A）：文件行只显示标题名
+    expect(wrapper.get('[data-path="Learning/Go/Chapter.md"] .node-name').text()).toBe('Chapter')
     await wrapper.get('[data-path="Learning/Go/Chapter.md"]').trigger('click')
     expect(wrapper.emitted('open-file')?.[0]?.[0]).toMatchObject({ path: 'Learning/Go/Chapter.md' })
     await wrapper.get('[data-path="Learning/Go"]').trigger('contextmenu')
     await wrapper.findAll('.context-menu-item').find(item => item.text() === '重命名')!.trigger('click')
     expect(wrapper.emitted('rename')?.[0]?.[0]).toMatchObject({ name: 'Go', path: 'Learning/Go' })
     await wrapper.setProps({ folderDisplayNames: {} })
-    expect(wrapper.get('[data-path="Learning"] .node-name').text()).toBe('Learning')
+    // 清空用户自定义后回落到内置空间本地化默认名（方案 A）
+    expect(wrapper.get('[data-path="Learning"] .node-name').text()).toBe('学习')
   })
 
   it('reveals all ancestors and highlights an active path with Windows separators', () => {

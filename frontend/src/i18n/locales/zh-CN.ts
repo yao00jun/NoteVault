@@ -1126,6 +1126,7 @@ export default {
       expandAll: '全部展开',
       revealActive: '定位当前文档',
       collapseTree: '收起文件树',
+      looseFiles: '未整理',
       systemSection: '系统与模板',
       newFile: '新建文档',
       newFolder: '新建文件夹',

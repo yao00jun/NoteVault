@@ -1126,6 +1126,7 @@ export default {
       expandAll: 'Expand all',
       revealActive: 'Reveal current note',
       collapseTree: 'Collapse file tree',
+      looseFiles: 'Unsorted',
       systemSection: 'System & Templates',
       newFile: 'New document',
       newFolder: 'New folder',

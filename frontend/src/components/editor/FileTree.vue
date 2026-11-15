@@ -22,6 +22,7 @@ import {
   ChevronsUpDown,
   Copy,
   Download,
+  Files,
   LocateFixed,
   PanelLeft,
 } from '@lucide/vue'
@@ -147,15 +148,30 @@ const primaryNodes = computed(() => (props.isRoot ? props.nodes.filter((n) => !i
 const systemNodes = computed(() => (props.isRoot ? props.nodes.filter((n) => isSystemNode(n)) : []))
 const systemExpanded = ref(false)
 
+// 方案 B：根级散文件（不在任何目录下）归入「未整理」分组，不再与目录混排
+const rootLooseFiles = computed(() => (props.isRoot ? primaryNodes.value.filter((n) => !n.isDir && !n.path.includes('/')) : []))
+const looseExpanded = ref(false)
+
 const displayPrimaryNodes = computed(() => {
-  if (!props.isRoot || !searchQuery.value.trim()) return primaryNodes.value
-  return filterNodeList(primaryNodes.value, searchQuery.value.trim(), props.folderDisplayNames)
+  if (!props.isRoot || !searchQuery.value.trim()) return primaryNodes.value.filter((n) => n.isDir || n.path.includes('/'))
+  return filterNodeList(primaryNodes.value.filter((n) => n.isDir || n.path.includes('/')), searchQuery.value.trim(), props.folderDisplayNames)
 })
 
 const displaySystemNodes = computed(() => {
   if (!props.isRoot || !searchQuery.value.trim()) return systemNodes.value
   return filterNodeList(systemNodes.value, searchQuery.value.trim(), props.folderDisplayNames)
 })
+
+const displayLooseFiles = computed(() => {
+  if (!props.isRoot || !searchQuery.value.trim()) return rootLooseFiles.value
+  return filterNodeList(rootLooseFiles.value, searchQuery.value.trim(), props.folderDisplayNames)
+})
+
+// 当前激活文档是根级散文件时，自动展开「未整理」分组（与系统分组同款联动）
+watch(activePath, (path) => {
+  if (!path || !props.isRoot) return
+  if (!path.includes('/')) looseExpanded.value = true
+}, { immediate: true })
 
 watch(activePath, (path) => {
   if (!path || !props.isRoot) return
@@ -165,18 +181,19 @@ watch(activePath, (path) => {
 
 watch(searchQuery, (q) => {
   if (!q.trim()) return
-  const expandAll = (list: FileNode[]) => {
+  const expandAllVisible = (list: FileNode[]) => {
     for (const n of list) {
       if (n.isDir) {
         expandedDirs.value.add(normalizeNotePath(n.path))
-        if (n.children) expandAll(n.children)
+        if (n.children) expandAllVisible(n.children)
       }
     }
   }
-  expandAll(displayPrimaryNodes.value)
+  expandAllVisible(displayPrimaryNodes.value)
+  if (displayLooseFiles.value.length > 0) looseExpanded.value = true
   if (displaySystemNodes.value.length > 0) {
     systemExpanded.value = true
-    expandAll(displaySystemNodes.value)
+    expandAllVisible(displaySystemNodes.value)
   }
 })
 
@@ -301,6 +318,49 @@ const menuItems = computed(() => {
         @tree-drag-start="onTreeDragStart"
         @tree-drop="onTreeDrop"
       />
+
+      <!-- 根级散文件「未整理」分组（仅根树展示；不与目录混排） -->
+      <div
+        v-if="isRoot && rootLooseFiles.length > 0"
+        class="system-section"
+        data-testid="loose-files-section"
+      >
+        <div
+          class="tree-node system-header-node"
+          :class="{ 'is-open': looseExpanded }"
+          :title="t('editor.tree.looseFiles')"
+          data-testid="loose-files-header"
+          @click="looseExpanded = !looseExpanded"
+        >
+          <span class="node-toggle">
+            <ChevronRight v-if="!looseExpanded" :size="14" />
+            <ChevronDown v-else :size="14" />
+          </span>
+          <span class="node-icon"><Files :size="15" /></span>
+          <span class="node-name system-name">{{ t('editor.tree.looseFiles') }}</span>
+          <span class="system-badge">{{ rootLooseFiles.length }}</span>
+        </div>
+
+        <div v-if="looseExpanded" class="system-children">
+          <WorkflowTreeItem
+            v-for="node in (searchQuery.trim() ? displayLooseFiles : rootLooseFiles)"
+            :key="node.path"
+            :node="node"
+            :depth="0"
+            :active-path="activePath"
+            :expanded-dirs="expandedDirs"
+            :kind="'filetree'"
+            :folder-display-names="folderDisplayNames"
+            :focused-dir="focusedDir"
+            @open-file="emit('open-file', $event)"
+            @toggle-dir="toggleDir"
+            @quick-add="handleNewFile($event.path)"
+            @context-menu="onNodeContextMenu"
+            @tree-drag-start="onTreeDragStart"
+            @tree-drop="onTreeDrop"
+          />
+        </div>
+      </div>
 
       <!-- 底部系统与模板折叠区（仅根树展示） -->
       <div v-if="isRoot && systemNodes.length > 0" class="system-section">

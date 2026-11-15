@@ -13,9 +13,15 @@ import {
 } from '@lucide/vue'
 import { normalizeNotePath } from '@/utils/navigation'
 import { normalizeFolderDisplayPath } from '@/utils/folderDisplayNames'
+import { SPACE_DEFS } from '@/composables/useWorkbenchSpaces'
 import type { FileNode } from '@/components/editor/FileTree.vue'
 
 const { t } = useI18n()
+
+// 内置空间目录的本地化显示名（方案 A，显示层替换：磁盘目录名不变）
+const BUILTIN_DIR_LABEL_KEYS: Record<string, string> = Object.fromEntries(
+  SPACE_DEFS.map((def) => [def.dir.toLowerCase(), `knowledge.vault.spaces.${def.key}.label`]),
+)
 
 /** 目录徽章用：递归统计子树内的 Markdown 笔记数（不含子目录与 .md 以外文件） */
 function countNotesRecursive(children?: FileNode[]): number {
@@ -123,6 +129,11 @@ const displayChildren = computed(() => {
 function folderIcon(node: FileNode) {
   if (props.kind === 'learning' && props.depth === 0) return BookOpen
   if (props.kind === 'projects' && props.depth === 0) return Rocket
+  // 编辑器文件树：五个内置空间目录用专属图标（与知识库空间卡同款），辅助非程序员识别
+  if (props.kind === 'filetree' && props.depth === 0) {
+    const space = SPACE_DEFS.find((def) => def.dir.toLowerCase() === node.name.toLowerCase())
+    if (space) return space.icon
+  }
   return isExpanded.value ? FolderOpen : Folder
 }
 
@@ -134,11 +145,24 @@ function fileIcon(node: FileNode) {
 }
 
 const displayName = computed(() => {
-  if (props.node.isDir && props.folderDisplayNames) {
-    const alias = props.folderDisplayNames[normalizeFolderDisplayPath(props.node.path)]
+  const node = props.node
+  if (node.isDir && props.folderDisplayNames) {
+    const alias = props.folderDisplayNames[normalizeFolderDisplayPath(node.path)]
     if (typeof alias === 'string' && alias.trim()) return alias.trim()
   }
-  return props.stripExtension ? props.node.name.replace(/\.md$/i, '') : props.node.name
+  // 内置空间目录的本地化默认名（仅根级；用户自定义已在上一步优先）
+  if (node.isDir && props.kind === 'filetree' && props.depth === 0) {
+    const labelKey = BUILTIN_DIR_LABEL_KEYS[node.name.toLowerCase()]
+    if (labelKey) {
+      const label = t(labelKey)
+      if (label && label !== labelKey) return label
+    }
+  }
+  // 编辑器文件树：文件名不向用户暴露扩展名（真实路径仍在行 title 中）
+  if (props.kind === 'filetree' && !node.isDir) {
+    return node.name.replace(/\.(md|markdown|canvas)$/i, '')
+  }
+  return props.stripExtension ? node.name.replace(/\.md$/i, '') : node.name
 })
 </script>
 
