@@ -104,115 +104,35 @@ describe('SideBar', () => {
     const { wrapper } = mountSideBar()
     await flushPromises()
     expect(wrapper.findAll('.nav-item').map(item => item.attributes('data-testid'))).toEqual([
-      'nav-today', 'nav-projects', 'nav-learning', 'nav-vault',
+      'nav-today', 'nav-projects', 'nav-learning', 'nav-vault', 'nav-more',
     ])
     expect(wrapper.find('[data-testid="action-new"]').text()).toContain('新建')
     expect(wrapper.find('[data-testid="action-daily"]').text()).toContain('每日工作日志')
     expect(wrapper.find('[data-testid="action-report"]').text()).toContain('生成日报')
-    // 侧栏纯导航：无固定项时固定区不占位；文件树与搜索框移除，最近列表回归
+    // 侧栏只做导航：固定/最近/日历/脉搏/扩展区已迁出，
+    // 分别由今日页「快捷入口」卡与 Ctrl+K 命令面板承接。
     expect(wrapper.find('[data-testid="sidebar-pins"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="sidebar-recent"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="sidebar-pulse"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="sidebar-extended"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="sidebar-tree"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="sidebar-tree-search"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="sidebar-recent"]').exists()).toBe(true)
+    expect(wrapper.findAll('.sidebar-scroll .sidebar-zone')).toHaveLength(1)
   })
 
-  it('shows the pins zone only when there are pinned items, below the page navigation', async () => {
-    const { wrapper, workspaceStore } = mountSideBar()
-    workspaceStore.setCurrentWorkspace({ ...workspace })
-    workspaceStore.togglePin('第一篇.md')
-    await flushPromises()
-    const pins = wrapper.find('[data-testid="sidebar-pins"]')
-    expect(pins.exists()).toBe(true)
-    // 顺序：页面导航 → 扩展 → 固定 → 今日脉搏 → 日历 → 最近（后五者均为条件渲染的非导航区）
-    const zones = wrapper.findAll('.sidebar-scroll .sidebar-zone').map(z => z.classes().includes('nav-list'))
-    expect(zones).toEqual([true, false, false, false, false, false])
-  })
-
-  it('renders the extended zone as a collapsed accordion with persisted state', async () => {
+  it('keeps long-tail pages reachable through the More menu', async () => {
     const { wrapper, router } = mountSideBar()
     await flushPromises()
-    const toggle = wrapper.get('[data-testid="sidebar-extended-toggle"]')
-    expect(toggle.attributes('aria-expanded')).toBe('false')
-    expect(wrapper.find('[data-testid="nav-extended-canvas"]').exists()).toBe(false)
+    // 扩展区不再常驻：默认不渲染任何长尾入口
+    expect(wrapper.find('[data-testid="nav-more-canvas"]').exists()).toBe(false)
 
-    await toggle.trigger('click')
+    await wrapper.get('[data-testid="nav-more"]').trigger('click')
     await nextTick()
-    expect(localStorage.getItem('notevault:sidebar-extended-expanded')).toBe('true')
-    expect(wrapper.findAll('[data-testid^="nav-extended-"]')).toHaveLength(7)
-    await wrapper.get('[data-testid="nav-extended-canvas"]').trigger('click')
+    expect(wrapper.findAll('[data-testid^="nav-more-"]')).toHaveLength(7)
+
+    await wrapper.get('[data-testid="nav-more-canvas"]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/canvas')
-
-    // 状态持久化：重挂载后沿用展开态
-    const reopened = mountSideBar()
-    await flushPromises()
-    expect(reopened.wrapper.get('[data-testid="sidebar-extended-toggle"]').attributes('aria-expanded')).toBe('true')
-    localStorage.setItem('notevault:sidebar-extended-expanded', 'false')
-  })
-
-  it('renders calendar and recent accordions with persisted expand state', async () => {
-    const { wrapper, workspaceStore } = mountSideBar()
-    workspaceStore.setCurrentWorkspace({ ...workspace })
-    for (let index = 1; index <= 12; index++) workspaceStore.openFile('note-' + index + '.md')
-    await flushPromises()
-
-    // 日历默认展开、最近默认折叠
-    expect(wrapper.find('[data-testid="sidebar-calendar"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="sidebar-recent-toggle"]').attributes('aria-expanded')).toBe('false')
-    expect(wrapper.find('[data-testid="sidebar-recent-file"]').isVisible()).toBe(false)
-
-    await wrapper.get('[data-testid="sidebar-calendar-toggle"]').trigger('click')
-    await wrapper.get('[data-testid="sidebar-recent-toggle"]').trigger('click')
-    await nextTick()
-    expect(localStorage.getItem('notevault:sidebar-calendar-expanded')).toBe('false')
-    expect(localStorage.getItem('notevault:sidebar-recent-expanded')).toBe('true')
-    expect(wrapper.find('[data-testid="sidebar-calendar"]').exists()).toBe(false)
-    // 最近最多展示 10 条
-    expect(wrapper.findAll('[data-testid="sidebar-recent-file"]')).toHaveLength(10)
-
-    // 状态持久化：重挂载后沿用
-    const reopened = mountSideBar()
-    reopened.workspaceStore.setCurrentWorkspace({ ...workspace })
-    await flushPromises()
-    expect(reopened.wrapper.find('[data-testid="sidebar-calendar"]').exists()).toBe(false)
-    expect(reopened.wrapper.findAll('[data-testid="sidebar-recent-file"]')).toHaveLength(10)
-    expect(reopened.wrapper.find('[data-testid="sidebar-recent-file"]').isVisible()).toBe(true)
-    localStorage.setItem('notevault:sidebar-calendar-expanded', 'true')
-    localStorage.setItem('notevault:sidebar-recent-expanded', 'false')
-  })
-
-  it('renders the today pulse card with live workbench metrics and deep links', async () => {
-    // 通过服务 mock 喂数据：直接改 store 会被 setCurrentWorkspace 触发的异步 refresh 覆盖
-    const day = localDateKey()
-    vi.mocked(WorkbenchService.GetWorkbench).mockResolvedValueOnce({
-      date: day,
-      tasks: [
-        { id: 't1', filePath: 'Projects/a.md', fileName: 'a.md', lineIndex: 0, sourceLine: '', content: '被阻塞的任务', title: '被阻塞的任务', type: 'todo', project: '', projectPath: '', completed: false, blocker: true, progress: [] },
-        { id: 't2', filePath: 'Projects/a.md', fileName: 'a.md', lineIndex: 1, sourceLine: '', content: '已完成任务', title: '已完成任务', type: 'todo', project: '', projectPath: '', completed: true, completedAt: day, progress: [] },
-      ],
-      projects: [], books: [], cards: [], progress: [], documents: [],
-      radar: { path: '', content: '' }, indexedAt: '2026-09-14T08:00:00Z', warnings: [],
-    } as never)
-    vi.mocked(ReminderService.GetAllReminders).mockResolvedValueOnce([
-      { id: 'r1', content: '到期事项', remindAt: `${day}T09:00:00`, completed: false, filePath: '' },
-    ] as never)
-    const { wrapper, workspaceStore, router } = mountSideBar()
-    workspaceStore.setCurrentWorkspace({ ...workspace })
-    await flushPromises()
-
-    const pulse = wrapper.find('[data-testid="sidebar-pulse"]')
-    expect(pulse.exists()).toBe(true)
-    expect(wrapper.get('[data-testid="pulse-todos"]').text()).toContain('1/2')
-    expect(wrapper.get('[data-testid="pulse-reminders"]').text()).toContain('1')
-    expect(wrapper.get('[data-testid="pulse-blockers"]').classes()).toContain('has-alert')
-    expect(wrapper.get('[data-testid="pulse-review"]').text()).toContain('0')
-
-    await wrapper.get('[data-testid="pulse-todos"]').trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/today')
-    await wrapper.get('[data-testid="pulse-reminders"]').trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.query).toMatchObject({ tab: 'tasks', sub: 'reminders' })
   })
 
   it.each([
@@ -311,84 +231,13 @@ describe('SideBar', () => {
     expect(router.currentRoute.value.path).toBe('/editor')
   })
 
-  it.each([
-    ['Projects/NoteVault/project.md', '/projects', 'project', 'Projects/NoteVault'],
-    ['Areas/Books/Go/book.md', '/learning', 'book', 'Areas/Books/Go'],
-    ['Resources/接口联调.md', '/editor', 'file', 'Resources/接口联调.md'],
-  ])('opens pinned %s at its content destination', async (path, destination, queryKey, queryValue) => {
-    const { wrapper, workspaceStore, router } = mountSideBar()
-    workspaceStore.setCurrentWorkspace({ ...workspace })
-    workspaceStore.togglePin(path, '重点内容')
-    await flushPromises()
-    await wrapper.get('[data-testid="sidebar-pin"]').trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.path).toBe(destination)
-    expect(router.currentRoute.value.query[queryKey]).toBe(queryValue)
-    if (destination === '/editor') expect(workspaceStore.activeFile).toBe(path)
-  })
-
-  it('reorders pins with Alt+Arrow and retains their order after remount', async () => {
-    const { wrapper, workspaceStore } = mountSideBar()
-    workspaceStore.setCurrentWorkspace({ ...workspace })
-    workspaceStore.togglePin('first.md', '第一篇')
-    workspaceStore.togglePin('second.md', '第二篇')
-    await flushPromises()
-    await wrapper.findAll('[data-testid="sidebar-pin"]')[1].trigger('keydown', { key: 'ArrowUp', altKey: true })
-    expect(wrapper.findAll('[data-testid="sidebar-pin"]').map(item => item.text())).toEqual(['第二篇', '第一篇'])
-    wrapper.unmount()
-    const reopened = mountSideBar()
-    reopened.workspaceStore.setCurrentWorkspace({ ...workspace })
-    await flushPromises()
-    expect(reopened.wrapper.findAll('[data-testid="sidebar-pin"]').map(item => item.text())).toEqual(['第二篇', '第一篇'])
-  })
-
-  it('reorders a dragged pin at the dropped position', async () => {
-    const { wrapper, workspaceStore } = mountSideBar()
-    workspaceStore.setCurrentWorkspace({ ...workspace })
-    workspaceStore.togglePin('first.md', '第一篇')
-    workspaceStore.togglePin('second.md', '第二篇')
-    await flushPromises()
-    const pins = wrapper.findAll('[data-testid="sidebar-pin"]')
-    await pins[0].trigger('dragstart')
-    await pins[1].trigger('drop')
-    expect(wrapper.findAll('[data-testid="sidebar-pin"]').map(item => item.text())).toEqual(['第二篇', '第一篇'])
-  })
-
-  it('removes a pin through its context menu without navigating', async () => {
-    const { wrapper, workspaceStore, router } = mountSideBar()
-    workspaceStore.setCurrentWorkspace({ ...workspace })
-    workspaceStore.togglePin('first.md', '第一篇')
-    await router.push('/today')
-    await flushPromises()
-    await wrapper.get('[data-testid="sidebar-pin"]').trigger('contextmenu', { clientX: 20, clientY: 80 })
-    const unpin = document.querySelector<HTMLButtonElement>('[data-testid="sidebar-unpin"]')
-    expect(unpin).not.toBeNull()
-    unpin!.click()
-    await nextTick()
-    expect(workspaceStore.pinnedItems).toEqual([])
-    expect(wrapper.find('[data-testid="sidebar-pin"]').exists()).toBe(false)
-    expect(router.currentRoute.value.path).toBe('/today')
-  })
-
-  it('limits pins to eight and explains why a ninth pin was not added', async () => {
-    const { wrapper, workspaceStore } = mountSideBar()
-    workspaceStore.setCurrentWorkspace({ ...workspace })
-    for (let index = 0; index < 8; index++) workspaceStore.togglePin('note-' + index + '.md')
-    workspaceStore.openFile('ninth.md')
-    await flushPromises()
-    await wrapper.get('[data-testid="sidebar-pin-current"]').trigger('click')
-    expect(wrapper.findAll('[data-testid="sidebar-pin"]')).toHaveLength(8)
-    expect(workspaceStore.isPinned('ninth.md')).toBe(false)
-    expect(useToast().toasts.value.some(toast => toast.message.includes('8'))).toBe(true)
-  })
-
   it('keeps actions reachable and labeled when collapsed', async () => {
     const { wrapper, settingsStore } = mountSideBar()
     await flushPromises()
     settingsStore.toggleSidebar()
     await nextTick()
     expect(wrapper.findAll('.nav-label')).toHaveLength(0)
-    expect(wrapper.findAll('.nav-item.collapsed')).toHaveLength(4)
+    expect(wrapper.findAll('.nav-item.collapsed')).toHaveLength(5)
     expect(wrapper.get('[data-testid="action-daily"]').attributes('aria-label')).toContain('每日工作日志')
     expect(wrapper.get('[data-testid="action-report"]').attributes('aria-label')).toContain('生成日报')
   })

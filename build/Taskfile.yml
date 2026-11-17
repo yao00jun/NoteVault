@@ -20,7 +20,6 @@ tasks:
     dir: frontend
     sources:
       - package.json
-      - package-lock.json
     generates:
       - node_modules
     preconditions:

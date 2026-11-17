@@ -41,6 +41,7 @@ export type {
   BaseSummary,
   BaseView,
   BuiltinTemplate,
+  ClipperStatus,
   DiffOp,
   FileNode,
   GitStatus,

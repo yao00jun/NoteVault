@@ -126,6 +126,7 @@ export type {
     WorkbenchAgentEvent,
     WorkbenchAttachment,
     WorkbenchBook,
+    WorkbenchDeliverable,
     WorkbenchDocument,
     WorkbenchProgress,
     WorkbenchProject,
@@ -133,5 +134,6 @@ export type {
     WorkbenchSnapshot,
     WorkbenchTask,
     Workspace,
+    WorkspacePreset,
     WritingActivity
 } from "./models.js";

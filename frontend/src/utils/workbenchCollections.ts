@@ -68,6 +68,26 @@ export function normalizedCollectionPath(path: string): string {
   return path.replaceAll('\\', '/').replace(/\/+$/, '')
 }
 
+/** 资料「来源」：按工作台约定目录派生，避免为索引入口额外加字段。 */
+export type DocumentSourceId = 'clip' | 'resources' | 'learning' | 'project' | 'daily' | 'local'
+
+export const DOCUMENT_SOURCE_DIRS: { id: Exclude<DocumentSourceId, 'local'>; dir: string }[] = [
+  { id: 'clip', dir: 'Inbox' },
+  { id: 'resources', dir: 'Resources' },
+  { id: 'learning', dir: 'Learning' },
+  { id: 'project', dir: 'Projects' },
+  { id: 'daily', dir: 'Daily' },
+]
+
+export function documentSourceId(path: string): DocumentSourceId {
+  const normalized = normalizedCollectionPath(path)
+  return (
+    DOCUMENT_SOURCE_DIRS.find(
+      (source) => normalized === source.dir || normalized.startsWith(source.dir + '/')
+    )?.id ?? 'local'
+  )
+}
+
 export function tasksForProject(
   project: WorkbenchProject,
   tasks: WorkbenchTask[]

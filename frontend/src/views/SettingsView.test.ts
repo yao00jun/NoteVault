@@ -19,14 +19,22 @@ vi.mock('@/api', () => ({
     ConfigureAI: vi.fn(async () => undefined),
     Status: vi.fn(async () => ({ running: false, port: 27123, token: '', aiEnabled: false })),
   },
+  WorkspaceService: {
+    ListWorkspacePresets: vi.fn(async () => []),
+    ApplyWorkspacePreset: vi.fn(async () => undefined),
+  },
+  FileService: {
+    ReadFile: vi.fn(async () => ''),
+  },
 }))
 
 import SettingsView from './SettingsView.vue'
 import { useSettingsStore } from '@/stores/settings'
-import { LLMConfigService } from '@/api'
+import { ClipperService, LLMConfigService, WorkspaceService } from '@/api'
 
 const mockedPresets = vi.mocked(LLMConfigService.Presets)
 const mockedProbe = vi.mocked(LLMConfigService.Probe)
+const mockedClipperStatus = vi.mocked(ClipperService.Status)
 
 enableAutoUnmount(afterEach)
 
@@ -235,8 +243,9 @@ describe('SettingsView · MCP 接入导出', () => {
   it('lists the MCP section in settings navigation', async () => {
     const { wrapper } = mountSettings()
     await flushPromises()
-    const labels = wrapper.findAll('.settings-nav-item').map(item => item.text())
-    expect(labels).toContain('MCP 接入')
+    // 13 个并列项已收成 5 组，MCP 归入「集成与诊断」
+    expect(wrapper.get('[data-testid="settings-group-integration"]').text()).toContain('集成与诊断')
+    expect(wrapper.find('#settings-section-mcp').exists()).toBe(true)
   })
 
   it('exports snippets with a placeholder path and reflects the write toggle', async () => {
@@ -253,5 +262,69 @@ describe('SettingsView · MCP 接入导出', () => {
     expect(json).toContain('"mcpServers"')
     expect(json).toContain('"notevault"')
     expect(json).toContain('--enable-write')
+  })
+})
+
+describe('SettingsView · Web Clipper 状态与 Token', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    ;(i18n.global.locale as any).value = 'zh-CN'
+    mockedClipperStatus.mockReset()
+    mockedPresets.mockReset()
+    mockedPresets.mockResolvedValue([])
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn(async () => undefined) },
+    })
+  })
+
+  it('lists the clipper section in settings navigation', async () => {
+    mockedClipperStatus.mockResolvedValue({ running: true, port: 27123, token: 'abc123', aiEnabled: false })
+    const { wrapper } = mountSettings()
+    await flushPromises()
+    // 剪藏归入「集成与诊断」组，锚点仍直达原区块
+    expect(wrapper.get('[data-testid="settings-group-integration"]').text()).toContain('集成与诊断')
+    expect(wrapper.find('#settings-section-clipper').exists()).toBe(true)
+  })
+
+  it('shows running status, endpoint and token from the backend', async () => {
+    mockedClipperStatus.mockResolvedValue({ running: true, port: 27123, token: 'secret-token', aiEnabled: true })
+    const { wrapper } = mountSettings()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="clipper-status"]').text()).toContain('运行中')
+    expect(wrapper.get('[data-testid="clipper-endpoint"]').text()).toBe('http://127.0.0.1:27123/api/clip')
+    expect(wrapper.get('[data-testid="clipper-token"]').text()).toBe('secret-token')
+    expect(mockedClipperStatus).toHaveBeenCalled()
+  })
+
+  it('shows stopped state and disables copy when token is missing', async () => {
+    mockedClipperStatus.mockResolvedValue({ running: false, port: 27123, token: '', aiEnabled: false })
+    const { wrapper } = mountSettings()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="clipper-status"]').text()).toContain('未运行')
+    expect(wrapper.get('[data-testid="clipper-copy-token"]').attributes('disabled')).toBeDefined()
+  })
+})
+
+describe('SettingsView · 岗位工作台预设', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    ;(i18n.global.locale as any).value = 'zh-CN'
+    mockedPresets.mockReset()
+    mockedPresets.mockResolvedValue([])
+    mockedClipperStatus.mockReset()
+    mockedClipperStatus.mockResolvedValue({ running: false, port: 27123, token: '', aiEnabled: false })
+    vi.mocked(WorkspaceService.ListWorkspacePresets).mockReset()
+  })
+
+  it('lists workspace presets from the backend', async () => {
+    vi.mocked(WorkspaceService.ListWorkspacePresets).mockResolvedValue([
+      { id: 'content', name: '内容创作', description: '围绕选题组织内容', highlights: ['Resources/选题素材'] },
+    ] as never)
+    const { wrapper } = mountSettings()
+    await flushPromises()
+    const card = wrapper.get('[data-testid="preset-content"]')
+    expect(card.text()).toContain('内容创作')
+    expect(card.text()).toContain('Resources/选题素材')
   })
 })

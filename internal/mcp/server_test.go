@@ -98,7 +98,7 @@ func TestInitialize(t *testing.T) {
 	}
 }
 
-func TestToolsListHasEleven(t *testing.T) {
+func TestToolsListHasFourteen(t *testing.T) {
 	s := NewServer(newTestVault(t), false)
 	resp := rpc(s, "tools/list", nil)
 	res, ok := resp["result"].(map[string]any)
@@ -109,14 +109,15 @@ func TestToolsListHasEleven(t *testing.T) {
 	if !ok {
 		t.Fatalf("tools/list: tools not array")
 	}
-	if len(tools) != 11 {
-		t.Errorf("tool count = %d, want 11", len(tools))
+	if len(tools) != 14 {
+		t.Errorf("tool count = %d, want 14", len(tools))
 	}
 	want := map[string]bool{
 		"list_notes": true, "read_note": true, "search_notes": true,
 		"get_tags": true, "get_backlinks": true, "create_note": true,
 		"append_note": true, "patch_note": true,
 		"append_worklog": true, "record_decision": true, "update_project_status": true,
+		"get_project_context": true, "register_deliverable": true, "append_retro": true,
 	}
 	for _, td := range tools {
 		m, ok := td.(map[string]any)
@@ -608,5 +609,111 @@ func TestStructuredWrites_DisabledByDefault(t *testing.T) {
 		if isError, _ := res["isError"].(bool); !isError {
 			t.Errorf("%s 写禁用时 isError 应为 true", name)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P1：项目上下文聚合、交付物登记与复盘追加
+// ---------------------------------------------------------------------------
+
+func newProjectVault(t *testing.T) string {
+	t.Helper()
+	dir := newTestVault(t)
+	files := map[string]string{
+		"Projects/alpha/project.md":         "---\nname: Alpha Project\nstatus: 进行中\nphase: 执行\ncoreQuestion: 先做哪个功能？\nbackground: 本地优先工作台。\nnextStep: 完成交付物面板\ntechStack: [Go, Vue]\n---\n\n# Alpha Project\n\n## 资料与决策\n\n- 2026-11-01 · 选择本地优先架构\n",
+		"Projects/alpha/Tasks.md":           "# Alpha Project · 任务\n\n- [ ] [US] 完成上下文条\n- [x] [US] 完成模型\n",
+		"Projects/alpha/Deliverables/方案.md": "---\ndeliverableType: report\nstage: draft\nversion: v1\n---\n\n# 方案\n",
+		"Projects/alpha/复盘.md":              "---\ntags: [复盘]\n---\n\n# Alpha Project · 复盘\n\n## 复盘记录\n\n- 2026-11-10 · 提前拆小任务有效\n",
+	}
+	for rel, content := range files {
+		full := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func TestGetProjectContextAggregatesWorkingState(t *testing.T) {
+	s := NewServer(newProjectVault(t), false)
+	text := toolText(t, s, "get_project_context", map[string]any{"project": "alpha"})
+	for _, want := range []string{
+		`"phase": "执行"`,
+		`"coreQuestion": "先做哪个功能？"`,
+		"完成上下文条",
+		"方案",
+		"选择本地优先架构",
+		"Projects/alpha/复盘.md",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("context missing %q:/n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "完成模型") {
+		t.Errorf("completed tasks must not appear in openTasks:/n%s", text)
+	}
+}
+
+func TestRegisterDeliverableCreatesAndUpdates(t *testing.T) {
+	vault := newProjectVault(t)
+	s := NewServer(vault, true)
+	text := toolText(t, s, "register_deliverable", map[string]any{
+		"project": "alpha", "title": "新版方案", "type": "report", "stage": "draft", "version": "v1",
+	})
+	if !strings.Contains(text, "Created deliverable") {
+		t.Fatalf("unexpected create result: %s", text)
+	}
+	path := filepath.Join(vault, "Projects", "alpha", "Deliverables", "新版方案.md")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "deliverableType: report") || !strings.Contains(string(body), "stage: draft") {
+		t.Fatalf("deliverable frontmatter missing: %s", body)
+	}
+
+	text = toolText(t, s, "register_deliverable", map[string]any{
+		"project": "alpha", "title": "新版方案", "stage": "final",
+	})
+	if !strings.Contains(text, "Updated deliverable") {
+		t.Fatalf("unexpected update result: %s", text)
+	}
+	body, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "stage: final") {
+		t.Fatalf("stage was not updated: %s", body)
+	}
+}
+
+func TestAppendRetroAddsDatedLine(t *testing.T) {
+	vault := newProjectVault(t)
+	s := NewServer(vault, true)
+	toolText(t, s, "append_retro", map[string]any{"project": "alpha", "content": "下次提前拆任务"})
+	body, err := os.ReadFile(filepath.Join(vault, "Projects", "alpha", "复盘.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "下次提前拆任务") {
+		t.Fatalf("retrospective line missing: %s", body)
+	}
+}
+
+func TestUpdateProjectStatusSetsPhase(t *testing.T) {
+	vault := newProjectVault(t)
+	s := NewServer(vault, true)
+	toolText(t, s, "update_project_status", map[string]any{
+		"project": "alpha", "status": "已完成", "phase": "复盘",
+	})
+	body, err := os.ReadFile(filepath.Join(vault, "Projects", "alpha", "project.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "phase: 复盘") {
+		t.Fatalf("phase not written: %s", body)
 	}
 }

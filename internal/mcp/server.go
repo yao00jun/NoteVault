@@ -5,7 +5,7 @@
 //     与项目「只依赖 wails/v3 + golang.org/x/sys」的策略保持一致。
 //   - 纯 CLI：本包与 cmd/notevault-mcp 只依赖 internal/service（不引 wails），
 //     因此编译产物是干净的命令行进程，可被 Claude Code / Codex 等作为子进程拉起。
-//   - 默认只读：11 个 tool 里 5 个只读；6 个写工具受 --enable-write 门控，
+//   - 默认只读：14 个 tool 里 6 个只读；8 个写工具受 --enable-write 门控，
 //     未开开关时调用会明确报错，绝不触碰任何文件（含 .notevault 缓存）。
 package mcp
 
@@ -310,14 +310,54 @@ func (s *Server) toolDefs() []map[string]any {
 		},
 		{
 			"name":        "update_project_status",
-			"description": "Update the status (and optionally next_step) frontmatter field of Projects/<project>/project.md. When the project folder exists but project.md is missing, a minimal archive file is created. DISABLED unless --enable-write.",
+			"description": "Update the status, phase and optionally next_step frontmatter fields of Projects/<project>/project.md. When the project folder exists but project.md is missing, a minimal archive file is created. DISABLED unless --enable-write.",
 			"inputSchema": map[string]any{
 				"type":     "object",
 				"required": []any{"project", "status"},
 				"properties": map[string]any{
 					"project":   map[string]any{"type": "string", "description": "Project folder name under Projects/."},
 					"status":    map[string]any{"type": "string", "description": "New status value, e.g. '进行中' or '已完成'."},
+					"phase":     map[string]any{"type": "string", "description": "Optional phase value, e.g. '调研', '规划', '执行', '发布' or '复盘'."},
 					"next_step": map[string]any{"type": "string", "description": "Optional next action, stored as the nextStep frontmatter field."},
+				},
+			},
+		},
+		{
+			"name":        "get_project_context",
+			"description": "Read the full working context of one project in a single call: goals, phase, core question, background, next step, open tasks, deliverables, recent decisions and retrospective path. Use this before planning the next step instead of reading files one by one.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []any{"project"},
+				"properties": map[string]any{
+					"project": map[string]any{"type": "string", "description": "Project name or folder name under Projects/."},
+				},
+			},
+		},
+		{
+			"name":        "register_deliverable",
+			"description": "Create or update a deliverable under Projects/<project>/Deliverables/ with type, stage and version metadata, so the project page can group it by draft/review/final. DISABLED unless --enable-write.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []any{"project", "title"},
+				"properties": map[string]any{
+					"project": map[string]any{"type": "string", "description": "Project folder name under Projects/."},
+					"title":   map[string]any{"type": "string", "description": "Deliverable title; used as the file name when creating a new one."},
+					"type":    map[string]any{"type": "string", "description": "Deliverable type: article | table | ppt | report | image | demo | other. Defaults to article."},
+					"stage":   map[string]any{"type": "string", "description": "Delivery stage: draft | review | final. Defaults to draft."},
+					"version": map[string]any{"type": "string", "description": "Optional version label, e.g. v2."},
+					"content": map[string]any{"type": "string", "description": "Optional Markdown body written after the title when the deliverable file is created."},
+				},
+			},
+		},
+		{
+			"name":        "append_retro",
+			"description": "Append one dated line to Projects/<project>/复盘.md under '## 复盘记录', creating the retrospective with a standard skeleton when missing. DISABLED unless --enable-write.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []any{"project", "content"},
+				"properties": map[string]any{
+					"project": map[string]any{"type": "string", "description": "Project folder name under Projects/."},
+					"content": map[string]any{"type": "string", "description": "Single-line retrospective note (result, lesson or next improvement)."},
 				},
 			},
 		},
@@ -339,6 +379,9 @@ func (s *Server) toolHandlers() map[string]toolHandler {
 		"append_worklog":        s.appendWorklog,
 		"record_decision":       s.recordDecision,
 		"update_project_status": s.updateProjectStatus,
+		"get_project_context":   s.getProjectContext,
+		"register_deliverable":  s.registerDeliverable,
+		"append_retro":          s.appendRetro,
 	}
 }
 
@@ -725,6 +768,12 @@ func (s *Server) updateProjectStatus(args map[string]any) (string, error) {
 			return "", err
 		}
 	}
+	phase := strings.TrimSpace(getString(args, "phase", ""))
+	if phase != "" {
+		if phase, err = singleLine(phase); err != nil {
+			return "", err
+		}
+	}
 
 	snapshotID, err := s.snapshotBeforeWrite(rel)
 	if err != nil {
@@ -737,10 +786,14 @@ func (s *Server) updateProjectStatus(args map[string]any) (string, error) {
 		if info, serr := os.Stat(dir); serr != nil || !info.IsDir() {
 			return "", fmt.Errorf("project not found: Projects/%s", project)
 		}
-		created := fmt.Sprintf("---\nname: %s\nstatus: %s\n---\n\n", project, status)
-		if nextStep != "" {
-			created = fmt.Sprintf("---\nname: %s\nstatus: %s\nnextStep: %s\n---\n\n", project, status, nextStep)
+		created := "---\nname: " + project + "\nstatus: " + status + "\n"
+		if phase != "" {
+			created += "phase: " + phase + "\n"
 		}
+		if nextStep != "" {
+			created += "nextStep: " + nextStep + "\n"
+		}
+		created += "---\n\n"
 		if _, cerr := s.fileSvc.CreateFile(s.workspacePath, rel, created); cerr != nil {
 			return "", cerr
 		}
@@ -756,10 +809,19 @@ func (s *Server) updateProjectStatus(args map[string]any) (string, error) {
 			return "", err
 		}
 	}
+	if phase != "" {
+		updated, err = setFrontmatterField(updated, "phase", []string{"phase", "阶段", "当前阶段"}, phase)
+		if err != nil {
+			return "", err
+		}
+	}
 	if err := s.fileSvc.SaveFile(s.workspacePath, rel, updated); err != nil {
 		return "", err
 	}
 	result := fmt.Sprintf("Updated %s: status=%s", rel, status)
+	if phase != "" {
+		result += fmt.Sprintf(", phase=%s", phase)
+	}
 	if nextStep != "" {
 		result += fmt.Sprintf(", nextStep=%s", nextStep)
 	}
@@ -767,6 +829,177 @@ func (s *Server) updateProjectStatus(args map[string]any) (string, error) {
 		result += fmt.Sprintf(" (snapshot: %s)", snapshotID)
 	}
 	return result, nil
+}
+
+// getProjectContext 一次性返回项目的完整工作现场：上下文、未完成任务、交付物、
+// 最近决策与复盘路径。AI 规划下一步时应优先调用它，避免逐个读文件丢上下文。
+func (s *Server) getProjectContext(args map[string]any) (string, error) {
+	project := strings.TrimSpace(getString(args, "project", ""))
+	if project == "" {
+		return "", fmt.Errorf("missing required argument: project")
+	}
+	snapshot, err := s.todoSvc.GetWorkbench(s.workspacePath, time.Now().Format("2006-01-02"))
+	if err != nil {
+		return "", err
+	}
+	var found *service.WorkbenchProject
+	for i := range snapshot.Projects {
+		candidate := &snapshot.Projects[i]
+		folderName := strings.TrimPrefix(candidate.Folder, "Projects/")
+		if strings.EqualFold(candidate.Name, project) ||
+			strings.EqualFold(folderName, project) ||
+			strings.EqualFold(candidate.Folder, "Projects/"+project) ||
+			strings.EqualFold(candidate.Path, project) {
+			found = candidate
+			break
+		}
+	}
+	if found == nil {
+		return "", fmt.Errorf("project not found: %s", project)
+	}
+	openTasks := make([]map[string]any, 0)
+	for _, task := range snapshot.Tasks {
+		if task.Completed {
+			continue
+		}
+		if task.Project != found.Name && !strings.HasPrefix(task.FilePath, found.Folder+"/") {
+			continue
+		}
+		openTasks = append(openTasks, map[string]any{
+			"title": task.Title, "type": task.Type, "priority": task.Priority,
+			"due": task.Due, "status": task.Status, "blocker": task.Blocker,
+		})
+	}
+	deliverables := found.Deliverables
+	if deliverables == nil {
+		deliverables = []service.WorkbenchDeliverable{}
+	}
+	decisions := []string{}
+	if doc, readErr := s.fileSvc.ReadFile(s.workspacePath, found.Path); readErr == nil {
+		decisions = projectDecisionLines(doc, 8)
+	}
+	payload := map[string]any{
+		"project": map[string]any{
+			"name": found.Name, "path": found.Path, "status": found.Status,
+			"phase": found.Phase, "coreQuestion": found.CoreQuestion, "background": found.Background,
+			"nextStep": found.NextStep, "techStack": found.TechStack,
+			"retrospective": found.Retrospective,
+		},
+		"openTasks":       openTasks,
+		"deliverables":    deliverables,
+		"recentDecisions": decisions,
+	}
+	encoded, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
+}
+
+// registerDeliverable 在 Projects/<project>/Deliverables/ 下登记交付物：
+// 文件已存在时只更新类型/阶段/版本，不存在时按骨架创建。
+func (s *Server) registerDeliverable(args map[string]any) (string, error) {
+	if err := s.requireWrite("register deliverables"); err != nil {
+		return "", err
+	}
+	project := strings.TrimSpace(getString(args, "project", ""))
+	if _, err := projectNoteRel(project); err != nil {
+		return "", err
+	}
+	title, err := singleLine(getString(args, "title", ""))
+	if err != nil {
+		return "", fmt.Errorf("title: %w", err)
+	}
+	kind := strings.ToLower(strings.TrimSpace(getString(args, "type", "article")))
+	if kind == "" {
+		kind = "article"
+	}
+	stage := strings.ToLower(strings.TrimSpace(getString(args, "stage", "draft")))
+	if stage == "" {
+		stage = "draft"
+	}
+	version := strings.TrimSpace(getString(args, "version", ""))
+	if version != "" {
+		if version, err = singleLine(version); err != nil {
+			return "", err
+		}
+	}
+	body := strings.TrimSpace(getString(args, "content", ""))
+
+	rel := "Projects/" + project + "/Deliverables/" + safeDeliverableName(title) + ".md"
+	snapshotID, err := s.snapshotBeforeWrite(rel)
+	if err != nil {
+		return "", fmt.Errorf("pre-write snapshot failed: %w", err)
+	}
+	if full, readErr := s.fileSvc.ReadFile(s.workspacePath, rel); readErr == nil {
+		updated, setErr := setFrontmatterField(full, "deliverableType", []string{"deliverableType", "deliverable_type", "类型", "交付物类型"}, kind)
+		if setErr != nil {
+			return "", setErr
+		}
+		if updated, setErr = setFrontmatterField(updated, "stage", []string{"stage", "阶段", "交付阶段"}, stage); setErr != nil {
+			return "", setErr
+		}
+		if version != "" {
+			if updated, setErr = setFrontmatterField(updated, "version", []string{"version", "版本"}, version); setErr != nil {
+				return "", setErr
+			}
+		}
+		if err := s.fileSvc.SaveFile(s.workspacePath, rel, updated); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Updated deliverable %s: type=%s stage=%s (snapshot: %s)", rel, kind, stage, snapshotID), nil
+	}
+
+	created := "---\ndeliverableType: " + kind + "\nstage: " + stage + "\n"
+	if version != "" {
+		created += "version: " + version + "\n"
+	}
+	created += "tags: [交付物]\n---\n\n# " + title + "\n\n"
+	if body != "" {
+		created += body + "\n"
+	}
+	if _, err := s.fileSvc.CreateFile(s.workspacePath, rel, created); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Created deliverable %s: type=%s stage=%s", rel, kind, stage), nil
+}
+
+// appendRetro 把一条复盘记录追加到 Projects/<project>/复盘.md，
+// 文件缺失时先按标准骨架创建。
+func (s *Server) appendRetro(args map[string]any) (string, error) {
+	if err := s.requireWrite("append retrospective"); err != nil {
+		return "", err
+	}
+	project := strings.TrimSpace(getString(args, "project", ""))
+	if _, err := projectNoteRel(project); err != nil {
+		return "", err
+	}
+	content, err := singleLine(getString(args, "content", ""))
+	if err != nil {
+		return "", err
+	}
+	rel := "Projects/" + project + "/复盘.md"
+	snapshotID, err := s.snapshotBeforeWrite(rel)
+	if err != nil {
+		return "", fmt.Errorf("pre-write snapshot failed: %w", err)
+	}
+	full, readErr := s.fileSvc.ReadFile(s.workspacePath, rel)
+	if readErr != nil {
+		skeleton := "---\ntags: [复盘]\n---\n\n# " + project + " · 复盘\n\n## 复盘记录\n"
+		if _, createErr := s.fileSvc.CreateFile(s.workspacePath, rel, skeleton); createErr != nil {
+			return "", fmt.Errorf("project not found or retrospective cannot be created: %w", createErr)
+		}
+		full = skeleton
+	}
+	line := "- " + time.Now().Format("2006-01-02") + " · " + content
+	updated, err := appendUnderSectionEnd(full, "复盘记录", line)
+	if err != nil {
+		return "", err
+	}
+	if err := s.fileSvc.SaveFile(s.workspacePath, rel, updated); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Appended retrospective to %s (snapshot: %s)", rel, snapshotID), nil
 }
 
 // ---- 内部辅助 ----
@@ -936,4 +1169,44 @@ func mustJSON(v any) []byte {
 		return []byte(`{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"internal error"}}`)
 	}
 	return b
+}
+
+// safeDeliverableName 把交付物标题转成安全文件名：去掉路径分隔符与
+// Windows 非法字符，限制长度，避免越界写入或创建失败。
+func safeDeliverableName(title string) string {
+	replacer := strings.NewReplacer(
+		"/", "-", "\\", "-", ":", "-", "*", "-", "?", "-",
+		"\"", "", "<", "", ">", "", "|", "-",
+	)
+	name := strings.Trim(replacer.Replace(strings.TrimSpace(title)), ". ")
+	runes := []rune(name)
+	if len(runes) > 80 {
+		name = string(runes[:80])
+	}
+	if name == "" {
+		name = "deliverable"
+	}
+	return name
+}
+
+// projectDecisionLines 抽取 project.md 中「## 资料与决策」章节的项目符号行，
+// limit>0 时只保留最近的若干条。
+func projectDecisionLines(doc string, limit int) []string {
+	lines := strings.Split(doc, "\n")
+	inSection := false
+	out := make([]string, 0)
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "## ") {
+			inSection = strings.TrimSpace(strings.TrimPrefix(trimmed, "## ")) == "资料与决策"
+			continue
+		}
+		if inSection && strings.HasPrefix(trimmed, "- ") {
+			out = append(out, strings.TrimPrefix(trimmed, "- "))
+		}
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[len(out)-limit:]
+	}
+	return out
 }

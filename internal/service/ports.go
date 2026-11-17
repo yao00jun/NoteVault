@@ -169,6 +169,9 @@ type WorkspaceOperator interface {
 	SetCurrentWorkspace(workspaceID string) error
 	DeleteWorkspace(workspaceID string) error
 	GetWorkspaceByID(workspaceID string) (*Workspace, error)
+	// 岗位工作台预设：列出可选结构，并把某一类岗位的目录与示例项目补进工作区。
+	ListWorkspacePresets() []WorkspacePreset
+	ApplyWorkspacePreset(workspacePath, presetID string) error
 }
 
 // ---------------------------------------------------------------------------

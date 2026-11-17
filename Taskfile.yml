@@ -27,6 +27,14 @@ tasks:
     summary: Packages a production build of the application
     cmds:
       - task: "{{.GOOS}}:package"
+      # 客户端与 MCP 服务二进制一起出包，避免 bin 里两个可执行文件版本不一致
+      - task: mcp:build
+
+  mcp:build:
+    summary: 构建独立 MCP 服务二进制（stdio JSON-RPC），与客户端同目录
+    cmds:
+      # -o 以路径分隔符结尾时由 go 自己补 .exe，跨平台无需分支
+      - go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o "{{.BIN_DIR}}/" ./cmd/notevault-mcp
 
   run:
     summary: Runs the application

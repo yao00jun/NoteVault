@@ -49,15 +49,29 @@ export interface WorkbenchTask {
   progress: WorkbenchProgress[]
 }
 
+export interface WorkbenchDeliverable {
+  path: string
+  title: string
+  type: string
+  stage: string
+  version: string
+  modifiedAt: string
+}
+
 export interface WorkbenchProject {
   name: string
   path: string
   folder: string
   status: string
+  phase?: string
+  coreQuestion?: string
+  background?: string
   nextStep: string
   techStack: string[]
   taskIds: string[]
   notes: WorkbenchDocument[]
+  deliverables?: WorkbenchDeliverable[]
+  retrospective?: string
   modifiedAt: string
 }
 

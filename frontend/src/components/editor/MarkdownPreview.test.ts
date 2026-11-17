@@ -14,6 +14,7 @@ vi.mock('@/api', () => ({
   ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
   FileService: {
     ReadFile: (...args: unknown[]) => readFileMock(...args),
+    ReadImageBinary: vi.fn(async () => 'data:image/png;base64,AAAA'),
   },
   CredentialService: {
     GetCredential: vi.fn().mockResolvedValue(''),
@@ -434,5 +435,50 @@ describe('MarkdownPreview callout', () => {
     await flushPromises()
     const callout = wrapper.find('.nv-callout')
     expect(callout.classes()).toContain('nv-callout-red')
+  })
+})
+
+describe('MarkdownPreview · 图片 lightbox 交互', () => {
+  it('点击工作区图片打开灯箱，点击遮罩关闭', async () => {
+    const wrapper = mountPreview('![[photo.png]]', '/workspace')
+    await flushPromises()
+    const img = wrapper.find('img.nv-embed-image')
+    expect(img.exists()).toBe(true)
+    const hydratedSrc = (img.element as HTMLImageElement).getAttribute('src') || ''
+    expect(hydratedSrc).toContain('data:image/png')
+    await img.trigger('click')
+    await flushPromises()
+
+    const lightbox = document.querySelector('[data-testid="image-lightbox"]')
+    expect(lightbox).not.toBeNull()
+    expect((lightbox!.querySelector('img') as HTMLImageElement).getAttribute('src')).toBe(hydratedSrc)
+
+    ;(lightbox as HTMLElement).click()
+    await flushPromises()
+    expect(document.querySelector('[data-testid="image-lightbox"]')).toBeNull()
+  })
+
+  it('按 Escape 关闭灯箱', async () => {
+    const wrapper = mountPreview('![[photo.png]]', '/workspace')
+    await flushPromises()
+    const img = wrapper.find('img.nv-embed-image')
+    expect(img.exists()).toBe(true)
+    await img.trigger('click')
+    await flushPromises()
+    expect(document.querySelector('[data-testid="image-lightbox"]')).not.toBeNull()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(document.querySelector('[data-testid="image-lightbox"]')).toBeNull()
+  })
+
+  it('点击普通 wiki-link 不误开灯箱', async () => {
+    const wrapper = mountPreview('[[note]]', '/workspace')
+    await flushPromises()
+    const link = wrapper.find('.wiki-link')
+    expect(link.exists()).toBe(true)
+    await link.trigger('click')
+    await flushPromises()
+    expect(document.querySelector('[data-testid="image-lightbox"]')).toBeNull()
   })
 })

@@ -1,2 +1,8 @@
 allowBuilds:
   vue-demi: true
+
+overrides:
+  source-map-js: ^1.2.2
+  undici: ^8.12.4
+  brace-expansion: ^5.0.13
+  vitest: ^5.0.3

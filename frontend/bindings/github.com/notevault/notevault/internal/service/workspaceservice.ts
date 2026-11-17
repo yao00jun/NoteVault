@@ -15,6 +15,14 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * ApplyWorkspacePreset 在指定工作区补齐预设目录与示例项目。
+ * 幂等：重复应用不会覆盖或重复创建；已有同名项目时保持原样。
+ */
+export function ApplyWorkspacePreset(workspacePath: string, presetID: string): $CancellablePromise<void> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.WorkspaceService.ApplyWorkspacePreset", workspacePath, presetID);
+}
+
+/**
  * CreateWorkspace 创建一个新工作区
  * name: 工作区名称
  * path: 工作区文件夹路径（如果文件夹不存在则创建）
@@ -43,6 +51,13 @@ export function GetCurrentWorkspace(): $CancellablePromise<$models.Workspace | n
  */
 export function GetWorkspaceByID(workspaceID: string): $CancellablePromise<$models.Workspace | null> {
     return $Call.ByName("github.com/notevault/notevault/internal/service.WorkspaceService.GetWorkspaceByID", workspaceID);
+}
+
+/**
+ * ListWorkspacePresets 返回可用的岗位工作台预设，按 ID 稳定排序。
+ */
+export function ListWorkspacePresets(): $CancellablePromise<$models.WorkspacePreset[] | null> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.WorkspaceService.ListWorkspacePresets");
 }
 
 /**

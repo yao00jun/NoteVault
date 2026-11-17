@@ -19,7 +19,7 @@ NoteVault 是一个基于 **Go + Wails v3 + Vue 3** 的本地优先桌面应用�
 
 | 能力 | 说明 |
 |---|---|
-| **知识库主页 (Knowledge Hub)** | 默认入口。工作区概览、统计卡片、文档列表（搜索/排序/收藏过滤）、边栏快捷卡片（待办概览/标签云/最近编辑/快捷入口）。 |
+| **今天 / 工作台首页** | 选定工作区后进入 `/today`：今日待办、到期复习、Agent 动态流与工作日志入口一眼可见；侧栏一级导航为「今天 · 项目 · 学习 · 库」。 |
 | **本地优先** | 所有笔记就是 `.md` 文件，存在你选的工作区目录里。换电脑、换软件都能直接打开。 |
 | **双向链接 + 反链** | `[[笔记名]]`、`[[笔记#标题]]`、`[[笔记^块ID]]`、嵌入 `![[...]]`，编辑器底部自动展示「哪些文档链接了我」，图谱与预览共用同一套 Obsidian 口径解析。 |
 | **知识图谱** | 力导向可视化所有链接关系，高亮孤立节点与未解析链接，点击直达。 |
@@ -31,6 +31,9 @@ NoteVault 是一个基于 **Go + Wails v3 + Vue 3** 的本地优先桌面应用�
 | **版本历史** | 内置 Git 快照与历史对比（diff），笔记改动可追溯、可回滚。 |
 | **待办 / 提醒** | 自动识别 Markdown 中的 `- [ ]` 待办（`!!` 标记高优先级），可设提醒并触发系统通知。 |
 | **日记 / 模板** | 一键创建 `Daily/YYYY-MM-DD.md`，支持自定义笔记模板。 |
+| **项目 / 学习闭环** | 项目档案与决策记录、技术书架 + 间隔复习（SRS），笔记/剪藏可经 AI 蒸馏成复习卡片。 |
+| **MCP Server** | 内置 14 个工具（6 只读 + 8 写），Claude Code / Cursor 可读写工作台；支持一次性读取项目完整上下文、登记交付物、追加复盘。写工具需 `--enable-write` 显式开启，且带写前快照可回滚。设置页可一键导出接入配置。 |
+| **图片粘贴 / 剪藏** | 剪贴板 / 拖拽图片直接存入工作区并在预览中展示；本地 Web Clipper 接口（127.0.0.1 + Token 鉴权）供浏览器剪藏到 Inbox。 |
 | **报告 / 回顾** | 批量笔记总结与定期回顾。 |
 | **归档 / 回收站** | 软删除到 `.archive` / `.trash`，支持恢复与永久删除，回收站可定时清理。 |
 | **导入 / 导出** | 单篇导出为 Markdown 或单文件 HTML（内联样式），工作区可打包 `.zip`，支持外部笔记导入。 |
@@ -56,9 +59,9 @@ NoteVault 是**单机、本地优先的桌面知识库**。以下三项是产品
 
 ### 环境要求
 
-- Go 1.25+
+- Go 1.27+（当前 toolchain 1.27.4）
 - Node.js 22+ 与 pnpm 9+
-- [Wails v3 CLI](https://wails.io/)
+- [Wails v3 CLI](https://wails.io/)（当前 v3.1.0 稳定版）
 
 ### 开发模式
 
@@ -150,8 +153,8 @@ NoteVault 附带独立的 MCP Server，让 Claude Code / Codex / Cursor 等 AI A
 # 构建
 go build -o ./notevault-mcp ./cmd/notevault-mcp
 
-# 运行（默认只读；--enable-write 解锁 create_note）
-./notevault-mcp --workspace "E:\path\to\your\vault"
+# 运行（默认只读 6 个工具；--enable-write 解锁全部 8 个写工具）
+./notevault-mcp --workspace "E:\path\to\your\vault" --enable-write
 ```
 
 零第三方依赖（手写 JSON-RPC 2.0 over stdio），详见 [`cmd/notevault-mcp/README.md`](cmd/notevault-mcp/README.md)。

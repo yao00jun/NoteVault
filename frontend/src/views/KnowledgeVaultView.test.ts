@@ -293,3 +293,54 @@ describe('KnowledgeVaultView pagination', () => {
     expect(wrapper.findAll('[data-testid="vault-document"]')[0]!.text()).toContain('文档 21')
   })
 })
+
+describe('KnowledgeVaultView source filters', () => {
+  const mixed = () => [
+    { path: 'Inbox/剪藏/好文章.md', title: '剪藏文章', modifiedAt: '2026-09-09T10:00:00+08:00' },
+    { path: 'Resources/缓存设计.md', title: '缓存设计', modifiedAt: '2026-09-08T10:00:00+08:00' },
+    { path: 'Learning/Go/并发.md', title: 'Go 并发', modifiedAt: '2026-09-07T10:00:00+08:00' },
+    { path: 'Projects/商城/联调.md', title: '联调笔记', modifiedAt: '2026-09-06T10:00:00+08:00' },
+    { path: 'Daily/2026-09-09.md', title: '今日日记', modifiedAt: '2026-09-05T10:00:00+08:00' },
+    { path: '随手记.md', title: '随手记', modifiedAt: '2026-09-04T10:00:00+08:00' },
+  ]
+
+  it('derives source buckets from workbench folders and hides empty ones', async () => {
+    api.index.mockResolvedValue(snapshot(mixed()))
+    const { wrapper } = await renderVault('/vault')
+    for (const id of ['all', 'clip', 'resources', 'learning', 'project', 'daily', 'local']) {
+      expect(wrapper.find(`[data-testid="vault-source-${id}"]`).exists()).toBe(true)
+    }
+    expect(wrapper.get('[data-testid="vault-source-clip"]').text()).toContain('1')
+    expect(wrapper.get('[data-testid="vault-source-all"]').text()).toContain('6')
+    expect(wrapper.get('.vault-source-filters').attributes('aria-label')).toBe('按资料来源筛选')
+  })
+
+  it('filters by source, stores it in the route and returns to page one', async () => {
+    api.index.mockResolvedValue(snapshot(mixed()))
+    const { wrapper, router } = await renderVault('/vault?pageSize=10&page=1')
+    await wrapper.get('[data-testid="vault-source-learning"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query.source).toBe('learning')
+    const rows = wrapper.findAll('[data-testid="vault-document"]')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.text()).toContain('Go 并发')
+
+    await wrapper.get('[data-testid="vault-source-all"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query.source).toBeUndefined()
+    expect(wrapper.findAll('[data-testid="vault-document"]')).toHaveLength(6)
+  })
+
+  it('restores the source filter from the URL and ignores unknown values', async () => {
+    api.index.mockResolvedValue(snapshot(mixed()))
+    const { wrapper } = await renderVault('/vault?source=daily')
+    const rows = wrapper.findAll('[data-testid="vault-document"]')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.text()).toContain('今日日记')
+
+    wrapper.unmount()
+    const fallback = await renderVault('/vault?source=wechat')
+    expect(fallback.wrapper.findAll('[data-testid="vault-document"]')).toHaveLength(6)
+    expect(fallback.wrapper.get('[data-testid="vault-source-all"]').attributes('aria-pressed')).toBe('true')
+  })
+})

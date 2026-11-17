@@ -17,6 +17,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -24,29 +25,39 @@ import (
 )
 
 func main() {
-	workspace := flag.String("workspace", "", "NoteVault workspace (vault) directory")
-	enableWrite := flag.Bool("enable-write", false, "Allow write tools (create_note). Off by default.")
-	flag.Parse()
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+}
+
+// run 承载 CLI 的全部逻辑，便于用内存读写器测试参数解析与 stdio 协议循环。
+// 返回值即进程退出码：0 正常结束，2 参数/工作区错误。
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("notevault-mcp", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	workspace := flags.String("workspace", "", "NoteVault workspace (vault) directory")
+	enableWrite := flags.Bool("enable-write", false, "Allow write tools (create_note). Off by default.")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
 
 	ws := *workspace
 	if ws == "" {
 		ws = os.Getenv("NOTEVAULT_WORKSPACE")
 	}
 	if ws == "" {
-		fmt.Fprintln(os.Stderr, "notevault-mcp: --workspace (or NOTEVAULT_WORKSPACE) is required")
-		os.Exit(2)
+		fmt.Fprintln(stderr, "notevault-mcp: --workspace (or NOTEVAULT_WORKSPACE) is required")
+		return 2
 	}
 	info, err := os.Stat(ws)
 	if err != nil || !info.IsDir() {
-		fmt.Fprintf(os.Stderr, "notevault-mcp: workspace %q is not a directory\n", ws)
-		os.Exit(2)
+		fmt.Fprintf(stderr, "notevault-mcp: workspace %q is not a directory\n", ws)
+		return 2
 	}
 
 	server := mcp.NewServer(ws, *enableWrite)
-	fmt.Fprintf(os.Stderr, "notevault-mcp: serving workspace %q (write=%v)\n", ws, *enableWrite)
+	fmt.Fprintf(stderr, "notevault-mcp: serving workspace %q (write=%v)\n", ws, *enableWrite)
 
-	reader := bufio.NewReader(os.Stdin)
-	writer := bufio.NewWriter(os.Stdout)
+	reader := bufio.NewReader(stdin)
+	writer := bufio.NewWriter(stdout)
 	defer writer.Flush()
 
 	for {
@@ -67,4 +78,5 @@ func main() {
 			break
 		}
 	}
+	return 0
 }

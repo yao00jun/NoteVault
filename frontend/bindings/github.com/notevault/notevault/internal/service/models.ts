@@ -1237,6 +1237,20 @@ export interface WorkbenchBook {
     "sourceRecordsPath": string;
 }
 
+/**
+ * WorkbenchDeliverable 是项目交付物（文章、报告、表格、PPT 等）在项目页的投影。
+ * 约定放在 Projects/<name>/Deliverables/ 下，用 frontmatter 标注类型与阶段，
+ * 让 AI 与用户都能按「初稿 / 修改稿 / 最终版」持续推进同一份产物。
+ */
+export interface WorkbenchDeliverable {
+    "path": string;
+    "title": string;
+    "type": string;
+    "stage": string;
+    "version": string;
+    "modifiedAt": string;
+}
+
 export interface WorkbenchDocument {
     "path": string;
     "title": string;
@@ -1258,10 +1272,19 @@ export interface WorkbenchProject {
     "path": string;
     "folder": string;
     "status": string;
+    "phase": string;
+    "coreQuestion": string;
+    "background": string;
     "nextStep": string;
     "techStack": string[] | null;
     "taskIds": string[] | null;
     "notes": WorkbenchDocument[] | null;
+    "deliverables": WorkbenchDeliverable[] | null;
+
+    /**
+     * Retrospective 是复盘文件路径；未生成复盘时为空串。
+     */
+    "retrospective": string;
     "modifiedAt": string;
 }
 
@@ -1298,6 +1321,20 @@ export interface Workspace {
     "path": string;
     "createdAt": string;
     "lastOpenedAt": string;
+}
+
+/**
+ * WorkspacePreset 是「岗位工作台」的初始化模板：为某类工作补齐资料分类、
+ * 一个可重命名的示例项目（含上下文、任务、交付物目录与复盘骨架）。
+ * 
+ * 设计约束：所有写入幂等，已有文件一律不覆盖；不创建空项目之外的任何
+ * 用户数据，示例项目可随时重命名或删除。
+ */
+export interface WorkspacePreset {
+    "id": string;
+    "name": string;
+    "description": string;
+    "highlights": string[] | null;
 }
 
 /**

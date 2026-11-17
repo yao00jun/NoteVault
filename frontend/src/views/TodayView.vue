@@ -12,6 +12,7 @@ import { isCarryoverTask } from '@/utils/workbench'
 import { defaultTaskProject, GENERAL_PROJECT_FOLDER } from '@/utils/defaultTaskProject'
 import TaskCard from '@/components/workbench/TaskCard.vue'
 import InterviewReview from '@/components/workbench/InterviewReview.vue'
+import QuickAccessCard from '@/components/workbench/QuickAccessCard.vue'
 
 const store = useWorkbenchStore()
 const workspace = useWorkspaceStore()
@@ -375,6 +376,7 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
         </div>
 
         <aside class="focus-column">
+          <QuickAccessCard />
           <section class="report-card">
             <div class="report-icon">
               <FileText :size="21" />

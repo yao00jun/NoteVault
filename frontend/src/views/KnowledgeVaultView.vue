@@ -31,11 +31,12 @@ import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { SPACE_DEFS } from '@/composables/useWorkbenchSpaces'
 import { useToast } from '@/composables/useToast'
-import { normalizedCollectionPath } from '@/utils/workbenchCollections'
+import { normalizedCollectionPath, documentSourceId, DOCUMENT_SOURCE_DIRS, type DocumentSourceId } from '@/utils/workbenchCollections'
 import { formatRelativeTime } from '@/utils/relativeTime'
 import '@/styles/workbench-collections.css'
 import { useViewRoute } from '@/composables/useViewRoute'
 import VaultActions from '@/components/knowledge/VaultActions.vue'
+import PageHeader from '@/components/common/PageHeader.vue'
 
 const workbench = useWorkbenchStore()
 const workspace = useWorkspaceStore()
@@ -45,6 +46,7 @@ const toast = useToast()
 const { t } = useI18n()
 const search = ref('')
 const spaceFilter = ref('all')
+const sourceFilter = ref<'all' | DocumentSourceId>('all')
 const pinnedOnly = ref(false)
 const sortOrder = ref('recent')
 const page = ref(1)
@@ -108,6 +110,22 @@ const tools = computed(() => [
 const pinnedDocumentCount = computed(
   () => workbench.documents.filter((doc) => workspace.isPinned(doc.path)).length
 )
+// 来源分类：Inbox 剪藏 / Resources 网络收集 / Learning / Projects / Daily，其余归入手动记录。
+const sourceOptions = computed(() => {
+  const counts = new Map<string, number>()
+  for (const doc of workbench.documents) {
+    const id = documentSourceId(doc.path)
+    counts.set(id, (counts.get(id) ?? 0) + 1)
+  }
+  return [
+    { id: 'all' as const, count: workbench.documents.length },
+    ...DOCUMENT_SOURCE_DIRS.map((source) => ({
+      id: source.id,
+      count: counts.get(source.id) ?? 0,
+    })),
+    { id: 'local' as const, count: counts.get('local') ?? 0 },
+  ].filter((option) => option.id === 'all' || option.count > 0)
+})
 const filteredDocuments = computed(() => {
   const query = search.value.trim().toLocaleLowerCase()
   return workbench.documents
@@ -116,6 +134,7 @@ const filteredDocuments = computed(() => {
         (!folderFilter.value || normalizedCollectionPath(doc.path).startsWith(folderFilter.value + '/')) &&
         (spaceFilter.value === 'all' ||
           normalizedCollectionPath(doc.path).startsWith(spaceFilter.value + '/')) &&
+        (sourceFilter.value === 'all' || documentSourceId(doc.path) === sourceFilter.value) &&
         (!pinnedOnly.value || workspace.isPinned(doc.path)) &&
         (!query ||
           (doc.title + ' ' + normalizedCollectionPath(doc.path))
@@ -158,7 +177,12 @@ function routeFilters() {
     route.query.sort === 'title' ? 'title' : 'recent',
     typeof route.query.folder === 'string' ? route.query.folder : '',
     route.query.pageSize === '20' ? 20 : route.query.pageSize === '50' ? 50 : 10,
+    routeSource(route.query.source),
   ] as const
+}
+function routeSource(value: unknown): 'all' | DocumentSourceId {
+  const ids = ['all', ...DOCUMENT_SOURCE_DIRS.map((source) => source.id), 'local']
+  return typeof value === 'string' && ids.includes(value) ? (value as 'all' | DocumentSourceId) : 'all'
 }
 
 function openDocument(path: string) {
@@ -172,22 +196,23 @@ function togglePin(path: string, title: string) {
 function resetFilters() {
   search.value = ''
   spaceFilter.value = 'all'
+  sourceFilter.value = 'all'
   pinnedOnly.value = false
   folderFilter.value = ''
 }
 watch(() => route.fullPath, () => {
-  [search.value, spaceFilter.value, pinnedOnly.value, sortOrder.value, folderFilter.value, pageSize.value] = routeFilters()
+  [search.value, spaceFilter.value, pinnedOnly.value, sortOrder.value, folderFilter.value, pageSize.value, sourceFilter.value] = routeFilters()
   page.value = routePage(route.query.page)
 }, { immediate: true })
 // Back can reactivate the cached list without changing its saved fullPath.
 watch([
-  search, spaceFilter, pinnedOnly, sortOrder, folderFilter, pageSize, page, totalPages,
+  search, spaceFilter, sourceFilter, pinnedOnly, sortOrder, folderFilter, pageSize, page, totalPages,
   () => workbench.snapshot,
   () => route.fullPath,
   () => router.currentRoute.value.path,
 ], () => {
   if (router.currentRoute.value.path !== '/vault') return
-  const filters = [search.value, spaceFilter.value, pinnedOnly.value, sortOrder.value, folderFilter.value, pageSize.value]
+  const filters = [search.value, spaceFilter.value, pinnedOnly.value, sortOrder.value, folderFilter.value, pageSize.value, sourceFilter.value]
   const restored = routeFilters()
   const filtersChanged = filters.some((value, index) => value !== restored[index])
   // A null snapshot means the first index has not arrived, not that the vault is empty.
@@ -201,6 +226,7 @@ watch([
     q: search.value || undefined,
     space: spaceFilter.value === 'all' ? undefined : spaceFilter.value,
     folder: folderFilter.value || undefined,
+    source: sourceFilter.value === 'all' ? undefined : sourceFilter.value,
     pinned: pinnedOnly.value ? '1' : undefined,
     sort: sortOrder.value === 'title' ? 'title' : undefined,
     page: String(page.value),
@@ -218,17 +244,14 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
 <template>
   <div class="collection-page vault-page document-browser">
     <div class="collection-shell">
-      <header class="collection-hero">
-        <div>
-          <div class="collection-eyebrow">
-            <Library :size="15" /> {{ t('knowledge.vault.eyebrow') }}
-          </div>
-          <h1>{{ t('knowledge.vault.title') }}</h1>
-          <p class="collection-subtitle">
-            {{ t('knowledge.vault.subtitle') }}
-          </p>
-        </div>
-        <div class="collection-actions">
+      <PageHeader
+        :title="t('knowledge.vault.title')"
+        :subtitle="t('knowledge.vault.subtitle')"
+        :eyebrow="t('knowledge.vault.eyebrow')"
+        :icon="Library"
+        dense
+      >
+        <template #actions>
           <button
             class="collection-icon-button"
             :aria-label="t('knowledge.vault.refreshAria')"
@@ -245,8 +268,8 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
             v-if="workspace.hasWorkspace"
             :folder="folderFilter || (spaceFilter !== 'all' ? spaceFilter : undefined)"
           />
-        </div>
-      </header>
+        </template>
+      </PageHeader>
       <div
         v-if="workbench.error"
         class="collection-notice error"
@@ -301,6 +324,25 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
               :is="space.icon"
               :size="15"
             />{{ space.label }}<small>{{ space.count }}</small>
+          </button>
+        </nav>
+
+        <nav
+          class="vault-source-filters"
+          :aria-label="t('knowledge.vault.sourceFiltersAria')"
+        >
+          <span class="vault-source-label">{{ t('knowledge.vault.sourceLabel') }}</span>
+          <button
+            v-for="option in sourceOptions"
+            :key="option.id"
+            class="collection-button subtle"
+            :class="{ 'vault-source-active': sourceFilter === option.id }"
+            :data-testid="'vault-source-' + option.id"
+            :aria-pressed="sourceFilter === option.id"
+            type="button"
+            @click="sourceFilter = option.id; page = 1"
+          >
+            {{ t('knowledge.vault.source.' + option.id) }}<small>{{ option.count }}</small>
           </button>
         </nav>
 
@@ -563,9 +605,42 @@ watch(() => workspace.currentWorkspace?.path, (path, previousPath) => {
 </template>
 
 <style scoped>
-.vault-space-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+.vault-space-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
 .vault-space-filters button[aria-pressed="true"] { background: var(--selection-bg, var(--accent-alpha)); border-color: var(--selection-border, var(--border-accent)); color: var(--selection-text, var(--accent)); }
 .vault-space-filters small { opacity: .8; font-variant-numeric: tabular-nums; }
+/* 来源筛选：与空间筛选正交的第二维，视觉上更轻，避免和空间混淆 */
+.vault-source-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.vault-source-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  margin-right: 2px;
+}
+.vault-source-filters .collection-button {
+  min-height: 26px;
+  padding: 2px 9px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px !important;
+}
+.vault-source-filters .collection-button small {
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+  margin-left: 5px;
+}
+.vault-source-filters .collection-button.vault-source-active {
+  background: var(--accent-alpha);
+  border-color: var(--border-accent);
+  color: var(--accent);
+  font-weight: 600;
+}
 
 .vault-space-grid {
   display: grid;

@@ -206,13 +206,14 @@ describe('ProjectsView', () => {
     expect(cards[0]!.text()).not.toContain('额外 文档补齐')
   })
 
-  it('opens project architecture and sends project-specific context to Copilot', async () => {
+  it('opens project architecture from the materials tab and sends project-specific context to Copilot', async () => {
     const { wrapper, router } = await renderView(
       ProjectsView,
       '/projects?project=Projects/商城/project.md'
     )
-    expect(wrapper.find('[data-testid="project-tab-architecture"]').exists()).toBe(true)
-    await wrapper.get('[data-testid="project-tab-architecture"]').trigger('click')
+    expect(wrapper.findAll('[data-testid^="project-tab-"]')).toHaveLength(3)
+    await wrapper.get('[data-testid="project-tab-notes"]').trigger('click')
+    await wrapper.get('[data-testid="project-doc-filter-architecture"]').trigger('click')
     expect(wrapper.get('[data-testid="project-detail-content"]').text()).toContain('商城服务架构')
     expect(wrapper.get('[data-testid="project-detail-content"]').text()).not.toContain(
       '缓存设计指南'
@@ -226,7 +227,7 @@ describe('ProjectsView', () => {
     expect(router.currentRoute.value.path).toBe('/editor')
   })
 
-  it('shows distilled review cards with due counts on the technology tab', async () => {
+  it('shows distilled review cards with due counts on the materials tab', async () => {
     harness.state.cards = [
       card('Goroutine 泄漏', true, { source: 'Projects/商城' }),
       card('Channel 缓冲', false, { source: 'Projects/物流' }),
@@ -235,16 +236,59 @@ describe('ProjectsView', () => {
       ProjectsView,
       '/projects?project=Projects/商城/project.md'
     )
-    await wrapper.get('[data-testid="project-tab-technology"]').trigger('click')
+    await wrapper.get('[data-testid="project-tab-notes"]').trigger('click')
     const block = wrapper.get('[data-testid="project-review-cards"]')
     expect(block.text()).toContain('Goroutine 泄漏')
     expect(block.text()).not.toContain('Channel 缓冲')
     expect(block.text()).toContain('1 张卡片 · 1 张待复习')
-    expect(wrapper.get('[data-testid="project-detail-content"] h2').text()).toContain('1')
     await wrapper.get('[data-testid="project-review-cards-go"]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/learning')
     expect(router.currentRoute.value.query.tab).toBe('review')
+  })
+
+  it('shows a deliverable stage band and filters the list by stage', async () => {
+    harness.state.projects = [
+      {
+        ...project('商城', '进行中', ['US 登录接口', '额外 文档补齐']),
+        deliverables: [
+          {
+            path: 'Projects/商城/Deliverables/方案.md',
+            title: '方案初稿',
+            type: 'article',
+            stage: 'draft',
+            version: 'v1',
+            modifiedAt: '2026-09-08T09:00:00+08:00',
+          },
+          {
+            path: 'Projects/商城/Deliverables/方案-v2.md',
+            title: '方案二稿',
+            type: 'article',
+            stage: 'review',
+            version: 'v2',
+            modifiedAt: '2026-09-08T09:30:00+08:00',
+          },
+        ],
+      },
+      project('物流', '暂停', ['DTS 消费权限']),
+    ]
+    const { wrapper } = await renderView(
+      ProjectsView,
+      '/projects?project=Projects/商城/project.md'
+    )
+    await wrapper.get('[data-testid="project-tab-deliverables"]').trigger('click')
+    expect(wrapper.get('[data-testid="deliverable-stage-draft"]').text()).toContain('初稿')
+    expect(wrapper.get('[data-testid="deliverable-stage-review"]').text()).toContain('1 个')
+    // 没有产出的阶段不可点，避免进入空列表
+    expect(wrapper.get('[data-testid="deliverable-stage-final"]').attributes('disabled')).toBeDefined()
+
+    await wrapper.get('[data-testid="deliverable-stage-draft"]').trigger('click')
+    const panel = () => wrapper.get('[data-testid="project-deliverables"]').text()
+    expect(panel()).toContain('方案初稿')
+    expect(panel()).not.toContain('方案二稿')
+
+    await wrapper.get('[data-testid="deliverable-stage-reset"]').trigger('click')
+    expect(panel()).toContain('方案二稿')
   })
 })
 

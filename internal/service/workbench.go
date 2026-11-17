@@ -29,16 +29,34 @@ type WorkbenchProgress struct {
 	At        string `json:"at"`
 }
 
+// WorkbenchDeliverable 是项目交付物（文章、报告、表格、PPT 等）在项目页的投影。
+// 约定放在 Projects/<name>/Deliverables/ 下，用 frontmatter 标注类型与阶段，
+// 让 AI 与用户都能按「初稿 / 修改稿 / 最终版」持续推进同一份产物。
+type WorkbenchDeliverable struct {
+	Path       string `json:"path"`
+	Title      string `json:"title"`
+	Type       string `json:"type"`
+	Stage      string `json:"stage"`
+	Version    string `json:"version"`
+	ModifiedAt string `json:"modifiedAt"`
+}
+
 type WorkbenchProject struct {
-	Name       string              `json:"name"`
-	Path       string              `json:"path"`
-	Folder     string              `json:"folder"`
-	Status     string              `json:"status"`
-	NextStep   string              `json:"nextStep"`
-	TechStack  []string            `json:"techStack"`
-	TaskIDs    []string            `json:"taskIds"`
-	Notes      []WorkbenchDocument `json:"notes"`
-	ModifiedAt string              `json:"modifiedAt"`
+	Name         string                 `json:"name"`
+	Path         string                 `json:"path"`
+	Folder       string                 `json:"folder"`
+	Status       string                 `json:"status"`
+	Phase        string                 `json:"phase"`
+	CoreQuestion string                 `json:"coreQuestion"`
+	Background   string                 `json:"background"`
+	NextStep     string                 `json:"nextStep"`
+	TechStack    []string               `json:"techStack"`
+	TaskIDs      []string               `json:"taskIds"`
+	Notes        []WorkbenchDocument    `json:"notes"`
+	Deliverables []WorkbenchDeliverable `json:"deliverables"`
+	// Retrospective 是复盘文件路径；未生成复盘时为空串。
+	Retrospective string `json:"retrospective"`
+	ModifiedAt    string `json:"modifiedAt"`
 }
 
 type WorkbenchBook struct {
@@ -89,17 +107,17 @@ type WorkbenchAgentEvent struct {
 }
 
 type WorkbenchSnapshot struct {
-	Date        string               `json:"date"`
-	Tasks       []*WorkbenchTask     `json:"tasks"`
-	Projects    []WorkbenchProject   `json:"projects"`
-	Books       []WorkbenchBook      `json:"books"`
-	Cards       []InterviewCard      `json:"cards"`
-	Progress    []WorkbenchProgress  `json:"progress"`
+	Date        string                `json:"date"`
+	Tasks       []*WorkbenchTask      `json:"tasks"`
+	Projects    []WorkbenchProject    `json:"projects"`
+	Books       []WorkbenchBook       `json:"books"`
+	Cards       []InterviewCard       `json:"cards"`
+	Progress    []WorkbenchProgress   `json:"progress"`
 	AgentEvents []WorkbenchAgentEvent `json:"agentEvents"`
-	Radar       WorkbenchRadar       `json:"radar"`
-	Documents   []WorkbenchDocument  `json:"documents"`
-	IndexedAt   string               `json:"indexedAt"`
-	Warnings    []string             `json:"warnings"`
+	Radar       WorkbenchRadar        `json:"radar"`
+	Documents   []WorkbenchDocument   `json:"documents"`
+	IndexedAt   string                `json:"indexedAt"`
+	Warnings    []string              `json:"warnings"`
 }
 
 // GetWorkbench derives every field from the current Markdown, without a cache or database.
@@ -118,6 +136,10 @@ func (s *TodoService) GetWorkbench(workspacePath, date string) (*WorkbenchSnapsh
 		Cards: []InterviewCard{}, Progress: []WorkbenchProgress{}, AgentEvents: []WorkbenchAgentEvent{}, Documents: []WorkbenchDocument{},
 		Radar: WorkbenchRadar{Path: "Learning/技术雷达.md"}, IndexedAt: time.Now().Format(time.RFC3339Nano), Warnings: warnings,
 	}
+	// 交付物与复盘按项目文件夹归类，第二轮再挂到 WorkbenchProject 上：
+	// frontmatter 只有在首轮扫描时可得，Documents 投影里不含 props。
+	deliverablesByFolder := map[string][]WorkbenchDeliverable{}
+	retrospectiveByFolder := map[string]string{}
 	for _, file := range files {
 		parts := strings.Split(file.path, "/")
 		// Template sources remain accessible through TemplateService and the editor.
@@ -134,11 +156,32 @@ func (s *TodoService) GetWorkbench(workspacePath, date string) (*WorkbenchSnapsh
 			}
 			snapshot.Projects = append(snapshot.Projects, WorkbenchProject{
 				Name: name, Path: file.path, Folder: path.Dir(file.path),
-				Status:    workbenchTextDefault(file.props, "进行中", "status", "状态"),
-				NextStep:  workbenchText(file.props, "nextStep", "next_step", "下一步", "下一步行动"),
-				TechStack: workbenchList(file.props, "techStack", "tech_stack", "stack", "技术栈", "关联技术"),
-				TaskIDs:   []string{}, Notes: []WorkbenchDocument{}, ModifiedAt: file.modifiedAt,
+				Status:       workbenchTextDefault(file.props, "进行中", "status", "状态"),
+				Phase:        workbenchText(file.props, "phase", "阶段", "当前阶段"),
+				CoreQuestion: workbenchText(file.props, "coreQuestion", "core_question", "核心问题", "关键问题"),
+				Background:   workbenchText(file.props, "background", "背景", "背景信息"),
+				NextStep:     workbenchText(file.props, "nextStep", "next_step", "下一步", "下一步行动"),
+				TechStack:    workbenchList(file.props, "techStack", "tech_stack", "stack", "技术栈", "关联技术"),
+				TaskIDs:      []string{}, Notes: []WorkbenchDocument{}, Deliverables: []WorkbenchDeliverable{},
+				ModifiedAt: file.modifiedAt,
 			})
+		}
+		if len(parts) >= 4 && strings.EqualFold(parts[0], "Projects") && strings.EqualFold(parts[2], "Deliverables") {
+			folder := "Projects/" + parts[1]
+			title := workbenchText(file.props, "title", "name", "名称", "标题")
+			if title == "" {
+				title = workbenchHeadingTitle(file, strings.TrimSuffix(path.Base(file.path), path.Ext(file.path)))
+			}
+			deliverablesByFolder[folder] = append(deliverablesByFolder[folder], WorkbenchDeliverable{
+				Path: file.path, Title: title,
+				Type:       workbenchTextDefault(file.props, "doc", "deliverableType", "deliverable_type", "类型", "交付物类型"),
+				Stage:      workbenchTextDefault(file.props, "draft", "stage", "阶段", "交付阶段"),
+				Version:    workbenchText(file.props, "version", "版本"),
+				ModifiedAt: file.modifiedAt,
+			})
+		}
+		if len(parts) == 3 && strings.EqualFold(parts[0], "Projects") && workbenchRetrospectiveName(parts[2]) {
+			retrospectiveByFolder["Projects/"+parts[1]] = file.path
 		}
 		if len(parts) == 3 && strings.EqualFold(parts[0], "Learning") && strings.EqualFold(parts[2], "book.md") {
 			name := workbenchText(file.props, "name", "title", "名称", "书名", "分册名", "分册名称")
@@ -164,6 +207,12 @@ func (s *TodoService) GetWorkbench(workspacePath, date string) (*WorkbenchSnapsh
 	}
 	for i := range snapshot.Projects {
 		project := &snapshot.Projects[i]
+		if items, ok := deliverablesByFolder[project.Folder]; ok {
+			project.Deliverables = items
+		}
+		if retro := retrospectiveByFolder[project.Folder]; retro != "" {
+			project.Retrospective = retro
+		}
 		for _, task := range snapshot.Tasks {
 			if workbenchProjectMatches(task, *project) {
 				task.Project, task.ProjectPath = project.Name, project.Path
@@ -175,9 +224,17 @@ func (s *TodoService) GetWorkbench(workspacePath, date string) (*WorkbenchSnapsh
 				continue
 			}
 			project.ModifiedAt = workbenchLatestTime(project.ModifiedAt, document.ModifiedAt)
-			if document.Path != project.Path && !strings.EqualFold(path.Base(document.Path), "Tasks.md") {
-				project.Notes = append(project.Notes, document)
+			if document.Path == project.Path || strings.EqualFold(path.Base(document.Path), "Tasks.md") {
+				continue
 			}
+			// 交付物与复盘有独立字段，不再混入普通笔记列表。
+			if strings.HasPrefix(document.Path, project.Folder+"/Deliverables/") {
+				continue
+			}
+			if document.Path == project.Retrospective {
+				continue
+			}
+			project.Notes = append(project.Notes, document)
 		}
 	}
 	for i := range snapshot.Books {
@@ -315,4 +372,14 @@ func workbenchCardBelongsToBook(card InterviewCard, book WorkbenchBook, files []
 		}
 	}
 	return strings.HasPrefix(card.FilePath, "Learning/面试宝典/") && strings.HasPrefix(strings.ToLower(path.Base(card.FilePath)), strings.ToLower(path.Base(book.Folder)))
+}
+
+// workbenchRetrospectiveName 识别项目复盘文件。约定为 复盘.md，
+// 同时兼容英文命名，避免用户自建项目时因文件名不同而丢失复盘入口。
+func workbenchRetrospectiveName(name string) bool {
+	switch strings.ToLower(name) {
+	case "复盘.md", "retrospective.md", "retro.md":
+		return true
+	}
+	return false
 }

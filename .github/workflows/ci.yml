@@ -71,10 +71,12 @@ jobs:
         run: pnpm typecheck
       - name: Build frontend bundle
         run: pnpm build
-      # 信息性检查：lint / format 不阻断核心流程（现有代码引入规范时的过渡）
-      - name: Lint (informational)
+      # lint 已是阻断门禁：ESLint 配置下 error 才能失败构建，warning（如 v-html 安全提示、
+      # 属性换行）不阻断。当前存量 0 errors，新增 error 会在 CI 直接失败。
+      - name: Lint
         run: pnpm lint
-        continue-on-error: true
+      # 格式检查仍为信息性：存量约 187 个文件未统一 Prettier 风格，全量格式化会产生
+      # 与功能无关的大 diff。待单独开一次纯格式提交后再转为阻断门禁。
       - name: Format check (informational)
         run: pnpm format:check
         continue-on-error: true

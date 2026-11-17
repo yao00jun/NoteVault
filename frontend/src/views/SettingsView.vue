@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
-import { Settings, Palette, Keyboard, Info, Sparkles, Eye, EyeOff, AlertTriangle, PackageOpen, GitBranch, Plug } from '@lucide/vue'
+import { Palette, Keyboard, Info, Sparkles, Eye, EyeOff, PackageOpen, Plug } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
@@ -10,7 +10,8 @@ import { useShortcuts } from '@/composables/useShortcuts'
 import { useEditorToolbarSettings } from '@/composables/useEditorToolbarSettings'
 import type { ThemeType } from '@/types'
 import type { Locale } from '@/i18n'
-import { FileService } from '@/api'
+import { ClipperService, FileService, WorkspaceService } from '@/api'
+import type { ClipperStatus } from '@/api'
 import { confirmDialog } from '@/composables/useConfirm'
 import { useToast } from '@/composables/useToast'
 import ThemePreview from '@/components/settings/ThemePreview.vue'
@@ -103,6 +104,79 @@ async function copyMcpConfig(text: string) {
   }
 }
 
+// Web Clipper：读取后端运行状态与 Token（后端 Status() 已暴露，Token 供填入浏览器扩展）
+const clipperStatus = ref<ClipperStatus | null>(null)
+const clipperLoading = ref(false)
+async function loadClipperStatus() {
+  clipperLoading.value = true
+  try {
+    clipperStatus.value = await ClipperService.Status()
+  } catch (e) {
+    clipperStatus.value = null
+    toast.error(t('settings.clipper.loadFailed', { msg: (e as Error).message }))
+  } finally {
+    clipperLoading.value = false
+  }
+}
+async function copyClipperToken() {
+  const token = clipperStatus.value?.token
+  if (!token) return
+  try {
+    await navigator.clipboard.writeText(token)
+    toast.success(t('settings.clipper.tokenCopied'))
+  } catch {
+    toast.error(t('settings.clipper.copyFailed'))
+  }
+}
+const clipperEndpoint = computed(() =>
+  clipperStatus.value ? `http://127.0.0.1:${clipperStatus.value.port}/api/clip` : ''
+)
+interface WorkspacePresetOption {
+  id: string
+  name: string
+  description: string
+  highlights: string[]
+}
+
+const workspacePresets = ref<WorkspacePresetOption[]>([])
+const applyingPreset = ref('')
+
+async function loadPresets(): Promise<void> {
+  try {
+    const result = await WorkspaceService.ListWorkspacePresets()
+    workspacePresets.value = (result ?? []).map((item) => ({
+      id: item.id ?? '',
+      name: item.name ?? '',
+      description: item.description ?? '',
+      highlights: item.highlights ?? [],
+    }))
+  } catch {
+    workspacePresets.value = []
+  }
+}
+
+async function applyWorkspacePreset(id: string): Promise<void> {
+  const workspacePath = workspaceStore.currentWorkspace?.path
+  if (!workspacePath) {
+    toast.error(t('settings.presets.noWorkspace'))
+    return
+  }
+  applyingPreset.value = id
+  try {
+    await WorkspaceService.ApplyWorkspacePreset(workspacePath, id)
+    toast.success(t('settings.presets.applied'))
+  } catch (error) {
+    toast.error(t('settings.presets.failed', { msg: (error as Error).message }))
+  } finally {
+    applyingPreset.value = ''
+  }
+}
+
+onMounted(() => {
+  void loadClipperStatus()
+  void loadPresets()
+})
+
 
 const themes: { value: ThemeType; label: string }[] = [
   { value: 'macos', label: 'macOS' },
@@ -112,19 +186,24 @@ const themes: { value: ThemeType; label: string }[] = [
 
 const activeSection = ref<string>('appearance')
 
-const sections = computed(() => [
-  { id: 'appearance', label: t('settings.nav.appearance'), icon: Palette },
-  { id: 'editor', label: t('settings.nav.editor'), icon: Settings },
-  { id: 'ai', label: t('settings.nav.ai'), icon: Sparkles },
-  { id: 'embedding', label: t('settings.nav.embedding'), icon: Sparkles },
-  { id: 'rerank', label: t('settings.nav.rerank'), icon: Sparkles },
-  { id: 'shortcuts', label: t('settings.nav.shortcuts'), icon: Keyboard },
-  { id: 'assets', label: t('settings.nav.assets'), icon: PackageOpen },
-  { id: 'versioning', label: t('settings.nav.versioning'), icon: GitBranch },
-  { id: 'errorReport', label: t('settings.nav.errorReport'), icon: AlertTriangle },
-  { id: 'mcp', label: t('settings.nav.mcp'), icon: Plug },
-  { id: 'about', label: t('settings.nav.about'), icon: Info },
+// 导航按「用户要办的事」分组而不是按技术模块并列：13 项收成 5 组 + 关于。
+// 每组点击跳到该组第一个 section，内容与锚点保持原样（不改任何设置项）。
+interface SettingsGroup {
+  id: string
+  label: string
+  icon: typeof Palette
+  children: string[]
+}
+
+const sectionGroups = computed<SettingsGroup[]>(() => [
+  { id: 'look', label: t('settings.groups.look'), icon: Palette, children: ['appearance', 'editor'] },
+  { id: 'ai', label: t('settings.groups.ai'), icon: Sparkles, children: ['ai', 'embedding', 'rerank'] },
+  { id: 'data', label: t('settings.groups.data'), icon: Keyboard, children: ['shortcuts', 'assets', 'versioning'] },
+  { id: 'integration', label: t('settings.groups.integration'), icon: Plug, children: ['errorReport', 'mcp', 'clipper'] },
+  { id: 'workbench', label: t('settings.groups.workbench'), icon: PackageOpen, children: ['presets'] },
 ])
+
+const activeGroup = computed(() => sectionGroups.value.find(group => group.children.includes(activeSection.value))?.id ?? '')
 
 // 真实生效的快捷键（全局 App.vue + 编辑器组件级 CM6 keymap）——
 // 唯一清单数据源在 useShortcuts（速查浮层与设置页共用），B/I/K/\ 已由两处共同注册。
@@ -159,18 +238,34 @@ async function scrollToSection(id: string) {
       </h2>
       <nav class="settings-nav">
         <button
-          v-for="section in sections"
-          :key="section.id"
+          v-for="group in sectionGroups"
+          :key="group.id"
           class="settings-nav-item"
-          :class="{ active: activeSection === section.id }"
+          :class="{ active: activeGroup === group.id }"
           type="button"
-          @click="scrollToSection(section.id)"
+          :data-testid="`settings-group-${group.id}`"
+          @click="scrollToSection(group.children[0])"
         >
           <component
-            :is="section.icon"
+            :is="group.icon"
             :size="16"
           />
-          <span>{{ section.label }}</span>
+          <span>{{ group.label }}</span>
+          <span
+            v-if="group.children.length > 1"
+            class="settings-nav-count"
+          >{{ group.children.length }}</span>
+        </button>
+        <div class="settings-nav-divider" />
+        <button
+          class="settings-nav-item"
+          :class="{ active: activeSection === 'about' }"
+          type="button"
+          data-testid="settings-group-about"
+          @click="scrollToSection('about')"
+        >
+          <Info :size="16" />
+          <span>{{ t('settings.nav.about') }}</span>
         </button>
       </nav>
     </div>
@@ -1127,6 +1222,111 @@ async function scrollToSection(id: string) {
         </p>
       </div>
 
+      <!-- 5d. Web Clipper 剪藏 -->
+      <div
+        id="settings-section-clipper"
+        class="settings-section"
+      >
+        <h3 class="section-title">
+          {{ t('settings.clipper.title') }}
+        </h3>
+        <p class="section-desc">
+          {{ t('settings.clipper.desc') }}
+        </p>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.clipper.status') }}</span>
+            <span class="setting-desc">{{ t('settings.clipper.statusDesc') }}</span>
+          </div>
+          <span
+            class="clipper-status-badge"
+            :class="{ running: clipperStatus?.running }"
+            data-testid="clipper-status"
+          >{{ clipperStatus?.running ? t('settings.clipper.running') : t('settings.clipper.stopped') }}</span>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.clipper.endpoint') }}</span>
+            <span class="setting-desc">{{ t('settings.clipper.endpointDesc') }}</span>
+          </div>
+          <code
+            class="mcp-snippet"
+            data-testid="clipper-endpoint"
+          >{{ clipperEndpoint || '—' }}</code>
+        </div>
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.clipper.token') }}</span>
+            <span class="setting-desc">{{ t('settings.clipper.tokenDesc') }}</span>
+          </div>
+          <button
+            type="button"
+            class="preset-btn"
+            data-testid="clipper-copy-token"
+            :disabled="!clipperStatus?.token"
+            @click="copyClipperToken"
+          >{{ t('settings.clipper.copyToken') }}</button>
+        </div>
+        <code
+          class="mcp-snippet"
+          data-testid="clipper-token"
+        >{{ clipperStatus?.token || (clipperLoading ? '…' : '—') }}</code>
+        <p class="section-desc">
+          {{ t('settings.clipper.hint') }}
+        </p>
+      </div>
+
+      <!-- 5e. 岗位工作台预设 -->
+      <div
+        id="settings-section-presets"
+        class="settings-section"
+      >
+        <h3 class="section-title">
+          {{ t('settings.presets.title') }}
+        </h3>
+        <p class="section-desc">
+          {{ t('settings.presets.desc') }}
+        </p>
+        <div class="preset-list">
+          <div
+            v-for="preset in workspacePresets"
+            :key="preset.id"
+            class="preset-card"
+            :data-testid="'preset-' + preset.id"
+          >
+            <div class="preset-card-head">
+              <strong>{{ preset.name }}</strong>
+              <button
+                type="button"
+                class="preset-btn"
+                :disabled="!workspaceStore.currentWorkspace || applyingPreset === preset.id"
+                @click="applyWorkspacePreset(preset.id)"
+              >{{ applyingPreset === preset.id ? t('settings.presets.applying') : t('settings.presets.apply') }}</button>
+            </div>
+            <p class="preset-card-desc">
+              {{ preset.description }}
+            </p>
+            <ul class="preset-highlights">
+              <li
+                v-for="item in preset.highlights"
+                :key="item"
+              >
+                {{ item }}
+              </li>
+            </ul>
+          </div>
+          <p
+            v-if="!workspacePresets.length"
+            class="section-desc"
+          >
+            {{ t('settings.presets.empty') }}
+          </p>
+        </div>
+        <p class="section-desc">
+          {{ t('settings.presets.hint') }}
+        </p>
+      </div>
+
       <!-- 6. 关于 -->
       <div
         id="settings-section-about"
@@ -1231,6 +1431,19 @@ async function scrollToSection(id: string) {
   font-weight: 500;
 }
 
+.settings-nav-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: var(--text-xs, 11px);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-nav-divider {
+  height: 1px;
+  margin: var(--space-2) var(--space-3);
+  background: var(--border);
+}
+
 .settings-content {
   flex: 1;
   overflow-y: auto;
@@ -1250,6 +1463,59 @@ async function scrollToSection(id: string) {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: all;
+}
+
+/* Web Clipper 运行状态徽标 */
+.clipper-status-badge {
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.clipper-status-badge.running {
+  border-color: var(--success, #1d9e75);
+  color: var(--success, #1d9e75);
+}
+
+.preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 10px);
+  margin-bottom: var(--space-3, 10px);
+}
+
+.preset-card {
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+
+.preset-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.preset-card-desc {
+  margin: 6px 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+
+.preset-highlights {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.7;
 }
 
 .settings-section {

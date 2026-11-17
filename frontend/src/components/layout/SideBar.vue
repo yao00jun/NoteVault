@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch, type Component } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, type Component } from 'vue'
 import {
   Library,
   FolderOpen,
   FileText,
   BarChart3,
   Trash2,
-  ChevronRight,
   PanelLeft,
   Plus,
   Settings as SettingsIcon,
@@ -16,15 +15,7 @@ import {
   BookOpen,
   FileCheck2,
   Rocket,
-  Pin,
-  PinOff,
-  GripVertical,
-  CheckCircle2,
-  Bell,
-  AlertTriangle,
-  GraduationCap,
-  Calendar,
-  Clock,
+  MoreHorizontal,
   Compass,
   History,
   Lightbulb,
@@ -45,10 +36,8 @@ import { promptDialog } from '@/composables/usePrompt'
 import { useWorkLog } from '@/composables/useWorkLog'
 import { usePageContext } from '@/composables/usePageContext'
 import { useSidebarResize } from '@/composables/useSidebarResize'
-import SidebarCalendar from './SidebarCalendar.vue'
 import { flushOpenEditor } from '@/composables/useEditorSession'
 import { requestSourceImport } from '@/composables/useSourceImport'
-import { formatRelativeTime } from '@/utils/relativeTime'
 
 const toast = useToast()
 const { openTodayWorkLog } = useWorkLog()
@@ -141,20 +130,20 @@ function openSettings() {
   router.push('/settings')
 }
 
-// 点击外部关闭工作区菜单与右键菜单
+// 点击外部关闭工作区菜单
 function handleClickOutside(e: MouseEvent) {
   if (!(e.target as HTMLElement).closest('.new-action-menu')) newMenuOpen.value = false
+  if (!(e.target as HTMLElement).closest('.more-wrap')) moreOpen.value = false
   if (!workspaceMenuRef.value?.contains(e.target as Node)) {
     workspaceMenuOpen.value = false
     newMenuOpen.value = false
   }
-  if (!pinMenuRef.value?.contains(e.target as Node)) pinMenu.value = null
 }
 
 function handleEscape(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     workspaceMenuOpen.value = false
-    closePinMenu()
+    moreOpen.value = false
   }
 }
 
@@ -224,39 +213,11 @@ interface NavItem {
 }
 
 const completedToday = computed(() => workbenchStore.todayTasks.filter(task => task.completed).length)
-const todayPending = computed(() => workbenchStore.todayTasks.length - completedToday.value)
 
-// ---- 手风琴面板：迷你月历（默认展开）与最近文档（默认折叠），状态持久化 ----
-const calendarExpanded = ref(localStorage.getItem('notevault:sidebar-calendar-expanded') !== 'false')
-const recentExpanded = ref(localStorage.getItem('notevault:sidebar-recent-expanded') === 'true')
-
-function toggleCalendarExpanded() {
-  calendarExpanded.value = !calendarExpanded.value
-  localStorage.setItem('notevault:sidebar-calendar-expanded', String(calendarExpanded.value))
-}
-
-// 今日脉搏折叠（默认展开），与日历/最近同款 localStorage 记忆
-const pulseExpanded = ref(localStorage.getItem('notevault:sidebar-pulse-expanded') !== 'false')
-
-function togglePulseExpanded() {
-  pulseExpanded.value = !pulseExpanded.value
-  localStorage.setItem('notevault:sidebar-pulse-expanded', String(pulseExpanded.value))
-}
-
-function toggleRecentExpanded() {
-  recentExpanded.value = !recentExpanded.value
-  localStorage.setItem('notevault:sidebar-recent-expanded', String(recentExpanded.value))
-}
-
-// ---- 「扩展」折叠区：长尾功能页（发现/回顾/洞察/白板/导入/插件/归档），默认折叠 ----
-const extendedExpanded = ref(localStorage.getItem('notevault:sidebar-extended-expanded') === 'true')
-
-function toggleExtendedExpanded() {
-  extendedExpanded.value = !extendedExpanded.value
-  localStorage.setItem('notevault:sidebar-extended-expanded', String(extendedExpanded.value))
-}
-
-const extendedItems = computed(() => [
+// 「更多」：长尾页面收进一个菜单，替代原先常驻的 7 行扩展区。
+// 内容与 Ctrl+K 命令面板完全一致，保证不用快捷键也能找到入口。
+const moreOpen = ref(false)
+const moreItems = computed(() => [
   { id: 'discover', label: t('sidebar.extended.discover'), icon: Compass, route: '/discover' },
   { id: 'review', label: t('sidebar.extended.review'), icon: History, route: '/review' },
   { id: 'insights', label: t('sidebar.extended.insights'), icon: Lightbulb, route: '/insights' },
@@ -266,8 +227,11 @@ const extendedItems = computed(() => [
   { id: 'archive', label: t('sidebar.extended.archive'), icon: Archive, route: '/archive' },
 ])
 
-// 最近文档：最多展示 10 条
-const recentFiles = computed(() => workspaceStore.recentFiles.slice(0, 10))
+function openMore(path: string) {
+  moreOpen.value = false
+  void router.push(path)
+}
+
 const navItems = computed<NavItem[]>(() => [
   {
     id: 'today',
@@ -313,104 +277,6 @@ function isActive(item: NavItem) {
 function openReport() {
   window.dispatchEvent(new CustomEvent('notevault:daily-report'))
 }
-
-interface PinnedItem { path: string; title: string }
-const pins = computed(() => workspaceStore.pinnedItems.slice(0, 8))
-const draggedPin = ref<string | null>(null)
-const dragOverIndex = ref<number | null>(null)
-const pinAnnouncement = ref('')
-const pinMenu = ref<{ item: PinnedItem; x: number; y: number } | null>(null)
-const pinMenuRef = ref<HTMLElement | null>(null)
-let pinMenuTrigger: HTMLElement | null = null
-
-function pinIcon(path: string) {
-  if (/\/project\.md$/i.test(path)) return Rocket
-  if (/\/book\.md$/i.test(path)) return BookOpen
-  return FileText
-}
-
-function openFile(path: string) {
-  workspaceStore.openFile(path)
-  router.push({ path: '/editor', query: { file: path } })
-}
-
-function openPin(item: PinnedItem) {
-  const path = item.path.replace(/\\/g, '/')
-  const folder = path.slice(0, path.lastIndexOf('/'))
-  if (/\/project\.md$/i.test(path)) router.push({ path: '/projects', query: { project: folder } })
-  else if (/\/book\.md$/i.test(path)) router.push({ path: '/learning', query: { book: folder } })
-  else openFile(path)
-}
-
-function pinCurrentFile() {
-  if (!workspaceStore.activeFile) return
-  if (!workspaceStore.togglePin(workspaceStore.activeFile)) toast.warning(t('sidebar.pinLimit'))
-}
-
-function movePin(item: PinnedItem, index: number) {
-  const target = Math.max(0, Math.min(index, pins.value.length - 1))
-  workspaceStore.movePin(item.path, target)
-  pinAnnouncement.value = t('sidebar.pinMoved', { title: item.title, position: target + 1 })
-}
-
-function startPinDrag(event: DragEvent, item: PinnedItem) {
-  draggedPin.value = item.path
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', item.path)
-  }
-  pinMenu.value = null
-}
-
-function finishPinDrag() {
-  draggedPin.value = null
-  dragOverIndex.value = null
-}
-
-function dropPin(index: number) {
-  const item = pins.value.find(pin => pin.path === draggedPin.value)
-  if (item) movePin(item, index)
-  finishPinDrag()
-}
-
-function showPinMenu(event: MouseEvent, item: PinnedItem) {
-  pinMenuTrigger = event.currentTarget as HTMLElement
-  pinMenu.value = { item, x: Math.min(event.clientX, window.innerWidth - 180), y: Math.min(event.clientY, window.innerHeight - 60) }
-  void nextTick(() => pinMenuRef.value?.querySelector<HTMLButtonElement>('button')?.focus())
-}
-
-function closePinMenu() {
-  if (!pinMenu.value) return
-  pinMenu.value = null
-  pinMenuTrigger?.focus()
-}
-
-function unpinItem() {
-  const item = pinMenu.value?.item
-  if (item && workspaceStore.isPinned(item.path)) {
-    workspaceStore.togglePin(item.path)
-    pinAnnouncement.value = t('sidebar.pinRemoved', { title: item.title })
-  }
-  closePinMenu()
-}
-
-function handlePinKey(event: KeyboardEvent, item: PinnedItem, index: number) {
-  if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-    event.preventDefault()
-    movePin(item, index + (event.key === 'ArrowUp' ? -1 : 1))
-  } else if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
-    event.preventDefault()
-    pinMenuTrigger = event.currentTarget as HTMLElement
-    const rect = pinMenuTrigger.getBoundingClientRect()
-    pinMenu.value = { item, x: rect.left + 12, y: Math.min(rect.bottom, window.innerHeight - 60) }
-    void nextTick(() => pinMenuRef.value?.querySelector<HTMLButtonElement>('button')?.focus())
-  }
-}
-
-watch(() => workspaceStore.currentWorkspace?.path, () => {
-  pinMenu.value = null
-  finishPinDrag()
-})
 
 const indexStatus = computed(() => {
   if (!workspaceStore.hasWorkspace) return { state: 'idle', label: t('sidebar.selectWorkspace'), detail: t('sidebar.indexIdleDetail') }
@@ -657,274 +523,54 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
               :aria-label="t('sidebar.hasBlockersAria')"
             />
           </button>
+          <div class="more-wrap">
+            <button
+              class="nav-item"
+              data-testid="nav-more"
+              :class="{ collapsed, active: moreOpen }"
+              :aria-expanded="moreOpen"
+              aria-haspopup="menu"
+              :aria-label="t('sidebar.more')"
+              :title="t('sidebar.moreTip')"
+              @click.stop="moreOpen = !moreOpen"
+            >
+              <MoreHorizontal
+                :size="16"
+                class="nav-icon"
+              />
+              <span
+                v-if="!collapsed"
+                class="nav-label"
+              >
+                <span>{{ t('sidebar.more') }}</span>
+              </span>
+            </button>
+            <div
+              v-if="moreOpen"
+              class="more-menu"
+              role="menu"
+              :aria-label="t('sidebar.more')"
+            >
+              <button
+                v-for="entry in moreItems"
+                :key="entry.id"
+                type="button"
+                role="menuitem"
+                class="more-menu-item"
+                :data-testid="`nav-more-${entry.id}`"
+                @click="openMore(entry.route)"
+              >
+                <component
+                  :is="entry.icon"
+                  :size="15"
+                />
+                <span>{{ entry.label }}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </nav>
 
-      <!-- 🧩 扩展区：长尾功能页（手风琴，默认折叠，状态持久化） -->
-      <section
-        v-if="!collapsed"
-        class="sidebar-zone accordion-zone extended-zone"
-        data-testid="sidebar-extended"
-        :aria-label="t('sidebar.extendedZoneAria')"
-      >
-        <div
-          class="section-heading section-heading-clickable"
-          data-testid="sidebar-extended-toggle"
-          role="button"
-          tabindex="0"
-          :aria-expanded="extendedExpanded"
-          @click="toggleExtendedExpanded"
-          @keydown.enter.prevent="toggleExtendedExpanded"
-          @keydown.space.prevent="toggleExtendedExpanded"
-        >
-          <ChevronRight
-            :size="12"
-            class="section-chevron"
-            :class="{ expanded: extendedExpanded }"
-          />
-          <Puzzle :size="12" />
-          <span>{{ t('sidebar.extended.title') }}</span>
-        </div>
-        <div
-          v-if="extendedExpanded"
-          class="extended-list"
-        >
-          <button
-            v-for="entry in extendedItems"
-            :key="entry.id"
-            class="file-shortcut extended-item"
-            :data-testid="`nav-extended-${entry.id}`"
-            :title="entry.label"
-            @click="router.push(entry.route)"
-          >
-            <component
-              :is="entry.icon"
-              :size="15"
-            />
-            <span
-              v-if="!collapsed"
-              class="file-shortcut-label"
-            >{{ entry.label }}</span>
-          </button>
-        </div>
-      </section>
-
-      <!-- 固定区：有固定项才显示，空态不占位 -->
-      <section
-        v-if="pins.length"
-        class="sidebar-zone pins-zone"
-        data-testid="sidebar-pins"
-        :aria-label="t('sidebar.pinsZoneAria')"
-      >
-        <div
-          v-if="!collapsed"
-          class="section-heading"
-        >
-          <Pin :size="12" />
-          <span>{{ t('sidebar.pinsTitle') }}</span>
-          <span class="zone-count">{{ pins.length }}/8</span>
-          <button
-            v-if="workspaceStore.activeFile && workspaceStore.hasWorkspace"
-            class="pin-current-btn"
-            data-testid="sidebar-pin-current"
-            :title="workspaceStore.isPinned(workspaceStore.activeFile) ? t('sidebar.unpinCurrent') : t('sidebar.pinCurrent')"
-            :aria-label="workspaceStore.isPinned(workspaceStore.activeFile) ? t('sidebar.unpinCurrent') : t('sidebar.pinCurrent')"
-            :aria-pressed="workspaceStore.isPinned(workspaceStore.activeFile)"
-            @click="pinCurrentFile"
-          >
-            <Pin :size="13" />
-          </button>
-        </div>
-        <button
-          v-for="(item, index) in pins"
-          :key="item.path"
-          class="file-shortcut pin-item"
-          data-testid="sidebar-pin"
-          :class="{ 'drag-target': dragOverIndex === index && draggedPin !== item.path, 'is-dragging': draggedPin === item.path }"
-          :title="t('sidebar.pinItemTip', { title: item.title })"
-          :aria-label="item.title"
-          draggable="true"
-          @click="openPin(item)"
-          @keydown="handlePinKey($event, item, index)"
-          @contextmenu.prevent="showPinMenu($event, item)"
-          @dragstart="startPinDrag($event, item)"
-          @dragover.prevent="dragOverIndex = index"
-          @dragleave="dragOverIndex = null"
-          @drop.prevent="dropPin(index)"
-          @dragend="finishPinDrag"
-        >
-          <component
-            :is="pinIcon(item.path)"
-            :size="15"
-          />
-          <span
-            v-if="!collapsed"
-            class="file-shortcut-label"
-          >{{ item.title }}</span>
-          <GripVertical
-            v-if="!collapsed"
-            :size="12"
-            class="pin-grip"
-            aria-hidden="true"
-          />
-        </button>
-      </section>
-
-      <!-- 今日脉搏：全局常驻的当天状态速览（数据来自 workbenchStore，点击直达对应页） -->
-      <section
-        v-if="!collapsed && workspaceStore.hasWorkspace"
-        class="sidebar-zone pulse-zone"
-        data-testid="sidebar-pulse"
-        :aria-label="t('sidebar.pulseTitle')"
-      >
-        <div
-          class="section-heading section-heading-clickable"
-          data-testid="sidebar-pulse-toggle"
-          role="button"
-          tabindex="0"
-          :aria-expanded="pulseExpanded"
-          @click="togglePulseExpanded"
-          @keydown.enter.prevent="togglePulseExpanded"
-          @keydown.space.prevent="togglePulseExpanded"
-        >
-          <ChevronRight
-            :size="12"
-            class="section-chevron"
-            :class="{ expanded: pulseExpanded }"
-          />
-          <span>{{ t('sidebar.pulseTitle') }}</span>
-        </div>
-        <div v-if="pulseExpanded" class="pulse-grid">
-          <button
-            class="pulse-cell"
-            :class="{ 'has-active': todayPending > 0 }"
-            data-testid="pulse-todos"
-            :title="t('sidebar.pulseTodosTip', { done: completedToday, total: workbenchStore.todayTasks.length })"
-            @click="router.push('/today')"
-          >
-            <CheckCircle2 :size="13" />
-            <span class="pulse-label">{{ t('sidebar.pulseTodosLabel') }}</span>
-            <span class="pulse-value">{{ completedToday }}/{{ workbenchStore.todayTasks.length }}</span>
-          </button>
-          <button
-            class="pulse-cell"
-            :class="{ 'has-active': workbenchStore.dueReminders.length > 0 }"
-            data-testid="pulse-reminders"
-            :title="t('sidebar.pulseRemindersTip', { count: workbenchStore.dueReminders.length })"
-            @click="router.push('/reminders')"
-          >
-            <Bell :size="13" />
-            <span class="pulse-label">{{ t('sidebar.pulseRemindersLabel') }}</span>
-            <span class="pulse-value">{{ workbenchStore.dueReminders.length }}</span>
-          </button>
-          <button
-            class="pulse-cell"
-            :class="{ 'has-alert': workbenchStore.blockers.length > 0 }"
-            data-testid="pulse-blockers"
-            :title="t('sidebar.pulseBlockersTip', { count: workbenchStore.blockers.length })"
-            @click="router.push('/todos')"
-          >
-            <AlertTriangle :size="13" />
-            <span class="pulse-label">{{ t('sidebar.pulseBlockersLabel') }}</span>
-            <span class="pulse-value">{{ workbenchStore.blockers.length }}</span>
-          </button>
-          <button
-            class="pulse-cell"
-            :class="{ 'has-active': workbenchStore.reviewQueue.length > 0 }"
-            data-testid="pulse-review"
-            :title="t('sidebar.pulseReviewTip', { count: workbenchStore.reviewQueue.length })"
-            @click="router.push('/learning')"
-          >
-            <GraduationCap :size="13" />
-            <span class="pulse-label">{{ t('sidebar.pulseReviewLabel') }}</span>
-            <span class="pulse-value">{{ workbenchStore.reviewQueue.length }}</span>
-          </button>
-        </div>
-      </section>
-
-      <!-- 📅 迷你月历（手风琴，默认展开，状态持久化） -->
-      <section
-        v-if="!collapsed"
-        class="sidebar-zone accordion-zone"
-        :aria-label="t('sidebar.calendarZoneAria')"
-      >
-        <div
-          class="section-heading section-heading-clickable"
-          data-testid="sidebar-calendar-toggle"
-          role="button"
-          tabindex="0"
-          :aria-expanded="calendarExpanded"
-          @click="toggleCalendarExpanded"
-          @keydown.enter.prevent="toggleCalendarExpanded"
-          @keydown.space.prevent="toggleCalendarExpanded"
-        >
-          <ChevronRight
-            :size="12"
-            class="section-chevron"
-            :class="{ expanded: calendarExpanded }"
-          />
-          <Calendar :size="12" />
-          <span>{{ t('sidebar.calendarZoneAria') }}</span>
-        </div>
-        <SidebarCalendar v-if="calendarExpanded" />
-      </section>
-
-      <!-- 🕒 最近文档（手风琴，最多 10 条，状态持久化） -->
-      <section
-        v-if="!collapsed"
-        class="sidebar-zone recent-zone"
-        data-testid="sidebar-recent"
-        :aria-label="t('sidebar.recentZoneAria')"
-      >
-        <div
-          class="section-heading section-heading-clickable"
-          data-testid="sidebar-recent-toggle"
-          role="button"
-          tabindex="0"
-          :aria-expanded="recentExpanded"
-          :title="recentExpanded ? t('sidebar.collapseRecent') : t('sidebar.expandRecent')"
-          @click="toggleRecentExpanded"
-          @keydown.enter.prevent="toggleRecentExpanded"
-          @keydown.space.prevent="toggleRecentExpanded"
-        >
-          <ChevronRight
-            :size="12"
-            class="section-chevron"
-            :class="{ expanded: recentExpanded }"
-          />
-          <Clock :size="12" />
-          <span>{{ t('sidebar.recentTitle') }}</span>
-          <span
-            v-if="recentFiles.length"
-            class="zone-count"
-          >{{ recentFiles.length }}</span>
-        </div>
-        <div
-          v-show="recentExpanded"
-          class="recent-items-container"
-        >
-          <p
-            v-if="!recentFiles.length"
-            class="recent-empty"
-          >
-            {{ t('sidebar.recentEmpty') }}
-          </p>
-          <button
-            v-for="file in recentFiles"
-            :key="file.path"
-            class="file-shortcut"
-            data-testid="sidebar-recent-file"
-            :class="{ active: route.path === '/editor' && workspaceStore.activeFile === file.path }"
-            :title="file.path"
-            :aria-label="file.title"
-            @click="openFile(file.path)"
-          >
-            <FileText :size="14" />
-            <span class="file-shortcut-label">{{ file.title }}</span>
-            <span class="file-shortcut-time">{{ formatRelativeTime(file.openedAt) }}</span>
-          </button>
-        </div>
-      </section>
     </div>
 
     <div class="sidebar-footer">
@@ -976,29 +622,6 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
         </button>
       </div>
     </div>
-    <span
-      class="sr-only"
-      aria-live="polite"
-    >{{ pinAnnouncement }}</span>
-    <Teleport to="body">
-      <div
-        v-if="pinMenu"
-        ref="pinMenuRef"
-        class="pin-context-menu"
-        role="menu"
-        :aria-label="t('sidebar.pinMenuAria')"
-        :style="{ left: `${pinMenu.x}px`, top: `${pinMenu.y}px` }"
-      >
-        <button
-          role="menuitem"
-          data-testid="sidebar-unpin"
-          @click="unpinItem"
-        >
-          <PinOff :size="14" />
-          {{ t('sidebar.unpinAction') }}
-        </button>
-      </div>
-    </Teleport>
   </aside>
 </template>
 
@@ -1177,18 +800,6 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
   display: flex; align-items: center; gap: 6px; min-height: 22px;
   padding: 0 4px 4px; color: var(--text-muted); font-size: 11px; font-weight: 600;
 }
-.zone-count { margin-left: auto; font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 400; }
-.section-heading-clickable {
-  cursor: pointer;
-  user-select: none;
-  border-radius: var(--radius-sm);
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-.section-heading-clickable:hover { background: var(--bg-hover); color: var(--text-primary); }
-.section-chevron { color: var(--text-muted); transition: transform var(--transition-fast); flex-shrink: 0; }
-.section-chevron.expanded { transform: rotate(90deg); }
-.recent-items-container { display: flex; flex-direction: column; gap: 1px; padding-bottom: 2px; }
-.recent-empty { margin: 2px 6px 4px; color: var(--text-muted); font-size: 11px; line-height: 1.7; }
 .action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
 .action-btn {
   display: flex; align-items: center; justify-content: center; gap: 5px;
@@ -1204,28 +815,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
 .report-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--bg-card); font-size: 10px; font-variant-numeric: tabular-nums; }
 .sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .sidebar-scroll .sidebar-zone + .sidebar-zone { border-top: 1px solid var(--border); }
-.pin-current-btn {
-  display: flex; align-items: center; justify-content: center; width: 22px; height: 22px;
-  border-radius: 4px; color: var(--text-muted);
-}
-.pin-current-btn:hover, .pin-current-btn[aria-pressed='true'] { color: var(--accent); background: var(--bg-hover); }
-.file-shortcut {
-  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px;
-  padding: 6px 8px; border: 1px solid transparent; border-radius: var(--radius-sm);
-  color: var(--text-secondary); text-align: left; font-size: 12px;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-.file-shortcut svg { flex-shrink: 0; color: var(--text-muted); }
-.file-shortcut:hover { background: var(--bg-hover); color: var(--text-primary); }
-.file-shortcut.active { background: var(--accent-alpha, rgba(0, 122, 255, 0.08)); color: var(--accent); }
-.file-shortcut-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-shortcut-time { flex-shrink: 0; color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
 
-/* 扩展区：长尾功能页纵向列表（默认折叠，展开后与最近文档同款行样式） */
-.extended-list { display: flex; flex-direction: column; gap: 2px; padding: 2px 0 4px; }
-.extended-item { min-height: 28px; padding: 5px 8px; font-size: 12px; }
-.pin-grip { opacity: 0; cursor: grab; }
-.pin-item:hover .pin-grip, .pin-item:focus-visible .pin-grip { opacity: 0.6; }
 
 /* 页面入口：功能页导航纵向紧凑列表（图标 + 名称 + 徽章） */
 .nav-chip-row {
@@ -1238,34 +828,6 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
 .nav-chip-row .nav-item { min-height: 30px; margin: 0; padding: 5px 8px; }
 .nav-chip-row .nav-label { font-size: 12px; }
 .nav-chip-row .nav-label span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-/* 今日脉搏：2×2 迷你指标卡 */
-.pulse-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-}
-.pulse-cell {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  font-size: 11px;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-.pulse-cell:hover { background: var(--bg-hover); color: var(--text-primary); }
-.pulse-cell svg { flex-shrink: 0; color: var(--text-muted); }
-.pulse-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
-.pulse-value { flex-shrink: 0; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-muted); }
-.pulse-cell.has-active .pulse-value { color: var(--accent); }
-.pulse-cell.has-active svg { color: var(--accent); }
-.pulse-cell.has-alert .pulse-value { color: var(--error, #d54c4c); }
-.pulse-cell.has-alert svg { color: var(--error, #d54c4c); }
 
 .nav-item {
   position: relative; display: flex; align-items: center; gap: 9px; width: 100%;
@@ -1283,6 +845,27 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
   color: var(--text-muted); padding: 2px 5px; border-radius: 5px; background: var(--bg-card);
 }
 .nav-badge.has-blockers { color: var(--error, #d54c4c); background: rgba(213, 76, 76, 0.1); }
+.more-wrap { position: relative; }
+.more-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: var(--z-dropdown, 1000);
+  min-width: 158px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+}
+.sidebar.collapsed .more-menu { top: 0; left: calc(100% + 6px); }
+.more-menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 9px; border-radius: 4px;
+  color: var(--text-primary); font-size: 12px; text-align: left;
+}
+.more-menu-item:hover { background: var(--bg-hover); }
+.more-menu-item svg { flex-shrink: 0; color: var(--text-muted); }
 .blocker-dot { position: absolute; top: 5px; right: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--error, #d54c4c); }
 .sidebar-footer { padding: 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
 .index-status { display: flex; align-items: center; gap: 6px; min-height: 20px; padding: 0 5px; color: var(--text-muted); font-size: 11px; }
@@ -1305,22 +888,12 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
 .sidebar.collapsed .action-grid { grid-template-columns: minmax(0, 1fr); }
 .sidebar.collapsed .report-btn { grid-column: auto; }
 .sidebar.collapsed .sidebar-zone { padding: 6px; }
-.sidebar.collapsed .file-shortcut, .nav-item.collapsed { justify-content: center; padding: 8px; }
+.sidebar.collapsed .nav-item.collapsed { justify-content: center; padding: 8px; }
 .sidebar.collapsed .footer-actions { flex-direction: column; }
 .sidebar.collapsed .footer-settings-btn, .sidebar.collapsed .collapse-btn { width: 100%; }
 .sidebar.collapsed .index-status { justify-content: center; }
 .sidebar.collapsed .ws-dropdown { right: auto; width: 220px; }
-.sidebar button:focus-visible, .pin-context-menu button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.pin-context-menu {
-  position: fixed; z-index: var(--z-dropdown, 1000); min-width: 166px; padding: 4px;
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--bg-card); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
-}
-.pin-context-menu button {
-  display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px;
-  color: var(--text-primary); font-size: 12px; text-align: left; border-radius: 4px;
-}
-.pin-context-menu button:hover { background: var(--bg-hover); }
+.sidebar button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @keyframes status-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 @media (prefers-reduced-motion: reduce) { .index-status[data-state='syncing'] .status-dot { animation: none; } }

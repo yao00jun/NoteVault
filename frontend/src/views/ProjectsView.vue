@@ -15,6 +15,7 @@ import {
   FileText,
   Layers,
   ListTodo,
+  PackageOpen,
   Pin,
   Plus,
   RefreshCw,
@@ -23,7 +24,8 @@ import {
   Sparkles,
   X,
 } from '@lucide/vue'
-import type { WorkbenchProject, WorkbenchTask } from '@/api/workbench'
+import type { WorkbenchDeliverable, WorkbenchProject, WorkbenchTask } from '@/api/workbench'
+import { FileService } from '@/api'
 import TaskCard from '@/components/workbench/TaskCard.vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -41,6 +43,7 @@ import '@/styles/workbench-collections.css'
 import { requestSourceImport } from '@/composables/useSourceImport'
 import { formatRelativeTime } from '@/utils/relativeTime'
 import CollectionOnboarding from '@/components/workbench/CollectionOnboarding.vue'
+import PageHeader from '@/components/common/PageHeader.vue'
 
 const workbench = useWorkbenchStore()
 const workspace = useWorkspaceStore()
@@ -53,6 +56,8 @@ const statusFilter = ref('all')
 const typeFilter = ref('all')
 const periodFilter = ref<TaskPeriod>('all')
 const detailTab = ref('tasks')
+// 资料页签内的文档筛选：架构总结不再是独立页签，而是资料的一种视图
+const docFilter = ref<'all' | 'notes' | 'architecture'>('all')
 const showTaskForm = ref(false)
 const taskTitle = ref('')
 const taskKind = ref('US')
@@ -60,11 +65,11 @@ const taskDue = ref('')
 const addingTask = ref(false)
 const taskError = ref('')
 
+// 三个页签覆盖项目全貌：任务推进、资料（文档/架构/技术栈/复习）、交付物。
 const tabs = [
   { id: 'tasks', icon: ListTodo },
   { id: 'notes', icon: FileText },
-  { id: 'architecture', icon: Layers },
-  { id: 'technology', icon: Code2 },
+  { id: 'deliverables', icon: PackageOpen },
 ]
 const selectedProject = computed(() => {
   const query = route.query.project
@@ -156,6 +161,20 @@ const architectureNotes = computed(() =>
     /架构|architecture|(?:^|[/\s-])adr(?:[/\s.-]|$)/i.test(doc.title + ' ' + doc.path)
   )
 )
+const architecturePaths = computed(() => new Set(architectureNotes.value.map((doc) => doc.path)))
+const noteOnlyDocuments = computed(() =>
+  projectNotes.value.filter((doc) => !architecturePaths.value.has(doc.path))
+)
+const displayedDocuments = computed(() => {
+  if (docFilter.value === 'architecture') return architectureNotes.value
+  if (docFilter.value === 'notes') return noteOnlyDocuments.value
+  return projectNotes.value
+})
+const docFilterOptions = computed(() => [
+  { id: 'all' as const, count: projectNotes.value.length },
+  { id: 'notes' as const, count: noteOnlyDocuments.value.length },
+  { id: 'architecture' as const, count: architectureNotes.value.length },
+])
 const relatedBooks = computed(() => {
   const project = selectedProject.value
   if (!project) return []
@@ -181,6 +200,7 @@ const projectDueReviewCards = computed(() =>
 
 function selectProject(project: WorkbenchProject) {
   detailTab.value = 'tasks'
+  docFilter.value = 'all'
   void router.push({ path: '/projects', query: { project: project.path } })
 }
 function showPortfolio() {
@@ -189,6 +209,81 @@ function showPortfolio() {
 function openDocument(path: string) {
   workspace.openFile(path)
   void router.push({ path: '/editor', query: { file: path } })
+}
+
+const deliverableStages = ['draft', 'review', 'final', 'other'] as const
+const deliverableStageFilter = ref<'all' | (typeof deliverableStages)[number]>('all')
+
+function normalizeDeliverableStage(stage: string): string {
+  const value = stage.trim().toLowerCase()
+  if (['draft', '初稿', '草稿', 'wip'].includes(value)) return 'draft'
+  if (['review', '修改稿', '评审', '待审'].includes(value)) return 'review'
+  if (['final', '最终版', '完成', 'published', '已发布'].includes(value)) return 'final'
+  return 'other'
+}
+
+function deliverableTypeLabel(type: string): string {
+  const value = (type || 'other').trim().toLowerCase()
+  const key = `projects.deliverableType.${value}`
+  const label = t(key)
+  return label === key ? value : label
+}
+
+// 交付物按阶段归类展示，空阶段不渲染，保持面板紧凑。
+const deliverableGroups = computed(() => {
+  const project = selectedProject.value
+  if (!project) return []
+  return deliverableStages
+    .map((stage) => ({
+      stage,
+      label: t(`projects.deliverableStage.${stage}`),
+      items: (project.deliverables ?? []).filter(
+        (item: WorkbenchDeliverable) => normalizeDeliverableStage(item.stage) === stage
+      ),
+    }))
+    .filter((group) => group.items.length > 0)
+})
+// 阶段带：草稿 → 成稿 → 发布，标出每个阶段已有多少产出，点击只看该阶段。
+const deliverableStageSteps = computed(() => {
+  const counts = new Map<string, number>()
+  for (const item of selectedProject.value?.deliverables ?? []) {
+    const stage = normalizeDeliverableStage(item.stage)
+    counts.set(stage, (counts.get(stage) ?? 0) + 1)
+  }
+  return deliverableStages
+    .filter((stage) => stage !== 'other')
+    .map((stage, index) => ({
+      stage,
+      index: index + 1,
+      label: t(`projects.deliverableStage.${stage}`),
+      count: counts.get(stage) ?? 0,
+    }))
+})
+const visibleDeliverableGroups = computed(() =>
+  deliverableStageFilter.value === 'all'
+    ? deliverableGroups.value
+    : deliverableGroups.value.filter((group) => group.stage === deliverableStageFilter.value)
+)
+watch(
+  () => selectedProject.value?.path,
+  () => {
+    deliverableStageFilter.value = 'all'
+  }
+)
+
+async function createRetrospective(): Promise<void> {
+  const project = selectedProject.value
+  const workspacePath = workspace.currentWorkspace?.path
+  if (!project || !workspacePath) return
+  const path = `${project.folder}/复盘.md`
+  try {
+    const content = `---\ntags: [复盘]\n---\n\n# ${project.name} · 复盘\n\n## 结果数据\n\n## 做对了什么\n\n## 做错了什么\n\n## 下次改进\n\n## 可复用资产\n`
+    await FileService.CreateFile(workspacePath, path, content)
+    await workbench.refresh()
+    openDocument(path)
+  } catch (error) {
+    toast.error((error as Error).message)
+  }
 }
 function togglePin(path: string, title: string) {
   if (!workspace.togglePin(path, title)) toast.warning(t('common.pinLimit'))
@@ -238,26 +333,29 @@ async function addTask() {
   }
 }
 watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path], resetTaskForm)
+// 切换项目时资料筛选回到「全部」，避免沿用上一个项目的架构视图造成空列表错觉
+watch(
+  () => selectedProject.value?.path,
+  () => {
+    docFilter.value = 'all'
+  }
+)
 </script>
 
 <template>
   <div class="collection-page projects-page">
     <div class="collection-shell">
-      <header class="collection-hero">
-        <div>
-          <div class="collection-eyebrow">
-            <Rocket :size="15" /> {{ t('projects.eyebrow') }}
-          </div>
-          <h1>{{ selectedProject?.name || t('projects.title') }}</h1>
-          <p class="collection-subtitle">
-            {{
-              selectedProject
-                ? selectedProject.nextStep || t('projects.detailSubtitle')
-                : t('projects.subtitle')
-            }}
-          </p>
-        </div>
-        <div class="collection-actions">
+      <PageHeader
+        :title="selectedProject?.name || t('projects.title')"
+        :subtitle="
+          selectedProject ? t('projects.detailSubtitle') : t('projects.subtitle')
+        "
+        :eyebrow="t('projects.eyebrow')"
+        :icon="Rocket"
+        :dense="Boolean(selectedProject)"
+        :tabs-aria-label="t('projects.navAria')"
+      >
+        <template #actions>
           <template v-if="workspace.hasWorkspace">
             <button
               class="collection-button primary"
@@ -314,8 +412,89 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
               :class="{ 'collection-spin': workbench.loading }"
             /> {{ t('projects.refresh') }}
           </button>
-        </div>
-      </header>
+        </template>
+
+        <template
+          v-if="selectedProject"
+          #meta
+        >
+          <div
+            class="project-context"
+            data-testid="project-context"
+          >
+            <div class="project-context-head">
+              <span
+                class="collection-status"
+                :data-status="projectStatusLabel(selectedProject.status)"
+              >{{ projectStatusLabel(selectedProject.status) }}</span>
+              <span
+                v-if="selectedProject.phase"
+                class="project-context-phase"
+              >{{ t('projects.phaseLabel') }} · {{ selectedProject.phase }}</span>
+              <span
+                v-if="selectedProject.retrospective"
+                class="project-context-tag"
+              >{{ t('projects.retroDone') }}</span>
+              <span class="project-context-spacer" />
+              <button
+                v-if="selectedProject.retrospective"
+                class="collection-button subtle"
+                type="button"
+                data-testid="project-open-retro"
+                @click="openDocument(selectedProject.retrospective || '')"
+              >
+                <FileText :size="14" /> {{ t('projects.retroOpen') }}
+              </button>
+              <button
+                v-else
+                class="collection-button subtle"
+                type="button"
+                data-testid="project-create-retro"
+                @click="createRetrospective"
+              >
+                <Plus :size="14" /> {{ t('projects.retroCreate') }}
+              </button>
+            </div>
+            <p class="project-context-line">
+              <strong>{{ t('projects.nextStepLabel') }}</strong>{{ selectedProject.nextStep || t('projects.nextStepEmpty') }}
+            </p>
+            <p
+              v-if="selectedProject.coreQuestion"
+              class="project-context-line"
+            >
+              <strong>{{ t('projects.coreQuestionLabel') }}</strong>{{ selectedProject.coreQuestion }}
+            </p>
+            <details
+              v-if="selectedProject.background"
+              class="project-context-more"
+            >
+              <summary>{{ t('projects.backgroundLabel') }}</summary>
+              <p>{{ selectedProject.background }}</p>
+            </details>
+          </div>
+        </template>
+
+        <template
+          v-if="selectedProject"
+          #tabs
+        >
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            class="collection-tab"
+            :class="{ active: detailTab === tab.id }"
+            :data-testid="'project-tab-' + tab.id"
+            :aria-current="detailTab === tab.id ? 'page' : undefined"
+            type="button"
+            @click="detailTab = tab.id"
+          >
+            <component
+              :is="tab.icon"
+              :size="15"
+            />{{ t('projects.tab.' + tab.id) }}
+          </button>
+        </template>
+      </PageHeader>
 
       <div
         v-if="workbench.error"
@@ -401,28 +580,6 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
             <ChevronRight :size="16" />
           </button>
         </section>
-
-        <nav
-          v-if="selectedProject"
-          class="collection-tabs"
-          :aria-label="t('projects.navAria')"
-        >
-          <button
-            v-for="tab in tabs"
-            :key="tab.id"
-            class="collection-tab"
-            :class="{ active: detailTab === tab.id }"
-            :data-testid="'project-tab-' + tab.id"
-            :aria-current="detailTab === tab.id ? 'page' : undefined"
-            type="button"
-            @click="detailTab = tab.id"
-          >
-            <component
-              :is="tab.icon"
-              :size="15"
-            />{{ t('projects.tab.' + tab.id) }}
-          </button>
-        </nav>
 
         <div
           v-if="!selectedProject || detailTab === 'tasks'"
@@ -574,11 +731,30 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
               </p>
             </div>
           </template>
-          <template v-else-if="detailTab === 'notes' || detailTab === 'architecture'">
+          <template v-else-if="detailTab === 'notes'">
             <div class="collection-section-title">
-              <h2>{{ detailTab === 'architecture' ? t('projects.architectureTitle') : t('projects.tab.notes') }}</h2>
+              <h2>
+                {{ t('projects.tab.notes') }} <span class="collection-tab-count">{{ projectNotes.length }}</span>
+              </h2>
+              <div
+                class="project-doc-filter"
+                role="group"
+                :aria-label="t('projects.docFilterAria')"
+              >
+                <button
+                  v-for="option in docFilterOptions"
+                  :key="option.id"
+                  :class="{ active: docFilter === option.id }"
+                  :data-testid="'project-doc-filter-' + option.id"
+                  :aria-pressed="docFilter === option.id"
+                  type="button"
+                  @click="docFilter = option.id"
+                >
+                  {{ t('projects.docFilter.' + option.id) }}<span class="collection-tab-count">{{ option.count }}</span>
+                </button>
+              </div>
               <button
-                class="collection-button subtle"
+                class="collection-button subtle project-open-folder"
                 type="button"
                 @click="router.push({ path: '/editor', query: { folder: selectedProject.folder } })"
               >
@@ -587,11 +763,11 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
             </div>
             <div class="collection-panel">
               <div
-                v-if="(detailTab === 'architecture' ? architectureNotes : projectNotes).length"
+                v-if="displayedDocuments.length"
                 class="collection-document-list"
               >
                 <div
-                  v-for="doc in detailTab === 'architecture' ? architectureNotes : projectNotes"
+                  v-for="doc in displayedDocuments"
                   :key="doc.path"
                   class="collection-document-row"
                 >
@@ -623,93 +799,185 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
               >
                 <Layers :size="30" />
                 <h3>
-                  {{ detailTab === 'architecture' ? t('projects.architectureEmptyTitle') : t('projects.notesEmptyTitle') }}
+                  {{ docFilter === 'architecture' ? t('projects.architectureEmptyTitle') : t('projects.notesEmptyTitle') }}
                 </h3>
                 <p>
                   {{
-                    detailTab === 'architecture'
+                    docFilter === 'architecture'
                       ? t('projects.architectureEmptyDesc')
                       : t('projects.notesEmptyDesc')
                   }}
                 </p>
               </div>
             </div>
+
+            <!-- 技术栈 / 复习卡 / 关联书籍：都属于项目的「资料」，不再单独占一个页签 -->
+            <section
+              class="collection-panel project-tech"
+              data-testid="project-technology"
+            >
+              <div class="collection-tags project-technology-tags">
+                <span
+                  v-for="tech in selectedProject.techStack"
+                  :key="tech"
+                  class="collection-tag"
+                ><Code2 :size="13" />{{ tech }}</span><span
+                  v-if="!selectedProject.techStack.length"
+                  class="collection-subtitle"
+                >{{ t('projects.noTechStack') }}</span>
+              </div>
+              <div
+                v-if="projectReviewCards.length"
+                class="project-review-cards"
+                data-testid="project-review-cards"
+              >
+                <div class="project-review-cards-head">
+                  <strong><BookMarked :size="15" />{{ t('projects.reviewCardsTitle') }}</strong>
+                  <span class="project-review-cards-meta">{{ t('projects.reviewCardsMeta', { total: projectReviewCards.length, due: projectDueReviewCards.length }) }}</span>
+                  <button
+                    class="collection-button subtle"
+                    type="button"
+                    data-testid="project-review-cards-go"
+                    @click="router.push({ path: '/learning', query: { tab: 'review' } })"
+                  >
+                    {{ t('projects.reviewCardsGo') }} <ArrowUpRight :size="14" />
+                  </button>
+                </div>
+                <ul class="project-review-cards-list">
+                  <li
+                    v-for="card in projectReviewCards.slice(0, 3)"
+                    :key="card.id"
+                  >
+                    <span class="project-review-question">{{ card.question }}</span>
+                    <span
+                      v-if="card.due && card.due <= workbench.today"
+                      class="project-review-due"
+                    >{{ t('projects.reviewDue') }}</span>
+                  </li>
+                </ul>
+                <small
+                  v-if="projectReviewCards.length > 3"
+                  class="project-review-cards-more"
+                >{{ t('projects.reviewCardsMore', { count: projectReviewCards.length - 3 }) }}</small>
+              </div>
+              <div
+                v-if="relatedBooks.length"
+                class="project-related-books"
+              >
+                <button
+                  v-for="book in relatedBooks"
+                  :key="book.path"
+                  class="collection-button project-related-book"
+                  type="button"
+                  @click="router.push({ path: '/learning', query: { book: book.path } })"
+                >
+                  <BookOpen :size="15" />{{ book.name }}<small>{{ t('projects.bookMeta', { n: book.noteCount, progress: book.progress }) }}</small>
+                </button>
+              </div>
+              <p
+                v-else
+                class="project-tech-empty"
+              >
+                {{ t('projects.connectDesc') }}
+              </p>
+            </section>
           </template>
-          <template v-else>
+          <template v-else-if="detailTab === 'deliverables'">
             <div class="collection-section-title">
               <h2>
-                {{ t('projects.techTitle') }} <span class="collection-tab-count">{{ projectReviewCards.length }}</span>
+                {{ t('projects.tab.deliverables') }} <span class="collection-tab-count">{{ (selectedProject.deliverables ?? []).length }}</span>
               </h2>
               <button
                 class="collection-button subtle"
                 type="button"
-                @click="router.push('/learning')"
+                @click="router.push({ path: '/editor', query: { folder: selectedProject.folder + '/Deliverables' } })"
               >
-                {{ t('projects.goBookshelf') }} <ArrowUpRight :size="14" />
+                {{ t('projects.openDeliverablesFolder') }} <ArrowUpRight :size="14" />
               </button>
             </div>
-            <div class="collection-tags project-technology-tags">
-              <span
-                v-for="tech in selectedProject.techStack"
-                :key="tech"
-                class="collection-tag"
-              ><Code2 :size="13" />{{ tech }}</span><span
-                v-if="!selectedProject.techStack.length"
-                class="collection-subtitle"
-              >{{ t('projects.noTechStack') }}</span>
-            </div>
-            <div
-              v-if="projectReviewCards.length"
-              class="collection-panel project-review-cards"
-              data-testid="project-review-cards"
+            <ol
+              class="project-stage-band"
+              :aria-label="t('projects.stageBandAria')"
             >
-              <div class="project-review-cards-head">
-                <strong><BookMarked :size="15" />{{ t('projects.reviewCardsTitle') }}</strong>
-                <span class="project-review-cards-meta">{{ t('projects.reviewCardsMeta', { total: projectReviewCards.length, due: projectDueReviewCards.length }) }}</span>
-                <button
-                  class="collection-button subtle"
-                  type="button"
-                  data-testid="project-review-cards-go"
-                  @click="router.push({ path: '/learning', query: { tab: 'review' } })"
-                >
-                  {{ t('projects.reviewCardsGo') }} <ArrowUpRight :size="14" />
-                </button>
-              </div>
-              <ul class="project-review-cards-list">
-                <li
-                  v-for="card in projectReviewCards.slice(0, 3)"
-                  :key="card.id"
-                >
-                  <span class="project-review-question">{{ card.question }}</span>
-                  <span
-                    v-if="card.due && card.due <= workbench.today"
-                    class="project-review-due"
-                  >{{ t('projects.reviewDue') }}</span>
-                </li>
-              </ul>
-              <small
-                v-if="projectReviewCards.length > 3"
-                class="project-review-cards-more"
-              >{{ t('projects.reviewCardsMore', { count: projectReviewCards.length - 3 }) }}</small>
-            </div>
-            <div class="collection-grid">
-              <button
-                v-for="book in relatedBooks"
-                :key="book.path"
-                class="project-related-book collection-panel"
-                type="button"
-                @click="router.push({ path: '/learning', query: { book: book.path } })"
+              <li
+                v-for="step in deliverableStageSteps"
+                :key="step.stage"
               >
-                <BookOpen :size="25" /><span><strong>{{ book.name }}</strong><small>{{ t('projects.bookMeta', { n: book.noteCount, progress: book.progress }) }}</small></span><ChevronRight :size="16" />
-              </button>
+                <button
+                  class="project-stage"
+                  :class="{
+                    reached: step.count > 0,
+                    active: deliverableStageFilter === step.stage,
+                  }"
+                  :data-testid="'deliverable-stage-' + step.stage"
+                  :aria-pressed="deliverableStageFilter === step.stage"
+                  :disabled="step.count === 0"
+                  type="button"
+                  @click="
+                    deliverableStageFilter =
+                      deliverableStageFilter === step.stage ? 'all' : step.stage
+                  "
+                >
+                  <span class="project-stage-index">{{ step.index }}</span>
+                  <span class="project-stage-copy">
+                    <strong>{{ step.label }}</strong>
+                    <small>{{ t('projects.stageCount', { n: step.count }) }}</small>
+                  </span>
+                </button>
+                <ChevronRight
+                  v-if="step.index < deliverableStageSteps.length"
+                  :size="15"
+                  class="project-stage-arrow"
+                />
+              </li>
+            </ol>
+            <button
+              v-if="deliverableStageFilter !== 'all'"
+              class="collection-button subtle project-stage-reset"
+              type="button"
+              data-testid="deliverable-stage-reset"
+              @click="deliverableStageFilter = 'all'"
+            >
+              {{ t('projects.stageAll') }}
+            </button>
+            <div
+              v-if="visibleDeliverableGroups.length"
+              class="collection-panel project-deliverables"
+              data-testid="project-deliverables"
+            >
+              <div
+                v-for="group in visibleDeliverableGroups"
+                :key="group.stage"
+                class="project-deliverable-group"
+              >
+                <h3 class="project-deliverable-group-head">
+                  {{ group.label }} <span class="collection-tab-count">{{ group.items.length }}</span>
+                </h3>
+                <div class="collection-document-list">
+                  <div
+                    v-for="item in group.items"
+                    :key="item.path"
+                    class="collection-document-row"
+                  >
+                    <button
+                      class="collection-document-open"
+                      type="button"
+                      @click="openDocument(item.path)"
+                    >
+                      <PackageOpen :size="19" /><span class="collection-document-copy"><strong>{{ item.title }}</strong><small>{{ deliverableTypeLabel(item.type) }}<template v-if="item.version"> · {{ item.version }}</template></small></span>
+                    </button>
+                    <span class="collection-document-date">{{ formatRelativeTime(item.modifiedAt) }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
             <div
-              v-if="!relatedBooks.length"
+              v-else
               class="collection-empty collection-panel"
             >
-              <BookOpen :size="30" />
-              <h3>{{ t('projects.connectTitle') }}</h3>
-              <p>{{ t('projects.connectDesc') }}</p>
+              <PackageOpen :size="30" />
+              <h3>{{ t('projects.deliverablesEmptyTitle') }}</h3>
+              <p>{{ t('projects.deliverablesEmptyDesc') }}</p>
             </div>
           </template>
         </section>
@@ -991,7 +1259,7 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
   font-size: 12px;
 }
 .project-technology-tags {
-  margin-bottom: 23px;
+  margin-bottom: 0;
 }
 .project-technology-tags .collection-tag {
   padding: 7px 11px;
@@ -1075,6 +1343,202 @@ watch([() => workspace.currentWorkspace?.path, () => selectedProject.value?.path
 .project-review-cards-more {
   color: var(--text-muted);
   font-size: 11px;
+}
+.project-context {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.project-context-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.project-context-phase {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.project-context-spacer {
+  flex: 1 1 auto;
+}
+.project-context-line {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.project-context-line strong {
+  margin-right: 8px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+/* 背景默认折叠，避免详情页顶部被长文占满 */
+.project-context-more {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.project-context-more summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  width: fit-content;
+  padding: 1px 0;
+}
+.project-context-more p {
+  margin: 5px 0 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+  overflow-wrap: anywhere;
+}
+/* 资料页签内的文档筛选（全部 / 笔记 / 架构） */
+.project-doc-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-panel);
+  margin-right: auto;
+}
+.project-doc-filter button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.project-doc-filter button:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.project-doc-filter button.active {
+  background: var(--accent-alpha);
+  color: var(--accent);
+  font-weight: 600;
+}
+.project-open-folder {
+  margin-left: auto;
+}
+/* 资料页签底部：技术栈 / 复习卡 / 关联书籍 */
+.project-tech {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+.project-tech .project-review-cards {
+  margin-bottom: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.project-related-books {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.project-related-book {
+  gap: 8px;
+  max-width: 100%;
+}
+.project-related-book small {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.project-tech-empty {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+/* 交付物阶段带：草稿 → 成稿 → 发布 */
+.project-stage-band {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.project-stage-band li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.project-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 12px 6px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+.project-stage.reached {
+  border-style: solid;
+  background: var(--surface-panel);
+  color: var(--text-primary);
+}
+.project-stage.active {
+  border-color: var(--accent);
+  background: var(--accent-alpha);
+  color: var(--accent);
+}
+.project-stage:disabled {
+  opacity: 0.5;
+}
+.project-stage-index {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg-hover);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.project-stage.reached .project-stage-index {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+.project-stage-copy strong {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.project-stage-copy small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.project-stage-arrow {
+  color: var(--text-muted);
+}
+.project-stage-reset {
+  margin-bottom: 10px;
+}
+.project-deliverable-group + .project-deliverable-group {
+  margin-top: 16px;
+}
+.project-deliverable-group-head {
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
 }
 @media (max-width: 560px) {
   .project-blockers {

@@ -34,6 +34,7 @@ import { collectionDateLabel, parseTechnologyRadar } from '@/utils/workbenchColl
 import '@/styles/workbench-collections.css'
 import { requestSourceImport } from '@/composables/useSourceImport'
 import CollectionOnboarding from '@/components/workbench/CollectionOnboarding.vue'
+import PageHeader from '@/components/common/PageHeader.vue'
 
 const workbench = useWorkbenchStore()
 const workspace = useWorkspaceStore()
@@ -188,21 +189,14 @@ watch(
 <template>
   <div class="collection-page learning-page">
     <div class="collection-shell">
-      <header class="collection-hero">
-        <div>
-          <div class="collection-eyebrow">
-            <GraduationCap :size="16" /> {{ t('learning.eyebrow') }}
-          </div>
-          <h1>{{ selectedBook?.name || t('learning.title') }}</h1>
-          <p class="collection-subtitle">
-            {{
-              selectedBook
-                ? t('learning.subtitleBook')
-                : t('learning.subtitleEmpty')
-            }}
-          </p>
-        </div>
-        <div class="collection-actions">
+      <PageHeader
+        :title="selectedBook?.name || t('learning.title')"
+        :subtitle="selectedBook ? t('learning.subtitleBook') : t('learning.subtitleEmpty')"
+        :eyebrow="t('learning.eyebrow')"
+        :icon="GraduationCap"
+        :dense="Boolean(selectedBook)"
+      >
+        <template #actions>
           <template v-if="workspace.hasWorkspace">
             <button
               class="collection-button primary"
@@ -269,8 +263,8 @@ watch(
               {{ t('learning.openSpace') }} <ArrowUpRight :size="14" />
             </button>
           </template>
-        </div>
-      </header>
+        </template>
+      </PageHeader>
       <div
         v-if="workbench.error"
         class="collection-notice error"

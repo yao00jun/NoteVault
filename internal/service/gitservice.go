@@ -39,6 +39,9 @@ type GitRunner func(ctx context.Context, dir string, args ...string) (string, er
 func defaultGitRunner(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
+	// Windows GUI 进程启动 git.exe 会弹控制台窗口（进入导入页时闪一下黑框），
+	// 平台实现里统一隐藏；非 Windows 为空操作。
+	hideSubprocessWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
