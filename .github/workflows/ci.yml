@@ -24,6 +24,13 @@ jobs:
       # 只为让编译通过；真实产物由 frontend job 构建。
       - name: Stub frontend dist (for go:embed)
         run: mkdir -p frontend/dist && printf '' > frontend/dist/index.html
+      # wails v3 的 Linux 后端是 cgo（internal/assetserver/webview），go vet /
+      # go test 都会实际编译它，需要 GTK4 与 WebKitGTK 6.0 的开发头文件。
+      # runner 上没有时 pkg-config 直接报 "Package gtk4 was not found"，整个 job 挂掉。
+      - name: Install Linux build dependencies (GTK4 / WebKitGTK 6.0)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev
       - name: Go vet
         run: go vet ./...
       - name: Go test
@@ -45,6 +52,12 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.27'
+      # 与 Go Tests 同理：golangci-lint 的 typecheck 阶段会加载并编译全部包，
+      # 缺 GTK4 头文件时表现为 "typecheck: 1 issues" 而看不出真实原因。
+      - name: Install Linux build dependencies (GTK4 / WebKitGTK 6.0)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:

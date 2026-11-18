@@ -29,9 +29,10 @@ welcome_issue.png
 deliverables/
 docs/
 
-# E2E 测试基建与产物（需浏览器环境，非编译必需）
-frontend/e2e/
-frontend/playwright.config.ts
+# E2E 测试基建必须入库：CI 的 E2E job 依赖 playwright.config.ts 与 e2e/*.spec.ts，
+# 两者被忽略时 job 只会在 cwd 里按默认规则乱捡文件（曾把 src/**/*.test.ts 当
+# Playwright 用例跑，最后报 "No tests found"）。产物仍在上面的 playwright-report /
+# test-results / e2e/screenshots 里排除。
 frontend/playwright.desktop.config.ts
 
 # 备份文件
