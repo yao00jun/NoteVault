@@ -32,9 +32,40 @@ export function CompileNote(workspacePath: string, relativePath: string, apiKey:
 }
 
 /**
+ * CompileTaskResult 取回某个异步编译任务的结构化结果。
+ * 任务未结束或 ID 未知时返回 nil——调用方应据此提示「仍在进行/结果已过期」。
+ */
+export function CompileTaskResult(taskID: string): $CancellablePromise<$models.CompileAllResult | null> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.CompileService.CompileTaskResult", taskID);
+}
+
+/**
  * ListInbox 列出 Inbox 目录下的全部 Markdown 笔记（相对路径，含 Inbox 前缀）。
  * 目录不存在时返回空切片而非错误。
  */
 export function ListInbox(workspacePath: string): $CancellablePromise<string[] | null> {
     return $Call.ByName("github.com/notevault/notevault/internal/service.CompileService.ListInbox", workspacePath);
+}
+
+/**
+ * StartCompileAll 把「编译全部 Inbox 笔记」提交到异步任务队列，返回任务 ID。
+ * 
+ * 与同步 CompileAll 的关系：两者共用同一套编译逻辑，区别只在于
+ *   - 异步版每编译一篇回报一次进度（task:progress），前端可显示进度条；
+ *   - 用户可调 TaskService.Cancel(taskID) 取消，取消点在任何一篇开始前，
+ *     在途的那一篇会随 ctx 一起中断（LLM 请求同步取消）；
+ *   - 结构化结果按任务 ID 暂存，前端在 task:finished 后用 CompileTaskResult 取回。
+ * 
+ * 未注入 TaskService 时返回空字符串，调用方应退回同步 CompileAll。
+ */
+export function StartCompileAll(workspacePath: string, apiKey: string, baseURL: string, model: string, protocol: string): $CancellablePromise<string> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.CompileService.StartCompileAll", workspacePath, apiKey, baseURL, model, protocol);
+}
+
+/**
+ * StartCompileNote 把「编译单篇笔记」提交到异步任务队列，返回任务 ID。
+ * 单篇任务的进度是 0/1 → 1/1，前端可用同一套进度条渲染。
+ */
+export function StartCompileNote(workspacePath: string, relativePath: string, apiKey: string, baseURL: string, model: string, protocol: string): $CancellablePromise<string> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.CompileService.StartCompileNote", workspacePath, relativePath, apiKey, baseURL, model, protocol);
 }

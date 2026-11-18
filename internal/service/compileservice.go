@@ -9,10 +9,12 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -30,7 +32,7 @@ type CompileOutput struct {
 // summarizeCompileClient 是其生产默认实现，复用 SummarizeService.Summarize。
 // 测试时可注入桩实现。
 type CompileAI interface {
-	Compile(apiKey, baseURL, model, protocol, title, body string) (*CompileOutput, error)
+	Compile(ctx context.Context, apiKey, baseURL, model, protocol, title, body string) (*CompileOutput, error)
 }
 
 // summarizeCompileClient 把 SummarizeService 适配成 CompileAI：
@@ -46,7 +48,7 @@ func NewSummarizeCompileAI(svc *SummarizeService) CompileAI {
 	return &summarizeCompileClient{svc: svc}
 }
 
-func (c *summarizeCompileClient) Compile(apiKey, baseURL, model, protocol, title, body string) (*CompileOutput, error) {
+func (c *summarizeCompileClient) Compile(ctx context.Context, apiKey, baseURL, model, protocol, title, body string) (*CompileOutput, error) {
 	content := body
 	if strings.TrimSpace(content) == "" {
 		content = title
@@ -62,7 +64,7 @@ func (c *summarizeCompileClient) Compile(apiKey, baseURL, model, protocol, title
 		"只能建议与本文主题相关、可能已存在于知识库中的笔记标题。\n\n" +
 		"标题：\n" + title + "\n\n正文：\n" + content
 
-	raw, err := c.svc.Summarize(apiKey, baseURL, model, protocol, userPrompt)
+	raw, err := c.svc.summarizeCtx(ctx, apiKey, baseURL, model, protocol, userPrompt)
 	if err != nil {
 		return nil, err
 	}
@@ -108,6 +110,16 @@ func splitCompileCSV(s string) []string {
 	return out
 }
 
+// compileTaskQueue 是编译服务对任务队列的最小依赖。
+//
+// 不直接持有 *TaskService 的原因不只是解耦：Wails 的绑定生成器会遍历服务结构体
+// 字段，把 *TaskService 登记成「模型」，与 services 列表里的 TaskService 导出撞名，
+// 生成出重复标识符（index.ts 里两处 export TaskService）。声明成包内接口后，
+// 生成器不再把它当作可导出的模型类型。
+type compileTaskQueue interface {
+	submit(ctx context.Context, name string, fn TaskFunc) *TaskHandle
+}
+
 // CompileService 知识编译流水线。
 type CompileService struct {
 	fileSvc *FileService
@@ -116,24 +128,81 @@ type CompileService struct {
 
 	inboxDir    string
 	compiledDir string
+
+	// tasks 为 nil 时退化为同步编译（测试与未接装配场景），
+	// 生产由容器注入，使编译走异步任务队列并可取消。
+	tasks compileTaskQueue
+
+	// resultMu 保护 results：异步任务的结构化产出按任务 ID 暂存，
+	// 前端在 task:finished 后按 ID 取回（事件只带进度，不带业务结果）。
+	resultMu  sync.Mutex
+	results   map[string]*CompileAllResult
+	resultSeq []string
 }
 
-// NewCompileService 构造编译服务。
+// maxStoredCompileResults 保留多少个任务的编译结果。
+// 数量不必大：前端只在任务结束后取一次，取完即用；留一点余量是为了事件
+// 与取结果之间的时序抖动（例如用户切页后回来重新挂载）。
+const maxStoredCompileResults = 20
+
+// NewCompileService 构造编译服务（不接任务队列，Start* 方法返回空 ID）。
 //   - inboxDir / compiledDir：相对于工作区根目录的目录名（默认 "Inbox" / "Compiled"）。
 //   - ai：AI 调用实现，生产环境传 *SummarizeService 即可。
 func NewCompileService(fileSvc *FileService, snapSvc *SnapshotService, ai CompileAI, inboxDir, compiledDir string) *CompileService {
+	return NewCompileServiceWithTasks(fileSvc, snapSvc, ai, inboxDir, compiledDir, nil)
+}
+
+// NewCompileServiceWithTasks 构造编译服务并注入异步任务队列。
+//
+// 任务队列通过构造函数注入而不是 Set 方法：Wails 会把服务的导出方法绑给前端，
+// 一个形参为 *TaskService 的 Setter 会让绑定生成器把 TaskService 同时登记成
+// 「服务」和「模型」，生成出重复标识符（index.ts 里两处 export TaskService）。
+// 构造函数不参与绑定，所以能绕开这个冲突。
+func NewCompileServiceWithTasks(fileSvc *FileService, snapSvc *SnapshotService, ai CompileAI, inboxDir, compiledDir string, tasks *TaskService) *CompileService {
 	if inboxDir == "" {
 		inboxDir = "Inbox"
 	}
 	if compiledDir == "" {
 		compiledDir = "Compiled"
 	}
-	return &CompileService{
+	svc := &CompileService{
 		fileSvc:     fileSvc,
 		snapSvc:     snapSvc,
 		ai:          ai,
 		inboxDir:    filepath.ToSlash(inboxDir),
 		compiledDir: filepath.ToSlash(compiledDir),
+		results:     make(map[string]*CompileAllResult),
+	}
+	if tasks != nil {
+		svc.tasks = tasks
+	}
+	return svc
+}
+
+// CompileTaskResult 取回某个异步编译任务的结构化结果。
+// 任务未结束或 ID 未知时返回 nil——调用方应据此提示「仍在进行/结果已过期」。
+func (s *CompileService) CompileTaskResult(taskID string) *CompileAllResult {
+	s.resultMu.Lock()
+	defer s.resultMu.Unlock()
+	return s.results[taskID]
+}
+
+// saveTaskResult 暂存结果并按 FIFO 裁剪，避免长会话无限累积。
+func (s *CompileService) saveTaskResult(taskID string, res *CompileAllResult) {
+	if taskID == "" || res == nil {
+		return
+	}
+	s.resultMu.Lock()
+	defer s.resultMu.Unlock()
+	if s.results == nil {
+		s.results = make(map[string]*CompileAllResult)
+	}
+	s.results[taskID] = res
+	s.resultSeq = append(s.resultSeq, taskID)
+	for len(s.resultSeq) > maxStoredCompileResults {
+		oldest := s.resultSeq[0]
+		s.resultSeq = s.resultSeq[1:]
+		delete(s.results, oldest)
 	}
 }
 
@@ -183,9 +252,18 @@ func (s *CompileService) ListInbox(workspacePath string) ([]string, error) {
 // CompileNote 编译单篇笔记：先建快照，再调 AI，最后把更新后的笔记移动到 Compiled。
 // relativePath 必须位于 Inbox 目录内，否则报错（避免误编译库内其他笔记）。
 func (s *CompileService) CompileNote(workspacePath, relativePath, apiKey, baseURL, model, protocol string) (*CompileResult, error) {
+	return s.compileNoteCtx(context.Background(), workspacePath, relativePath, apiKey, baseURL, model, protocol)
+}
+
+// compileNoteCtx 是 CompileNote 的 ctx 版本：取消时中断在途的 LLM 请求，
+// 且不会把已写入 Compiled 的副本留在半成品状态（写入/删除要么都成，要么回滚）。
+func (s *CompileService) compileNoteCtx(ctx context.Context, workspacePath, relativePath, apiKey, baseURL, model, protocol string) (*CompileResult, error) {
 	rel := filepath.ToSlash(relativePath)
 	if !strings.HasPrefix(rel, s.inboxDir+"/") {
 		return nil, fmt.Errorf("编译目标 %q 不在 Inbox 目录 %q 内", rel, s.inboxDir)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	content, err := s.fileSvc.ReadFile(workspacePath, rel)
@@ -202,7 +280,7 @@ func (s *CompileService) CompileNote(workspacePath, relativePath, apiKey, baseUR
 	fm, body, found := SplitFrontMatter(content)
 	title := compileTitle(fm, body, filepath.Base(rel))
 
-	out, err := s.ai.Compile(apiKey, baseURL, model, protocol, title, body)
+	out, err := s.ai.Compile(ctx, apiKey, baseURL, model, protocol, title, body)
 	if err != nil {
 		return nil, fmt.Errorf("AI 编译失败：%w", err)
 	}
@@ -277,6 +355,88 @@ func (s *CompileService) CompileAll(workspacePath, apiKey, baseURL, model, proto
 		res.Results = append(res.Results, r)
 	}
 	return res, nil
+}
+
+// StartCompileAll 把「编译全部 Inbox 笔记」提交到异步任务队列，返回任务 ID。
+//
+// 与同步 CompileAll 的关系：两者共用同一套编译逻辑，区别只在于
+//   - 异步版每编译一篇回报一次进度（task:progress），前端可显示进度条；
+//   - 用户可调 TaskService.Cancel(taskID) 取消，取消点在任何一篇开始前，
+//     在途的那一篇会随 ctx 一起中断（LLM 请求同步取消）；
+//   - 结构化结果按任务 ID 暂存，前端在 task:finished 后用 CompileTaskResult 取回。
+//
+// 未注入 TaskService 时返回空字符串，调用方应退回同步 CompileAll。
+func (s *CompileService) StartCompileAll(workspacePath, apiKey, baseURL, model, protocol string) string {
+	if s.tasks == nil {
+		return ""
+	}
+	handle := s.tasks.submit(context.Background(), "编译 Inbox 笔记", func(ctx context.Context, rep TaskReporter) error {
+		res := s.runCompileAll(ctx, rep, workspacePath, apiKey, baseURL, model, protocol)
+		s.saveTaskResult(rep.TaskID(), res)
+		// 取消必须回传 ctx 错误，TaskService 才会把终态记为 cancelled
+		//（而不是 failed），前端据此区分「用户取消」与「真的出错」。
+		return ctx.Err()
+	})
+	return handle.ID()
+}
+
+// runCompileAll 是异步批量编译的任务体：逐篇编译、逐篇报进度、
+// 每篇开始前检查取消信号。
+func (s *CompileService) runCompileAll(ctx context.Context, rep TaskReporter, workspacePath, apiKey, baseURL, model, protocol string) *CompileAllResult {
+	res := &CompileAllResult{}
+	notes, err := s.ListInbox(workspacePath)
+	if err != nil {
+		res.Errors = append(res.Errors, CompileErrorItem{Path: s.inboxDir, Error: err.Error()})
+		return res
+	}
+	total := len(notes)
+	rep.ReportMessage(0, total, fmt.Sprintf("共 %d 篇待编译", total))
+
+	for i, n := range notes {
+		if ctx.Err() != nil {
+			break
+		}
+		rep.Message(fmt.Sprintf("正在编译 %s（%d/%d）", filepath.Base(n), i+1, total))
+		r, e := s.compileNoteCtx(ctx, workspacePath, n, apiKey, baseURL, model, protocol)
+		switch {
+		case e != nil && ctx.Err() != nil:
+			// 取消导致的失败不记为「编译失败」，否则结果面板会误报
+			return res
+		case e != nil:
+			res.Errors = append(res.Errors, CompileErrorItem{Path: n, Error: e.Error()})
+		default:
+			res.Results = append(res.Results, r)
+		}
+		rep.ReportMessage(i+1, total, fmt.Sprintf("已完成 %d/%d 篇", i+1, total))
+	}
+	return res
+}
+
+// StartCompileNote 把「编译单篇笔记」提交到异步任务队列，返回任务 ID。
+// 单篇任务的进度是 0/1 → 1/1，前端可用同一套进度条渲染。
+func (s *CompileService) StartCompileNote(workspacePath, relativePath, apiKey, baseURL, model, protocol string) string {
+	if s.tasks == nil {
+		return ""
+	}
+	title := "编译 " + filepath.Base(relativePath)
+	handle := s.tasks.submit(context.Background(), title, func(ctx context.Context, rep TaskReporter) error {
+		res := &CompileAllResult{}
+		rep.Message("正在编译 " + relativePath)
+		r, err := s.compileNoteCtx(ctx, workspacePath, relativePath, apiKey, baseURL, model, protocol)
+		if err != nil {
+			if ctx.Err() == nil {
+				// 非取消的失败计入结果，前端仍能拿到失败原因
+				res.Errors = append(res.Errors, CompileErrorItem{Path: relativePath, Error: err.Error()})
+			}
+			s.saveTaskResult(rep.TaskID(), res)
+			return err
+		}
+		res.Results = append(res.Results, r)
+		s.saveTaskResult(rep.TaskID(), res)
+		rep.Report(1, 1)
+		return nil
+	})
+	return handle.ID()
 }
 
 // ---- frontmatter 合并辅助 ----

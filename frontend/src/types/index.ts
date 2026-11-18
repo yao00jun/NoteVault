@@ -76,13 +76,18 @@ export interface EmbeddingSettings {
  * 注：Ollama 原生不支持 /api/rerank（上游 PR 从未合并），因此下拉中不再提供 Ollama 选项。
  */
 export interface RerankSettings {
-  /** 厂商：'' 表示关闭重排（默认）| cohere（/v1/rerank，需 Key） */
-  provider: 'cohere' | ''
-  /** rerank 接口地址，如 https://api.cohere.ai/v1 */
+  /**
+   * 服务协议：'' 表示关闭重排（默认）。
+   * - cohere：Cohere / 硅基流动 等 /v1/rerank（documents + relevance_score，云端需 Key）
+   * - llamacpp：llama.cpp 的 llama-server --reranking（同上协议，本机免 Key）
+   * - tei：HuggingFace TEI /rerank（texts + score，本机免 Key）
+   */
+  provider: 'cohere' | 'llamacpp' | 'tei' | ''
+  /** rerank 接口地址，如 https://api.cohere.ai/v1 / http://127.0.0.1:8080/v1 / http://127.0.0.1:8081 */
   baseURL: string
-  /** rerank 模型名称，如 rerank-multilingual-v3.0（Cohere）/ BAAI/bge-reranker-v2-m3（硅基流动） */
+  /** rerank 模型名称，如 rerank-multilingual-v3.0（Cohere）/ BAAI/bge-reranker-v2-m3（硅基流动 / 本地） */
   model: string
-  /** API Key：云端必填 */
+  /** API Key：云端必填，本机端点可留空 */
   apiKey: string
 }
 

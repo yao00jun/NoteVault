@@ -328,3 +328,50 @@ describe('SettingsView · 岗位工作台预设', () => {
     expect(card.text()).toContain('Resources/选题素材')
   })
 })
+
+describe('SettingsView · 本地 Rerank 预设（P1-1）', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    ;(i18n.global.locale as any).value = 'zh-CN'
+    mockedPresets.mockResolvedValue([])
+  })
+
+  function presetButton(wrapper: ReturnType<typeof mountSettings>['wrapper'], label: string) {
+    const btn = wrapper
+      .findAll('#settings-section-rerank .preset-btn')
+      .find((b) => b.text().includes(label))
+    if (!btn) throw new Error(`未找到 rerank 预设按钮：${label}`)
+    return btn
+  }
+
+  it('提供 llama-server / TEI 两种本地协议选项', async () => {
+    const { wrapper } = mountSettings()
+    await flushPromises()
+    const options = wrapper.findAll('#settings-section-rerank select option').map((o) => o.attributes('value'))
+    expect(options).toEqual(['', 'cohere', 'llamacpp', 'tei'])
+  })
+
+  it('一键填入 llama-server 预设并清掉旧的云端 Key', async () => {
+    const { wrapper, settingsStore } = mountSettings()
+    await flushPromises()
+    settingsStore.settings.rerank.provider = 'cohere'
+    settingsStore.settings.rerank.apiKey = 'sk-cloud'
+    await flushPromises()
+
+    await presetButton(wrapper, 'llama-server').trigger('click')
+
+    expect(settingsStore.settings.rerank.provider).toBe('llamacpp')
+    expect(settingsStore.settings.rerank.baseURL).toBe('http://127.0.0.1:8080/v1')
+    expect(settingsStore.settings.rerank.model).toBe('bge-reranker-v2-m3')
+    // 本机端点不该带着云端 Key 发出去
+    expect(settingsStore.settings.rerank.apiKey).toBe('')
+  })
+
+  it('TEI 预设填根地址（不带 /v1）', async () => {
+    const { wrapper, settingsStore } = mountSettings()
+    await flushPromises()
+    await presetButton(wrapper, 'TEI').trigger('click')
+    expect(settingsStore.settings.rerank.provider).toBe('tei')
+    expect(settingsStore.settings.rerank.baseURL).toBe('http://127.0.0.1:8081')
+  })
+})

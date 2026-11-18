@@ -27,6 +27,16 @@ export default defineConfig({
     // 默认 node 环境，组件测试用 // @vitest-environment jsdom 注解
     environment: 'node',
     include: ['src/**/*.test.ts', 'e2e/**/*.test.mjs'],
+    // 全局兜底 mock（@/api 全桩），消除漏 mock 导致的退出阶段 Unhandled Error。
+    setupFiles: ['./src/test/setup.ts'],
+    // 并发上限显式固定，不跟随机器核数：
+    // 本机默认并发（60+ worker）曾出现 worker 启动超时、整份测试文件被静默跳过，
+    // 表现为「用例数变少但仍然全绿」。宁可用受控的并发换稳定的计数。
+    // 实测 8 worker：80 文件 / 891 用例，33.8s（2 worker 时 70.9s）。
+    // 没有采用 vitest 建议的 isolate:false：跨文件共享模块状态会让失败数随机波动，
+    // 省下的启动开销不值得换来不可复现的红灯。
+    maxWorkers: 8,
+    minWorkers: 1,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

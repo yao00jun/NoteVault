@@ -772,7 +772,11 @@ export interface RerankProbeResult {
 
 /**
  * RerankProvider 标识重排序服务的厂商/协议。
- * Ollama 已从选项中移除（原生不支持 /api/rerank，上游 PR 未合并）。
+ * 
+ * Ollama 已从选项中移除（原生不支持 /api/rerank，上游 PR 未合并）。本地部署的
+ * 两条可行路线单独建模：llama.cpp 的 llama-server（--reranking）与 HuggingFace TEI，
+ * 二者的端点约定、请求体与错误提示都不一样，混在一个 provider 里会让自检提示
+ * 变成「404，请检查 baseURL」这种不可操作的话。
  */
 export enum RerankProvider {
     /**
@@ -781,9 +785,21 @@ export enum RerankProvider {
     $zero = "",
 
     /**
-     * RerankProviderCohere Cohere / 硅基流动等兼容 /v1/rerank 端点（需 API Key）。
+     * RerankProviderCohere Cohere / 硅基流动 / Jina 等兼容 /v1/rerank 端点（需 API Key）。
      */
     RerankProviderCohere = "cohere",
+
+    /**
+     * RerankProviderLlamaCpp llama.cpp 的 llama-server（需以 --reranking 启动）。
+     * 协议与 Cohere 同构（results[].relevance_score），走 /v1/rerank。
+     */
+    RerankProviderLlamaCpp = "llamacpp",
+
+    /**
+     * RerankProviderTEI HuggingFace Text Embeddings Inference（TEI）的 /rerank。
+     * 请求体是 query + texts，响应是裸数组 [{index,score}]，与 Cohere 不同，需单独构造与解析。
+     */
+    RerankProviderTEI = "tei",
 };
 
 /**

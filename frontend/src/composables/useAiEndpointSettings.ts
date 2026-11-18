@@ -30,12 +30,38 @@ export function useAiEndpointSettings() {
   const embeddingProbing = ref(false)
   const embeddingProbeResult = ref<EmbeddingProbeResult | null>(null)
 
-  // P1-3b：rerank 云端预设（与 AI 预设同源思路，但 rerank 走独立配置段）。
+  // P1-3b：rerank 预设（与 AI 预设同源思路，但 rerank 走独立配置段）。
   // 硅基流动接口与 Cohere 同格式（/v1/rerank + Bearer），故复用 provider='cohere' 路径。
-  const rerankPresets = [
+  // 本地两档单独给 provider：llama.cpp 与 TEI 的请求 schema 不同（documents vs texts），
+  // 混用会让自检通过、真实检索失败。
+  const rerankPresets: Array<{
+    id: string
+    label: string
+    provider: 'cohere' | 'llamacpp' | 'tei'
+    baseURL: string
+    model: string
+    hint: string
+  }> = [
+    {
+      id: 'llamacpp',
+      label: 'llama-server',
+      provider: 'llamacpp',
+      baseURL: 'http://127.0.0.1:8080/v1',
+      model: 'bge-reranker-v2-m3',
+      hint: t('settings.rerank.presetLlamaCppHint'),
+    },
+    {
+      id: 'tei',
+      label: 'TEI',
+      provider: 'tei',
+      baseURL: 'http://127.0.0.1:8081',
+      model: 'BAAI/bge-reranker-v2-m3',
+      hint: t('settings.rerank.presetTEIHint'),
+    },
     {
       id: 'siliconflow',
       label: t('settings.embedding.providerSiliconflow'),
+      provider: 'cohere',
       baseURL: 'https://api.siliconflow.cn/v1',
       model: 'BAAI/bge-reranker-v2-m3',
       hint: t('settings.rerank.presetSiliconflowHint'),
@@ -43,6 +69,7 @@ export function useAiEndpointSettings() {
     {
       id: 'cohere',
       label: 'Cohere',
+      provider: 'cohere',
       baseURL: 'https://api.cohere.ai/v1',
       model: 'rerank-multilingual-v3.0',
       hint: t('settings.rerank.presetCohereHint'),
@@ -51,9 +78,11 @@ export function useAiEndpointSettings() {
   function applyRerankPreset(id: string) {
     const p = rerankPresets.find((x) => x.id === id)
     if (!p) return
-    settingsStore.settings.rerank.provider = 'cohere'
+    settingsStore.settings.rerank.provider = p.provider
     settingsStore.settings.rerank.baseURL = p.baseURL
     settingsStore.settings.rerank.model = p.model
+    // 本机端点不校验凭据；清掉旧云端 Key，避免把它发给本机服务
+    if (p.provider !== 'cohere') settingsStore.settings.rerank.apiKey = ''
     rerankProbeResult.value = null
   }
 

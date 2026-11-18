@@ -1,11 +1,14 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 var errFakeAI = errors.New("fake ai failure")
@@ -14,9 +17,16 @@ var errFakeAI = errors.New("fake ai failure")
 type fakeCompileAI struct {
 	out *CompileOutput
 	err error
+	// onCompile 可选：让测试在编译过程中做文章（例如等待取消信号）。
+	onCompile func(ctx context.Context, title string) error
 }
 
-func (f *fakeCompileAI) Compile(_, _, _, _, _, _ string) (*CompileOutput, error) {
+func (f *fakeCompileAI) Compile(ctx context.Context, _, _, _, _, title, _ string) (*CompileOutput, error) {
+	if f.onCompile != nil {
+		if err := f.onCompile(ctx, title); err != nil {
+			return nil, err
+		}
+	}
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -221,5 +231,119 @@ func TestMergeCompileMeta_PreservesOtherKeys(t *testing.T) {
 	}
 	if !strings.Contains(merged, "compiled: true") {
 		t.Errorf("缺少 compiled 标记:\n%s", merged)
+	}
+}
+
+// TestCompileService_StartCompileAll_AsyncProgressAndResult 验证异步批量编译：
+// 任务跑完 → 进度 100% → 结构化结果可按任务 ID 取回 → 笔记确实搬到 Compiled。
+func TestCompileService_StartCompileAll_AsyncProgressAndResult(t *testing.T) {
+	ws := seedCompileVault(t)
+	tasks := NewTaskService(nil)
+	svc := newTestCompileService(&fakeCompileAI{out: &CompileOutput{TLDR: "一句话", Tags: []string{"go"}}})
+	svc.tasks = tasks
+
+	id := svc.StartCompileAll(ws, "", "http://127.0.0.1:11434/v1", "m", "openai-chat")
+	if id == "" {
+		t.Fatal("StartCompileAll 应返回任务 ID")
+	}
+	tasks.Wait()
+
+	info := tasks.GetTask(id)
+	if info == nil || info.Status != TaskSucceeded {
+		t.Fatalf("任务应成功结束，实际：%+v", info)
+	}
+	if info.Total != 3 || info.Done != 3 || info.Percent != 100 {
+		t.Fatalf("进度应为 3/3 100%%，实际 done=%d total=%d pct=%d", info.Done, info.Total, info.Percent)
+	}
+
+	res := svc.CompileTaskResult(id)
+	if res == nil || len(res.Results) != 3 || len(res.Errors) != 0 {
+		t.Fatalf("结果应为 3 成功 0 失败，实际：%+v", res)
+	}
+	if left, _ := svc.ListInbox(ws); len(left) != 0 {
+		t.Fatalf("编译后 Inbox 应为空，实际仍有 %d 篇", len(left))
+	}
+}
+
+// TestCompileService_StartCompileAll_Cancel 验证取消：
+// 任务终态是 cancelled（不是 failed），已取消的那篇不计入失败明细，笔记留在 Inbox。
+func TestCompileService_StartCompileAll_Cancel(t *testing.T) {
+	ws := seedCompileVault(t)
+	tasks := NewTaskService(nil)
+
+	started := make(chan struct{})
+	var once sync.Once
+	ai := &fakeCompileAI{out: &CompileOutput{TLDR: "x"}}
+	ai.onCompile = func(ctx context.Context, _ string) error {
+		once.Do(func() { close(started) })
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	svc := newTestCompileService(ai)
+	svc.tasks = tasks
+
+	id := svc.StartCompileAll(ws, "", "http://127.0.0.1:11434/v1", "m", "openai-chat")
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("编译任务未在 5 秒内开始")
+	}
+	if !tasks.Cancel(id) {
+		t.Fatal("取消应被接受")
+	}
+	tasks.Wait()
+
+	info := tasks.GetTask(id)
+	if info == nil || info.Status != TaskCancelled {
+		t.Fatalf("终态应为 cancelled，实际：%+v", info)
+	}
+	res := svc.CompileTaskResult(id)
+	if res == nil {
+		t.Fatal("取消后仍应能取到已完成部分的结果")
+	}
+	if len(res.Errors) != 0 {
+		t.Fatalf("取消不应记为编译失败：%+v", res.Errors)
+	}
+	if left, _ := svc.ListInbox(ws); len(left) != 3 {
+		t.Fatalf("取消后三篇都应留在 Inbox，实际剩 %d 篇", len(left))
+	}
+}
+
+// TestCompileService_StartCompileNote_FailureStored 验证单篇失败：
+// 任务标记 failed，失败原因仍可通过 CompileTaskResult 读到（前端结果面板要用）。
+func TestCompileService_StartCompileNote_FailureStored(t *testing.T) {
+	ws := seedCompileVault(t)
+	tasks := NewTaskService(nil)
+	svc := newTestCompileService(&fakeCompileAI{err: errFakeAI})
+	svc.tasks = tasks
+
+	id := svc.StartCompileNote(ws, "Inbox/cache.md", "", "http://127.0.0.1:11434/v1", "m", "openai-chat")
+	if id == "" {
+		t.Fatal("StartCompileNote 应返回任务 ID")
+	}
+	tasks.Wait()
+
+	info := tasks.GetTask(id)
+	if info == nil || info.Status != TaskFailed {
+		t.Fatalf("终态应为 failed，实际：%+v", info)
+	}
+	res := svc.CompileTaskResult(id)
+	if res == nil || len(res.Errors) != 1 || !strings.Contains(res.Errors[0].Error, "fake ai failure") {
+		t.Fatalf("失败明细应含原因，实际：%+v", res)
+	}
+	if _, err := os.Stat(filepath.Join(ws, "Inbox", "cache.md")); err != nil {
+		t.Fatalf("失败后原文件应留在 Inbox：%v", err)
+	}
+}
+
+// TestCompileService_StartWithoutTasks 验证未注入任务队列时返回空 ID，
+// 调用方据此退回同步路径（不静默失败）。
+func TestCompileService_StartWithoutTasks(t *testing.T) {
+	svc := newTestCompileService(&fakeCompileAI{out: &CompileOutput{}})
+	if id := svc.StartCompileAll("/tmp/ws", "", "", "m", ""); id != "" {
+		t.Fatalf("未注入 TaskService 时应返回空 ID，实际 %q", id)
+	}
+	if id := svc.StartCompileNote("/tmp/ws", "Inbox/a.md", "", "", "m", ""); id != "" {
+		t.Fatalf("未注入 TaskService 时应返回空 ID，实际 %q", id)
 	}
 }

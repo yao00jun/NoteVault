@@ -4,8 +4,9 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
+import { apiMock } from '@/test/apiMock'
 
-vi.mock('@/api', () => ({
+vi.mock('@/api', () => apiMock({
   ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
   StatsService: { GetWritingActivity: vi.fn(), GetOnThisDay: vi.fn(async () => []) },
   GraphService: { GetGraph: vi.fn() },

@@ -13,6 +13,7 @@ import { defaultTaskProject, GENERAL_PROJECT_FOLDER } from '@/utils/defaultTaskP
 import TaskCard from '@/components/workbench/TaskCard.vue'
 import InterviewReview from '@/components/workbench/InterviewReview.vue'
 import QuickAccessCard from '@/components/workbench/QuickAccessCard.vue'
+import TodayInsights from '@/components/workbench/TodayInsights.vue'
 
 const store = useWorkbenchStore()
 const workspace = useWorkspaceStore()
@@ -500,6 +501,8 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
           </section>
         </aside>
       </div>
+
+      <TodayInsights />
     </div>
   </div>
 </template>

@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
+import { apiMock } from '@/test/apiMock'
 
 vi.mock('@wailsio/runtime', () => {
   // bindings/models.js 会调用 $Create.Map / $Create.Nullable / $Create.Pointer / $Create.Any ...
@@ -19,7 +20,7 @@ vi.mock('@wailsio/runtime', () => {
   }
 })
 
-vi.mock('@/api', () => ({
+vi.mock('@/api', () => apiMock({
   ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
   AppService: { ForceQuit: vi.fn(() => Promise.resolve()) },
 }))

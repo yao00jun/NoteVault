@@ -31,6 +31,15 @@ func NewSummarizeService() *SummarizeService {
 //
 // 返回 Markdown 格式的摘要文本。
 func (s *SummarizeService) Summarize(apiKey, baseURL, model, protocol, content string) (string, error) {
+	return s.summarizeCtx(context.Background(), apiKey, baseURL, model, protocol, content)
+}
+
+// summarizeCtx 与 Summarize 相同，但接受 ctx。
+//
+// 单独抽出来的理由：编译流水线是异步任务，用户点「取消」时应中断在途的 LLM
+// 请求，而不是等 90 秒超时。业务方法（Summarize）不接 ctx 是为了不给 Wails
+// 绑定与端口契约引入额外参数——前端拿不到 Go 的 context。
+func (s *SummarizeService) summarizeCtx(ctx context.Context, apiKey, baseURL, model, protocol, content string) (string, error) {
 	if strings.TrimSpace(content) == "" {
 		return "", fmt.Errorf("没有可总结的内容")
 	}
@@ -52,5 +61,5 @@ func (s *SummarizeService) Summarize(apiKey, baseURL, model, protocol, content s
 		"提炼 3-5 个核心要点，使用 Markdown 无序列表输出，必要时可补充一句话总括。" +
 		"只输出总结内容，不要添加额外解释或客套话。"
 
-	return llmChatComplete(context.Background(), s.client, apiKey, baseURL, model, protocol, systemPrompt, content)
+	return llmChatComplete(ctx, s.client, apiKey, baseURL, model, protocol, systemPrompt, content)
 }

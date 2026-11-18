@@ -365,10 +365,19 @@ var _ Templater = (*TemplateService)(nil)
 // CompileOperator 定义「知识编译流水线」接口：列出 Inbox 待编译笔记、
 // 编译单篇、编译全部。Inbox/Compiled 目录约定由 CompileService 内部持有，
 // 端口只暴露动作语义，不暴露目录名（保持后端可自由调整落盘布局）。
+//
+// 同步与异步两套入口并存：
+//   - CompileNote / CompileAll 阻塞到编译结束，保留给测试、MCP 与旧前端；
+//   - StartCompileNote / StartCompileAll 提交到 TaskService 并立即返回任务 ID，
+//     进度经 task:progress 推送、可用 TaskService.Cancel 取消，
+//     结构化结果用 CompileTaskResult 按任务 ID 取回（事件只带进度）。
 type CompileOperator interface {
 	ListInbox(workspacePath string) ([]string, error)
 	CompileNote(workspacePath, relativePath, apiKey, baseURL, model, protocol string) (*CompileResult, error)
 	CompileAll(workspacePath, apiKey, baseURL, model, protocol string) (*CompileAllResult, error)
+	StartCompileNote(workspacePath, relativePath, apiKey, baseURL, model, protocol string) string
+	StartCompileAll(workspacePath, apiKey, baseURL, model, protocol string) string
+	CompileTaskResult(taskID string) *CompileAllResult
 }
 
 var _ CompileOperator = (*CompileService)(nil)

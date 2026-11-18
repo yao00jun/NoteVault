@@ -916,6 +916,12 @@ async function scrollToSection(id: string) {
             <option value="cohere">
               {{ t('settings.rerank.providerCohere') }}
             </option>
+            <option value="llamacpp">
+              {{ t('settings.rerank.providerLlamaCpp') }}
+            </option>
+            <option value="tei">
+              {{ t('settings.rerank.providerTEI') }}
+            </option>
           </select>
         </div>
         <div class="setting-item">
@@ -928,7 +934,7 @@ async function scrollToSection(id: string) {
               v-for="p in rerankPresets"
               :key="p.id"
               class="preset-btn"
-              :class="{ active: settingsStore.settings.rerank.provider === 'cohere' && settingsStore.settings.rerank.baseURL === p.baseURL }"
+              :class="{ active: settingsStore.settings.rerank.provider === p.provider && settingsStore.settings.rerank.baseURL === p.baseURL }"
               :title="p.hint"
               @click="applyRerankPreset(p.id)"
             >

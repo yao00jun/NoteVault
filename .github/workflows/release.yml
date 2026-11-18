@@ -1,0 +1,171 @@
+name: Release
+
+# 触发：推送 vX.Y.Z tag（或手动指定已有 tag 重跑）。
+# 产物：Windows 安装包 + 裸 exe、macOS dmg、Linux tar.gz，全部挂到 GitHub Release。
+#
+# 与本地 `wails3 task release VERSION=vX.Y.Z` 的关系：
+#   本地脚本负责「构建 → 冒烟 → 推送 → 建 Release」；
+#   这里负责在干净环境里跨三个平台重建产物（本地只能出 Windows 包）。
+#   两条路径的产物命名规则保持一致，便于互相替换。
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '已存在的 tag（如 v0.2.0），用于重跑发布'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: '1.27'
+  NODE_VERSION: '22'
+  PNPM_VERSION: '9'
+  WAILS_VERSION: 'v3.1.0'
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows：exe + NSIS 安装包（windows-latest 自带 makensis）
+          - os: windows-latest
+            label: windows-amd64
+            package: installer
+          # macOS：dmg（arm64 与 x86_64 各出一份，Intel 机器仍可用）
+          - os: macos-14
+            label: darwin-arm64
+            package: dmg
+          - os: macos-13
+            label: darwin-amd64
+            package: dmg
+          # Linux：静态二进制打 tar.gz（deb/rpm/AppImage 依赖额外工具链，暂不进流水线）
+          - os: ubuntu-22.04
+            label: linux-amd64
+            package: tarball
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Wails v3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+
+      # Wails v3 在 Linux 上需要 GTK3 + WebKit2GTK 4.1 开发包与 CGO 工具链
+      - name: Install Linux build dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Build Windows installer + binaries
+        if: matrix.package == 'installer'
+        shell: bash
+        # 根任务 package = 平台安装包 + MCP 二进制，两个产物版本必然一致
+        run: wails3 task package
+
+      - name: Build macOS dmg
+        if: matrix.package == 'dmg'
+        shell: bash
+        run: |
+          wails3 task darwin:package:dmg
+          wails3 task mcp:build
+
+      - name: Build Linux binaries
+        if: matrix.package == 'tarball'
+        shell: bash
+        run: |
+          wails3 task linux:build
+          wails3 task mcp:build
+
+      # 统一产物命名，并把 MCP 二进制一并打包（它不在安装包里）
+      - name: Collect release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          mkdir -p release
+          case "${{ matrix.label }}" in
+            windows-amd64)
+              cp bin/notevault.exe "release/notevault-${VERSION}-windows-amd64.exe"
+              cp bin/notevault-mcp.exe "release/notevault-mcp-${VERSION}-windows-amd64.exe"
+              cp bin/notevault-amd64-installer.exe "release/notevault-${VERSION}-windows-amd64-installer.exe"
+              ;;
+            darwin-arm64)
+              cp bin/notevault "release/notevault-${VERSION}-darwin-arm64"
+              cp bin/notevault-mcp "release/notevault-mcp-${VERSION}-darwin-arm64"
+              # wails3 tool package 的 dmg 文件名随版本/架构变化，用 glob 兜底
+              cp "$(ls bin/*.dmg | head -1)" "release/notevault-${VERSION}-darwin-arm64.dmg"
+              ;;
+            darwin-amd64)
+              cp bin/notevault "release/notevault-${VERSION}-darwin-amd64"
+              cp bin/notevault-mcp "release/notevault-mcp-${VERSION}-darwin-amd64"
+              cp "$(ls bin/*.dmg | head -1)" "release/notevault-${VERSION}-darwin-amd64.dmg"
+              ;;
+            linux-amd64)
+              tar -czf "release/notevault-${VERSION}-linux-amd64.tar.gz" -C bin notevault notevault-mcp
+              ;;
+          esac
+          ls -lh release
+
+      - name: Upload assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: assets-${{ matrix.label }}
+          path: release/*
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: assets-*
+          merge-multiple: true
+          path: release
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          # 手动重跑时用输入的 tag，否则用推送的 tag
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          # 发布说明由提交历史自动生成；需要人工润色时可在 Release 页面直接编辑
+          generate_release_notes: true
+          # 预发布版本（如 v0.2.0-beta.1）自动打上 prerelease 标记
+          prerelease: ${{ contains(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, '-') }}
+          files: release/*
+          fail_on_unmatched_files: true
