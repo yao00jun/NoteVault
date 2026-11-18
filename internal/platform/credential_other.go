@@ -25,6 +25,11 @@ type fileCredentialStore struct {
 
 // newCredentialStore 返回当前平台的实现（见 credential.go 的平台分发表）。
 func newCredentialStore(prefix string) CredentialStore {
+	// 与 Windows 实现保持一致：空 prefix 回落到共用默认值，
+	// 否则文件名会变成 "-credentials.json"（Windows 侧则是 ":" 开头的 TargetName）。
+	if prefix == "" {
+		prefix = credentialStorePrefix
+	}
 	base, err := os.UserConfigDir()
 	if err != nil || base == "" {
 		base = os.TempDir()
