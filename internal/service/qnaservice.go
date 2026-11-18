@@ -91,7 +91,7 @@ type QnAService struct {
 	// 构建/增量同步持 per-key 锁（buildLocks 按「工作区|模型」分锁）：
 	// 全局锁会让某个工作区首次建索引（分钟级 embed）卡死其它工作区的问答。
 	vectorMu     sync.Mutex
-	vectorCache  map[string]*VectorStore
+	vectorCache  map[string]vectorIndex
 	vectorBuilds map[string]*sync.Mutex
 }
 
@@ -102,7 +102,7 @@ func NewQnAService() *QnAService {
 		client:       &http.Client{Timeout: 120 * time.Second},
 		embedder:     &NoopEmbedder{},
 		reranker:     &NoopReranker{},
-		vectorCache:  make(map[string]*VectorStore),
+		vectorCache:  make(map[string]vectorIndex),
 		vectorBuilds: make(map[string]*sync.Mutex),
 	}
 }
@@ -133,7 +133,7 @@ func NewQnAServiceWithRegistryAndSink(fileService *FileService, indexes *SearchI
 		embedder:     embedder,
 		reranker:     reranker,
 		streamSink:   sink,
-		vectorCache:  make(map[string]*VectorStore),
+		vectorCache:  make(map[string]vectorIndex),
 		vectorBuilds: make(map[string]*sync.Mutex),
 	}
 }
@@ -417,7 +417,7 @@ func rrf(rank, k int) float64 {
 //
 // 未配置 embedding（embedder 为 nil 或模型名为空）或 fileService 缺失时返回错误，
 // 由调用方据此退化纯 BM25，不阻断问答。
-func (s *QnAService) ensureVectorStore(workspacePath string, cfg EmbeddingConfig) (*VectorStore, error) {
+func (s *QnAService) ensureVectorStore(workspacePath string, cfg EmbeddingConfig) (vectorIndex, error) {
 	if s.embedder == nil || strings.TrimSpace(cfg.Model) == "" {
 		return nil, fmt.Errorf("未配置 embedding，向量 leg 不可用")
 	}
@@ -426,10 +426,15 @@ func (s *QnAService) ensureVectorStore(workspacePath string, cfg EmbeddingConfig
 	}
 	key := workspacePath + "|" + strings.TrimSpace(cfg.Model)
 
-	// 取（或创建）该 key 的构建锁
+	// 取（或创建）该 key 的构建锁。锁与缓存条目分开维护，
+	// 所以不能假设「缓存命中 ⇒ 构建锁已存在」（测试会预置缓存跳过构建）。
 	s.vectorMu.Lock()
+	lk := s.vectorBuilds[key]
+	if lk == nil {
+		lk = &sync.Mutex{}
+		s.vectorBuilds[key] = lk
+	}
 	if vs, ok := s.vectorCache[key]; ok {
-		lk := s.vectorBuilds[key]
 		s.vectorMu.Unlock()
 		// 命中缓存：持构建锁做一次增量同步（通常只是 stat 一遍全库，毫秒级）
 		lk.Lock()
@@ -439,11 +444,6 @@ func (s *QnAService) ensureVectorStore(workspacePath string, cfg EmbeddingConfig
 			return vs, nil
 		}
 		return vs, nil
-	}
-	lk := s.vectorBuilds[key]
-	if lk == nil {
-		lk = &sync.Mutex{}
-		s.vectorBuilds[key] = lk
 	}
 	s.vectorMu.Unlock()
 

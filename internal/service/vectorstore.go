@@ -37,6 +37,29 @@ type vectorHit struct {
 	Similarity float32 // 余弦相似度（chromem 返回，范围 [-1,1]）
 }
 
+// vectorIndex 是 QnAService 依赖的向量索引契约（唯一使用面）。
+//
+// 只暴露「同步 / 检索 / 计数」三件事，把实现细节（当前是 chromem-go 的
+// gob 逐块持久化，将来可能是自研分片或 ANN 索引）关在实现内部。替换实现
+// 只需满足本接口，QnAService 一行不用改；行为一致性与排序语义由
+// vectorindex_test.go 的契约测试与 RetrievalEval 用例共同锁住。
+//
+// Sync 的依赖按调用传入，而不是在构造时捕获：实现方可以选择忽略未用到的
+// 参数（测试里的 fake 索引正是如此），也让「先建空索引、再按工作区同步」
+// 这一现有调用顺序原样保留。
+type vectorIndex interface {
+	// Count 返回已索引的块数（0 表示尚未构建）。
+	Count() int
+	// Sync 把索引增量对齐到工作区当前状态（新增/变更重嵌，消失的删除）。
+	Sync(ctx context.Context, workspacePath string, fileService *FileService, embedder Embedder, cfg EmbeddingConfig) error
+	// Search 返回与 query 最相似的 Top-K 块，按相似度降序。
+	Search(ctx context.Context, query string, k int) ([]vectorHit, error)
+}
+
+// 编译期断言：chromem 实现必须满足契约。接口一旦漂移，这里先编译失败，
+// 而不是等到 QnAService 的调用点才暴露。
+var _ vectorIndex = (*VectorStore)(nil)
+
 // VectorStore 包装一个 chromem collection（集合名固定为 "notes"）。
 type VectorStore struct {
 	db   *chromem.DB
