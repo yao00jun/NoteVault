@@ -17,6 +17,13 @@ jobs:
         with:
           go-version: '1.27'
           cache: true
+      # main.go 用 //go:embed all:frontend/dist 内嵌前端产物，而 dist 被 .gitignore
+      # 忽略 → 干净 checkout 里不存在，go vet / go test 会直接报
+      # "pattern all:frontend/dist: no matching files found"。
+      # 这里放一个空占位（go:embed all: 连空目录都不接受，必须有文件），
+      # 只为让编译通过；真实产物由 frontend job 构建。
+      - name: Stub frontend dist (for go:embed)
+        run: mkdir -p frontend/dist && printf '' > frontend/dist/index.html
       - name: Go vet
         run: go vet ./...
       - name: Go test
@@ -41,7 +48,11 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.6
+          # 必须 ≥ 用 go1.27 构建的版本：v2.6 是 go1.25 编的，加载 go.mod
+          # 里 go 1.27.0/toolchain go1.27.4 的模块会直接 exit 3
+          # （"the Go language version used to build golangci-lint is lower
+          # than the targeted Go version"）。升级 Go 时同步核对这里。
+          version: v2.15.0
           args: --timeout=5m
 
   frontend:
@@ -56,7 +67,10 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          # pnpm 9 会把只含 overrides/allowBuilds 的 pnpm-workspace.yaml 当工作区
+          # 配置并报 "packages field missing or empty"；pnpm 10+ 才允许它作为
+          # 纯设置文件。版本与本地开发保持一致。
+          version: 12
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -92,7 +106,10 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          # pnpm 9 会把只含 overrides/allowBuilds 的 pnpm-workspace.yaml 当工作区
+          # 配置并报 "packages field missing or empty"；pnpm 10+ 才允许它作为
+          # 纯设置文件。版本与本地开发保持一致。
+          version: 12
       - name: Setup Node
         uses: actions/setup-node@v4
         with:

@@ -57,7 +57,7 @@ tasks:
       - cmd: rm -f *.syso
         platforms: [linux, darwin]
     vars:
-      BUILD_FLAGS: '{{if eq .DEV "true"}}{{if or .EXTRA_TAGS (eq .OBFUSCATED "true")}}-tags {{if eq .OBFUSCATED "true"}}wails_obfuscated{{if .EXTRA_TAGS}},{{end}}{{end}}{{.EXTRA_TAGS}} {{end}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production{{if eq .OBFUSCATED "true"}},wails_obfuscated{{end}}{{if .EXTRA_TAGS}},{{.EXTRA_TAGS}}{{end}} -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui"{{end}}'
+      BUILD_FLAGS: '{{if eq .DEV "true"}}{{if or .EXTRA_TAGS (eq .OBFUSCATED "true")}}-tags {{if eq .OBFUSCATED "true"}}wails_obfuscated{{if .EXTRA_TAGS}},{{end}}{{end}}{{.EXTRA_TAGS}} {{end}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production{{if eq .OBFUSCATED "true"}},wails_obfuscated{{end}}{{if .EXTRA_TAGS}},{{.EXTRA_TAGS}}{{end}} -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui{{if .VERSION}} -X github.com/notevault/notevault/internal/core.AppVersion={{.VERSION}}{{end}}"{{end}}'
     env:
       GOOS: windows
       CGO_ENABLED: '{{.CGO_ENABLED | default "0"}}'
@@ -108,7 +108,13 @@ tasks:
     summary: Generates Windows `.syso` file
     dir: build
     cmds:
-      - wails3 generate syso -arch {{.ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../wails_windows_{{.ARCH}}.syso
+      # VERSION（来自 tag）存在时，把 info.json 渲染成临时副本再交给 syso 生成器：
+      # 既不弄脏受版本控制的文件，又能让 exe 的文件属性与 tag 对齐。
+      # 注意 info 的 language id 必须是 "0409" 且含 FileVersion 字段，否则
+      # wails3 v3.1.0 会静默跳过版本资源（表现为 exe 属性里版本为空）。
+      - '{{if .VERSION}}bash "{{.ROOT_DIR}}/scripts/render-windows-info.sh" "{{.VERSION}}" > windows/info.release.json{{end}}'
+      - wails3 generate syso -arch {{.ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info {{if .VERSION}}windows/info.release.json{{else}}windows/info.json{{end}} -out ../wails_windows_{{.ARCH}}.syso
+      - cmd: rm -f windows/info.release.json
     vars:
       ARCH: '{{.ARCH | default ARCH}}'
 

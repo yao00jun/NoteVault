@@ -8,6 +8,8 @@ frontend/test-results
 frontend/e2e/screenshots
 build/linux/appimage/build
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+# 发布构建时按 tag 渲染的临时版本信息（generate:syso 用完即删）
+build/windows/info.release.json
 
 # Local build artifacts (root)
 notevault.exe

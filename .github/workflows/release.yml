@@ -29,7 +29,7 @@ concurrency:
 env:
   GO_VERSION: '1.27'
   NODE_VERSION: '22'
-  PNPM_VERSION: '9'
+  PNPM_VERSION: '12'    # 需 ≥10：frontend/pnpm-workspace.yaml 只放 overrides，pnpm 9 会报错
   WAILS_VERSION: 'v3.1.0'
 
 jobs:
@@ -89,24 +89,29 @@ jobs:
             build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev librsvg2-dev
 
+      - name: Resolve version
+        shell: bash
+        # tag 是版本号的唯一来源：产物文件名、ldflags 注入、Release 标题都取它
+        run: echo "VERSION=${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}" >> "$GITHUB_ENV"
+
       - name: Build Windows installer + binaries
         if: matrix.package == 'installer'
         shell: bash
         # 根任务 package = 平台安装包 + MCP 二进制，两个产物版本必然一致
-        run: wails3 task package
+        run: wails3 task package VERSION="$VERSION"
 
       - name: Build macOS dmg
         if: matrix.package == 'dmg'
         shell: bash
         run: |
-          wails3 task darwin:package:dmg
+          wails3 task darwin:package:dmg VERSION="$VERSION"
           wails3 task mcp:build
 
       - name: Build Linux binaries
         if: matrix.package == 'tarball'
         shell: bash
         run: |
-          wails3 task linux:build
+          wails3 task linux:build VERSION="$VERSION"
           wails3 task mcp:build
 
       # 统一产物命名，并把 MCP 二进制一并打包（它不在安装包里）
