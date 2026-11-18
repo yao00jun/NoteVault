@@ -307,11 +307,17 @@ func (s *FileService) RenameFile(workspacePath string, oldRelativePath string, n
 		return nil, core.OsToNVError(err, "检查目标路径失败: "+newRelativePath)
 	}
 
-	if err := os.Rename(oldFullPath, newFullPath); err != nil {
-		if os.IsExist(err) {
-			return nil, core.WrapError(core.ErrAlreadyExists, "已存在同名文件或文件夹，请换一个名称: "+newName, err)
+	// 同一路径的重命名是合法的无操作（前端"只改大小写"以外的场景也会走到）。
+	// Linux 上对目录 rename(自身, 自身) 可能返回 EEXIST，会被下面的分支误报成
+	// "已存在同名文件或文件夹"，所以这里直接跳过 syscall。
+	samePath := filepath.Clean(oldFullPath) == filepath.Clean(newFullPath)
+	if !samePath {
+		if err := os.Rename(oldFullPath, newFullPath); err != nil {
+			if os.IsExist(err) {
+				return nil, core.WrapError(core.ErrAlreadyExists, "已存在同名文件或文件夹，请换一个名称: "+newName, err)
+			}
+			return nil, core.OsToNVError(err, "重命名失败: "+oldRelativePath)
 		}
-		return nil, core.OsToNVError(err, "重命名失败: "+oldRelativePath)
 	}
 
 	info, err := os.Stat(newFullPath)

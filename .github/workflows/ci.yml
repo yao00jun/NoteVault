@@ -53,7 +53,10 @@ jobs:
         with:
           go-version: '1.27'
       # 与 Go Tests 同理：golangci-lint 的 typecheck 阶段会加载并编译全部包，
-      # 缺 GTK4 头文件时表现为 "typecheck: 1 issues" 而看不出真实原因。
+      # 缺 GTK4 头文件时报 typecheck 错，缺 dist 时则报
+      # "pattern all:frontend/dist: no matching files found"。
+      - name: Stub frontend dist (for go:embed)
+        run: mkdir -p frontend/dist && printf '' > frontend/dist/index.html
       - name: Install Linux build dependencies (GTK4 / WebKitGTK 6.0)
         run: |
           sudo apt-get update

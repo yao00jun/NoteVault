@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/notevault/notevault/internal/core"
 	"github.com/notevault/notevault/internal/infra/schema"
 )
 
@@ -279,19 +280,32 @@ func (s *TrashService) EmptyTrash(workspacePath string) error {
 	// confine 校验失败（索引被篡改）或删除失败的条目必须留在索引里：
 	// 若无条件清空索引，文件还躺在 .trash/ 却从 UI 永久消失，变成孤儿。
 	remaining := make([]*TrashedFile, 0, len(files))
+	var removeErr error
 	for _, f := range files {
 		filePath, cerr := confineToWorkspace(trashDir, f.Path)
 		if cerr != nil {
+			// 索引条目被篡改：不删、不报错，留在索引里等人工处理
+			// （把它当成用户可见的删除失败会暴露内部校验细节，也没法修复）。
 			remaining = append(remaining, f)
 			continue
 		}
 		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+			// 删不掉的（被占用、目录非空）留在索引里，并把错误往上抛：
+			// 一条都没删掉却返回 nil，前端会显示「已清空」，而文件还在。
+			if removeErr == nil {
+				removeErr = err
+			}
 			remaining = append(remaining, f)
 			continue
 		}
 	}
 	if len(remaining) < len(files) {
-		return s.saveTrashIndex(workspacePath, remaining)
+		if err := s.saveTrashIndex(workspacePath, remaining); err != nil {
+			return err
+		}
+	}
+	if removeErr != nil {
+		return core.OsToNVError(removeErr, "清空回收站失败，部分条目仍保留在回收站中")
 	}
 	return nil
 }

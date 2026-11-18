@@ -2,12 +2,12 @@ package service
 
 import (
 	"archive/zip"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/notevault/notevault/internal/core"
 )
@@ -415,8 +415,12 @@ func TestImportAsync_RequiresTaskFramework(t *testing.T) {
 	}
 }
 
-// TestImportAsync_CancelStopsEarly 取消后不应把所有文件都导完。
+// TestImportAsync_CancelStopsEarly 取消后不应开始导入。
 // 这是异步导入相对同步导入的核心收益：用户能中途叫停。
+//
+// 用占位任务占住唯一并发名额来固定取消时机，而不是 sleep 一段时间再取消：
+// 后者依赖「导入还没跑完」这个假设，而 300 个小文件在 Linux 上几十毫秒就导完了，
+// 在 Windows 上却慢得多——同一个 sleep 在两边结论完全不同（CI 上实测必挂）。
 func TestImportAsync_CancelStopsEarly(t *testing.T) {
 	tasks := NewTaskServiceWithOptions(nil, 1, 10)
 	s := NewImportServiceWithTasks(tasks)
@@ -427,14 +431,26 @@ func TestImportAsync_CancelStopsEarly(t *testing.T) {
 		writeTestFile(t, src, fmt.Sprintf("note%03d.md", i), "# note")
 	}
 
+	// 占位任务：拿到唯一的并发名额并卡住，导入任务因此停在 pending
+	started := make(chan struct{})
+	release := make(chan struct{})
+	tasks.submit(context.Background(), "occupier", func(_ context.Context, _ TaskReporter) error {
+		close(started)
+		<-release
+		return nil
+	})
+	<-started
+
 	id, err := s.ImportMarkdownFolderAsync(src, ws, ImportOptions{})
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
-	// 给任务一点时间真正起步，演示「中途取消」而非「排队阶段取消」。
-	// 300 个文件的读写远超这个延时，所以必是局部导入。
-	time.Sleep(30 * time.Millisecond)
-	tasks.Cancel(id)
+	// 排队阶段取消：taskService 在拿到名额前后各检查一次 ctx，
+	// 排队中被取消的任务不会被执行
+	if !tasks.Cancel(id) {
+		t.Fatal("cancel should be accepted while the task is queued")
+	}
+	close(release)
 	tasks.Wait()
 
 	info := tasks.GetTask(id)
@@ -442,8 +458,7 @@ func TestImportAsync_CancelStopsEarly(t *testing.T) {
 		t.Fatalf("expected cancelled, got %s (err=%s)", info.Status, info.Error)
 	}
 
-	// 无论取消发生在排队阶段（0 个文件）还是中途（部分文件），
-	// 核心不变量都是：绝不可能把全部 300 个文件都导完。
+	// 核心不变量：取消生效后一个文件都不该被导入
 	imported := 0
 	_ = filepath.WalkDir(ws, func(path string, d os.DirEntry, err error) error {
 		if err == nil && !d.IsDir() && strings.HasSuffix(d.Name(), ".md") {
@@ -451,8 +466,8 @@ func TestImportAsync_CancelStopsEarly(t *testing.T) {
 		}
 		return nil
 	})
-	if imported >= 300 {
-		t.Errorf("cancel did not take effect: all %d files imported anyway", imported)
+	if imported != 0 {
+		t.Errorf("cancelled before start, but %d files were imported", imported)
 	}
 }
 

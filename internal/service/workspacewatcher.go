@@ -190,15 +190,49 @@ func (w *WorkspaceWatcher) loop() {
 	}
 }
 
+// addDirRecursive 给新目录及其子树挂上监控，并对其中已存在的文件补发 create。
+//
+// 为什么需要补发：fsnotify 是非递归的（一次 Add 只监控一个目录），
+// 从「目录创建」到「walk 完并 Add」之间存在窗口期。用户解压、git clone、
+// 编辑器"新建文件夹并保存"都会在这个窗口里就把文件写进去——这些 Create
+// 事件永久丢失（Linux inotify 尤其明显，Windows 的 ReadDirectoryChangesW
+// 因为是递归监听才显得正常）。挂完监控扫一遍，把漏掉的条目补上。
+func (w *WorkspaceWatcher) addDirRecursive(dir string) {
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if isIgnoredPath(w.root, path) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			_ = w.w.Add(path)
+			return nil
+		}
+		rel, relErr := filepath.Rel(w.root, path)
+		if relErr != nil {
+			rel = path
+		}
+		w.sink.OnFileChange(FileChangeEvent{
+			Type: FileChangeCreate,
+			Path: filepath.ToSlash(rel),
+		})
+		return nil
+	})
+}
+
 // handle 处理单个 fsnotify 事件：补监控新目录、过滤忽略项、分类并推送。
 func (w *WorkspaceWatcher) handle(event fsnotify.Event) {
 	path := event.Name
 
-	// 新建子目录：补上监控，否则里面的文件变更收不到。
+	// 新建子目录：补上监控（含窗口期内已写入的文件），否则里面的变更收不到。
 	if event.Op.Has(fsnotify.Create) {
 		if info, err := os.Stat(path); err == nil && info.IsDir() {
 			if !isIgnoredPath(w.root, path) {
-				_ = w.w.Add(path)
+				w.addDirRecursive(path)
 			}
 		}
 	}

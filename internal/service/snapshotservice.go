@@ -161,9 +161,13 @@ func snapshotObjectPath(workspacePath, hash string) string {
 }
 
 // normalizeSnapshotPath 统一成 / 分隔的相对路径，保证索引键跨平台稳定
-// （同一份 .notevault 在 Windows 与 macOS 打开时不能出现两套键）
+// （同一份 .notevault 在 Windows 与 macOS 打开时不能出现两套键）。
+//
+// filepath.ToSlash 只会替换「当前平台」的分隔符：在 Linux/macOS 上跑时，
+// 从 Windows 索引里读到的 "sub\note.md" 里的反斜杠不会被转换，查询键因此
+// 与索引键对不上（表现为「明明有历史版本却查不到」）。所以这里显式替换两种分隔符。
 func normalizeSnapshotPath(relativePath string) string {
-	return filepath.ToSlash(filepath.Clean(relativePath))
+	return strings.ReplaceAll(filepath.ToSlash(filepath.Clean(relativePath)), "\\", "/")
 }
 
 // ---------------------------------------------------------------------------
