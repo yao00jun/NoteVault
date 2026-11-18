@@ -3,12 +3,13 @@ package service
 import (
 	"archive/zip"
 	"fmt"
-	"github.com/notevault/notevault/internal/core"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/notevault/notevault/internal/core"
 )
 
 func newImportTestService(t *testing.T) *ImportService {

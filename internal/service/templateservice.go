@@ -107,7 +107,7 @@ func (s *TemplateService) ListTemplates(workspacePath string) ([]*TemplateInfo, 
 	if err != nil {
 		return nil, err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	if err := sourceCheckPath(root, templatesDirName); err != nil {
 		return nil, fmt.Errorf("读取模板目录失败: %w", err)
 	}
@@ -116,7 +116,7 @@ func (s *TemplateService) ListTemplates(workspacePath string) ([]*TemplateInfo, 
 		return nil, fmt.Errorf("读取模板目录失败: %w", err)
 	}
 	if err == nil {
-		defer dir.Close()
+		defer func() { _ = dir.Close() }()
 		entries, err := dir.ReadDir(-1)
 		if err != nil {
 			return nil, fmt.Errorf("读取模板目录失败: %w", err)
@@ -173,7 +173,7 @@ func (s *TemplateService) GetTemplateContent(workspacePath string, name string) 
 	if err != nil {
 		return "", err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	content, exists, err := sourceReadRoot(root, templatesDirName+"/"+name+".md", sourceMaxFileBytes)
 	if err != nil {
 		return "", fmt.Errorf("读取模板失败: %w", err)

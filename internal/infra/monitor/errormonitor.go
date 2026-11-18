@@ -130,7 +130,7 @@ func (em *ErrorMonitor) writeLocal(report core.ErrorReport) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	ts := time.UnixMilli(report.Timestamp).Format("2006-01-02 15:04:05.000")
 	line := fmt.Sprintf("[%s] [%s] %s", ts, strings.ToUpper(report.Level), report.Message)
 	if report.Source != "" {
@@ -220,7 +220,7 @@ func (em *ErrorMonitor) sendToSentry(ctx context.Context, report core.ErrorRepor
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("sentry returned status %d", resp.StatusCode)
 	}

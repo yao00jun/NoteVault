@@ -206,7 +206,7 @@ func (s *WorkspaceService) ApplyWorkspacePreset(workspacePath, presetID string) 
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 
 	dirs := make([]string, 0, len(spec.resources)+1)
 	dirs = append(dirs, spec.resources...)

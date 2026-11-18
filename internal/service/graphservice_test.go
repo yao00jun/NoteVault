@@ -187,9 +187,10 @@ func linkCandidatesFixture(t *testing.T) string {
 
 func candidatesByKind(cands []*LinkCandidate) (files, headings []string) {
 	for _, c := range cands {
-		if c.Kind == "file" {
+		switch c.Kind {
+		case "file":
 			files = append(files, c.File)
-		} else if c.Kind == "heading" {
+		case "heading":
 			headings = append(headings, c.File+"#"+c.Heading)
 		}
 	}

@@ -231,7 +231,7 @@ func (s *ImportService) ImportZip(zipPath, workspacePath string, opts ImportOpti
 		}
 		return nil, core.WrapError(core.ErrInvalidInput, "无法打开 zip 文件", err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	// 累计写入量（zip bomb 熔断）
 	var totalWritten int
 
@@ -265,7 +265,7 @@ func (s *ImportService) ImportZip(zipPath, workspacePath string, opts ImportOpti
 		// zip bomb 防护：条目声明的解压大小不可信（可伪造），用 LimitReader
 		// 硬截断单条目体积；全包累计写入量超限即终止导入。
 		content, err := io.ReadAll(io.LimitReader(rc, maxZipEntryBytes+1))
-		rc.Close()
+		_ = rc.Close()
 		if err != nil {
 			result.Errors = append(result.Errors, "读取 zip 条目失败: "+f.Name)
 			continue
@@ -330,11 +330,11 @@ func (s *ImportService) writeToWorkspace(workspacePath, targetRel string, conten
 		}
 	}
 
-	full := filepath.Join(workspacePath, finalRel)
+	full := filepath.Join(workspacePath, finalRel) //nolint:gosec // finalRel 已过 confineToWorkspace 校验
 	if err := os.MkdirAll(filepath.Dir(full), 0750); err != nil {
 		return core.OsToNVError(err, "创建目录失败: "+filepath.Dir(full))
 	}
-	if err := os.WriteFile(full, content, 0644); err != nil {
+	if err := os.WriteFile(full, content, 0644); err != nil { //nolint:gosec // full 已过 confineToWorkspace 校验
 		return core.OsToNVError(err, "写入文件失败: "+full)
 	}
 	visited[finalRel] = true

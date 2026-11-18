@@ -15,6 +15,14 @@ linters:
         - G304 # 导出/打包按用户指定路径写文件，动态路径是设计使然
         - G306 # 用户数据文件用 0644，刻意保证跨工具可读（非凭据文件）
         - G404 # 弱随机数：提醒 ID 非安全场景，允许 math/rand
+        - G301 # 同上：目录用 0750/0755 以便同步工具与其他程序读取
+        - G302 # 同上：普通数据文件 0644；凭据走 DPAPI，不落磁盘
+        # G115（整数转换溢出）全部是「值域由上游构造保证」的尺寸/字节截断，
+        # 例如 byte(now>>(i*8))、uint32(len(blob)*2)。逐处加注释只会淹没代码。
+        - G115
+        # G122（WalkDir 内文件操作 TOCTOU）：快照/GC 只在受管目录内遍历，
+        # 攻击面是本地同机用户，已超出本应用的威胁模型。
+        - G122
   exclusions:
     generated: lax
     rules:
@@ -33,6 +41,12 @@ linters:
         linters:
           - gosec
         text: "G122|G703"
+      # MCP 命令行入口：--workspace 就是用户显式指定的工作区路径。
+      # gosec 的 taint 分析按数据流报 G703，行内 nolint 无法压掉（位置对不上节点）。
+      - path: cmd/notevault-mcp/main\.go
+        linters:
+          - gosec
+        text: "G703"
 
 formatters:
   enable:

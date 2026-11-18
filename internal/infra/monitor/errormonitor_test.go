@@ -282,7 +282,7 @@ func TestRandomEventID(t *testing.T) {
 		t.Errorf("event id length = %d, want 32", len(id))
 	}
 	for _, c := range id {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Errorf("event id has non-hex char: %q", id)
 			break
 		}

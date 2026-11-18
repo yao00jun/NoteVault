@@ -120,7 +120,7 @@ func sourceReadRoot(root *os.Root, relative string, limit int64) ([]byte, bool, 
 	if err != nil {
 		return nil, false, fmt.Errorf("无法读取资料：%s", relative)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Size() > limit {
 		return nil, true, fmt.Errorf("资料不是普通文件或超出读取上限：%s", relative)
@@ -384,7 +384,7 @@ func sourceCopyDestination(root *os.Root, base, hash string) (string, []byte, bo
 	if err != nil {
 		return "", nil, false, fmt.Errorf("无法检查冲突副本目录")
 	}
-	defer directory.Close()
+	defer func() { _ = directory.Close() }()
 	entries, err := directory.ReadDir(20001)
 	if err != nil && err != io.EOF || len(entries) > 20000 {
 		return "", nil, false, fmt.Errorf("冲突副本目录无法读取或超过 20000 条目上限")
@@ -454,7 +454,7 @@ func (s *ImportService) executeSourceImport(ctx context.Context, setup sourceImp
 	if err != nil {
 		return fmt.Errorf("无法打开目标工作区")
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	for _, output := range plan.outputs {
 		if err := sourceCheckPath(root, path.Join(setup.request.TargetFolder, output.name)); err != nil {
 			return err

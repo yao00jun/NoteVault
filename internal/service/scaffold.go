@@ -137,7 +137,7 @@ func EnsureWorkspaceScaffold(workspacePath string) error {
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	var errs []error
 	for _, dir := range scaffoldDirs {
 		if err := sourceCheckPath(root, dir); err != nil {

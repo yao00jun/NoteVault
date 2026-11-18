@@ -111,7 +111,7 @@ func sourceReadLocalFile(ctx context.Context, directory, full string) ([]byte, e
 	if err != nil {
 		return nil, fmt.Errorf("无法打开源目录")
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	data, exists, err := sourceReadRoot(root, filepath.ToSlash(relative), sourceMaxFileBytes)
 	if err != nil {
 		return nil, err

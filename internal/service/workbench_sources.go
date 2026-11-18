@@ -66,7 +66,7 @@ func workbenchBookSources(workspace string, book *WorkbenchBook) error {
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	book.Attachments, err = sourceBookAttachments(root, book.Folder)
 	if err != nil {
 		return err
@@ -113,7 +113,7 @@ func sourceStoredPDFInputs(workspace, folder string) ([]sourceImportInput, error
 	if err != nil {
 		return nil, err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	if _, exists, err := sourceReadRoot(root, path.Join(relative, "book.md"), sourceMaxFileBytes); err != nil || !exists {
 		return nil, fmt.Errorf("分册不存在，请先创建或接入分册")
 	}
@@ -166,7 +166,7 @@ func ResolveWorkspaceAttachment(workspace, relative string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	if err := sourceCheckPath(root, clean); err != nil {
 		return "", err
 	}

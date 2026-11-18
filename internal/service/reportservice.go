@@ -115,14 +115,14 @@ func (s *ReportService) GenerateWeeklyReport(workspacePath string, ai WeeklyRepo
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# 知识周报 %d-W%02d\n\n", year, week))
-	sb.WriteString(fmt.Sprintf("> 生成于 %s · 覆盖 %s 至 %s\n\n",
+	fmt.Fprintf(&sb, "# 知识周报 %d-W%02d\n\n", year, week)
+	fmt.Fprintf(&sb, "> 生成于 %s · 覆盖 %s 至 %s\n\n",
 		now.Format("2006-01-02 15:04"),
-		weekStart.Format("2006-01-02"), now.Format("2006-01-02")))
+		weekStart.Format("2006-01-02"), now.Format("2006-01-02"))
 
 	sb.WriteString("## 本周数据\n\n")
-	sb.WriteString(fmt.Sprintf("- 改动笔记：%d 篇\n", len(changed)))
-	sb.WriteString(fmt.Sprintf("- 待办：未完成 %d（高优先级 %d）· 已完成累计 %d\n\n", pending, high, completed))
+	fmt.Fprintf(&sb, "- 改动笔记：%d 篇\n", len(changed))
+	fmt.Fprintf(&sb, "- 待办：未完成 %d（高优先级 %d）· 已完成累计 %d\n\n", pending, high, completed)
 
 	sb.WriteString("## 本周改动的笔记\n\n")
 	if len(changed) == 0 {
@@ -133,7 +133,7 @@ func (s *ReportService) GenerateWeeklyReport(workspacePath string, ai WeeklyRepo
 		if i >= weeklyReportMaxNotes {
 			break
 		}
-		sb.WriteString(fmt.Sprintf("- [[%s|%s]]\n", r.rel, filepath.Base(r.rel)))
+		fmt.Fprintf(&sb, "- [[%s|%s]]\n", r.rel, filepath.Base(r.rel))
 		if i < weeklyReportMaxNotes {
 			if content, rerr := s.fileService.ReadFile(workspacePath, r.rel); rerr == nil {
 				noteSnippets = append(noteSnippets, fmt.Sprintf("【%s】\n%s", r.rel, truncateRunes(content, weeklyReportNoteMaxRunes)))
@@ -166,7 +166,7 @@ func (s *ReportService) GenerateWeeklyReport(workspacePath string, ai WeeklyRepo
 	sb.WriteString("## 附：本周逐日改动\n\n")
 	for d := weekStart; !d.After(now); d = d.AddDate(0, 0, 1) {
 		day := d
-		sb.WriteString(fmt.Sprintf("- %s：%d 篇\n", day.Format("01-02"), editCounts[day.Format("2006-01-02")]))
+		fmt.Fprintf(&sb, "- %s：%d 篇\n", day.Format("01-02"), editCounts[day.Format("2006-01-02")])
 	}
 
 	content := sb.String()
@@ -238,8 +238,8 @@ func (s *ReportService) GenerateDailyBriefing(workspacePath, date string, ai Wee
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("今日工作台数据（%s）：\n\n## 任务\n未完成 %d 条；今日到期/已逾期 %d 条；阻塞 %d 条\n",
-		date, len(open), len(due), len(blocked)))
+	fmt.Fprintf(&sb, "今日工作台数据（%s）：\n\n## 任务\n未完成 %d 条；今日到期/已逾期 %d 条；阻塞 %d 条\n",
+		date, len(open), len(due), len(blocked))
 	listed := make(map[string]bool, dailyBriefingMaxTasks)
 	appendTask := func(label string, list []*WorkbenchTask) {
 		for _, task := range list {
@@ -257,7 +257,7 @@ func (s *ReportService) GenerateDailyBriefing(workspacePath, date string, ai Wee
 	appendTask("阻塞", blocked)
 	appendTask("到期", due)
 
-	sb.WriteString(fmt.Sprintf("\n## 复习\n到期题卡 %d 张\n", dueCards))
+	fmt.Fprintf(&sb, "\n## 复习\n到期题卡 %d 张\n", dueCards)
 	if len(snapshot.AgentEvents) > 0 {
 		sb.WriteString("\n## 今日 Agent 动态\n")
 		for i, event := range snapshot.AgentEvents {

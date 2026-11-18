@@ -212,7 +212,7 @@ func normalizeWorkbenchDistill(req DistillRequest) (DistillRequest, error) {
 		return req, fmt.Errorf("关联项目名不合法：%s", req.RelatedProject)
 	}
 	if isInboxSource && req.RelatedProject == "" {
-		return req, fmt.Errorf("Inbox 来源需要指定关联项目")
+		return req, fmt.Errorf("Inbox 来源需要指定关联项目") //nolint:staticcheck // ST1005：句首 Inbox 是专有名词
 	}
 	if req.RelatedProject == "" {
 		req.RelatedProject = sourceParts[1]

@@ -389,9 +389,10 @@ func workbenchBlockers(line string) []workbenchBlockerSpan {
 				escaped = true
 				continue
 			}
-			if char == '(' || char == '（' {
+			switch char {
+			case '(', '（':
 				depth++
-			} else if char == ')' || char == '）' {
+			case ')', '）':
 				depth--
 			}
 			if depth == 0 {

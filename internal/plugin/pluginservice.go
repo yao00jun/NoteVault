@@ -191,30 +191,6 @@ func validatePluginID(id string) error {
 	return nil
 }
 
-// stripTSReferenceLines 跳过文件开头的 /// <reference path="..." /> 行。
-// 这些是 TypeScript 的 IDE 提示，对运行时的 JS 插件毫无意义，
-// 但放在 /*--- frontmatter 前面会阻断解析——见 parsePluginManifest 注释。
-func stripTSReferenceLines(src string) string {
-	for {
-		nl := strings.IndexByte(src, '\n')
-		var line string
-		if nl < 0 {
-			line = src
-		} else {
-			line = src[:nl]
-		}
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "///") {
-			if nl < 0 {
-				return ""
-			}
-			src = src[nl+1:]
-			continue
-		}
-		return src
-	}
-}
-
 // pluginDataPath 插件私有数据文件路径（位于插件目录之外，避免被当作插件源码扫描）
 func (s *PluginService) pluginDataPath(id string) string {
 	return filepath.Join(filepath.Dir(s.pluginsDir), "plugins-data", id+".json")

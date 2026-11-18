@@ -79,8 +79,8 @@ func webviewUserDataPath() string {
 	if suffix := os.Getenv("NOTEVAULT_E2E_ID"); suffix != "" {
 		path = filepath.Join(path, "e2e-"+suffix)
 	}
-	if err := os.MkdirAll(path, 0750); err != nil {
-		log.Printf("[WebView2] unable to create user data directory %q: %v", path, err)
+	if err := os.MkdirAll(path, 0750); err != nil { //nolint:gosec // path 由本函数内拼接，仅末段受 E2E 环境变量控制
+		log.Printf("[WebView2] unable to create user data directory %q: %v", path, err) //nolint:gosec // %q 已转义，日志仅本地
 		return ""
 	}
 	return path

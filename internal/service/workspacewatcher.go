@@ -140,7 +140,7 @@ func NewWorkspaceWatcher(root string, sink FileChangeSink) (*WorkspaceWatcher, e
 		done: make(chan struct{}),
 	}
 	if err := w.walkAndAdd(root); err != nil {
-		fw.Close()
+		_ = fw.Close()
 		return nil, err
 	}
 	return w, nil

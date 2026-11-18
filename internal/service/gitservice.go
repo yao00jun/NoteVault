@@ -37,7 +37,7 @@ type GitStatus struct {
 type GitRunner func(ctx context.Context, dir string, args ...string) (string, error)
 
 func defaultGitRunner(ctx context.Context, dir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // 可执行文件固定为 git，args 由内部调用方拼装
 	cmd.Dir = dir
 	// Windows GUI 进程启动 git.exe 会弹控制台窗口（进入导入页时闪一下黑框），
 	// 平台实现里统一隐藏；非 Windows 为空操作。
@@ -198,7 +198,7 @@ func (s *GitService) CommitAll(workspacePath string, message string) (string, er
 	if err != nil {
 		// 最常见的是没配 user.name/user.email，给用户可执行的指引
 		if strings.Contains(commitOut, "user.name") || strings.Contains(commitOut, "user.email") {
-			return "", fmt.Errorf("Git 身份未配置。请先执行：\n  git config --global user.name \"你的名字\"\n  git config --global user.email \"you@example.com\"")
+			return "", fmt.Errorf("Git 身份未配置。请先执行：\n  git config --global user.name \"你的名字\"\n  git config --global user.email \"you@example.com\"") //nolint:staticcheck // ST1005：句首 Git/Vertex 是专有名词
 		}
 		return "", fmt.Errorf("git commit 失败: %w\n%s", err, commitOut)
 	}

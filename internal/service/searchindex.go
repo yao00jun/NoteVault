@@ -2,7 +2,7 @@ package service
 
 import (
 	"bytes"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // 仅用于工作区路径/内容的短哈希做文件名与变更检测，非密码学用途
 	"encoding/gob"
 	"encoding/hex"
 	"errors"
@@ -779,14 +779,6 @@ type indexSummaryEntry struct {
 	DocLen  int       `json:"docLen"`
 }
 
-// indexSummaryPayload 摘要文件的载荷（信封的 data 字段）。
-//
-// schemaVersion / kind / updatedAt 由 schema.Envelope 统一承载，这里不再重复。
-type indexSummaryPayload struct {
-	WorkspacePath string              `json:"workspacePath"`
-	Entries       []indexSummaryEntry `json:"entries"`
-}
-
 // searchIndexDir 返回摘要目录：优先 %APPDATA%/NoteVault/search-index，回退 TempDir
 func searchIndexDir() string {
 	base := os.Getenv("APPDATA")
@@ -800,7 +792,7 @@ func searchIndexDir() string {
 // 用 sha1(workspacePath) 作为文件名，避免路径分隔符问题。
 // 蓝图专项 4：格式升级为 Gob 二进制（.gob），冷启动反序列化显著快于 JSON。
 func summaryPathFor(workspacePath string) string {
-	h := sha1.Sum([]byte(filepath.ToSlash(filepath.Clean(workspacePath))))
+	h := sha1.Sum([]byte(filepath.ToSlash(filepath.Clean(workspacePath)))) //nolint:gosec // 生成稳定文件名，不用于安全校验
 	name := hex.EncodeToString(h[:]) + ".gob"
 	return filepath.Join(searchIndexDir(), name)
 }

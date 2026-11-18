@@ -16,7 +16,7 @@ func sourceSystemProxySettings() (string, bool, error) {
 	if err != nil {
 		return "", false, sourceNetworkError("无法读取当前用户的系统代理配置")
 	}
-	defer settings.Close()
+	defer func() { _ = settings.Close() }()
 	enabled, _, err := settings.GetIntegerValue("ProxyEnable")
 	if errors.Is(err, registry.ErrNotExist) || err == nil && enabled == 0 {
 		return "", false, nil

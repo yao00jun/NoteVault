@@ -95,7 +95,7 @@ func sourcePDFPlainStream(stream sourcePDFVerifiedStream) error {
 	// bytes. Predictors/indirect filters need their own bounded decoder first.
 	for _, key := range []string{"/DecodeParms", "/Extends", "/Prev", "/XRefStm"} {
 		value := stream.fields[key]
-		if len(value) > 0 && !(len(value) == 1 && value[0] == "null") {
+		if len(value) > 0 && (len(value) != 1 || value[0] != "null") {
 			return fmt.Errorf("暂不支持此索引或对象流参数：%s", key)
 		}
 	}

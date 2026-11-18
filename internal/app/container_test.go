@@ -36,7 +36,7 @@ func TestNewContainer_AllFieldsWired(t *testing.T) {
 	typ := v.Type()
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
-		if field.Kind() != reflect.Ptr {
+		if field.Kind() != reflect.Pointer {
 			t.Fatalf("field %s: expected a pointer field, got %s", typ.Field(i).Name, field.Kind())
 		}
 		if field.IsNil() {
@@ -77,7 +77,7 @@ func TestWailsServices_RegistersEveryContainerInstance(t *testing.T) {
 	registered := map[reflect.Type]uintptr{}
 	for _, svc := range c.WailsServices() {
 		inst := reflect.ValueOf(svc.Instance())
-		if inst.Kind() != reflect.Ptr {
+		if inst.Kind() != reflect.Pointer {
 			t.Fatalf("registered a non-pointer instance %s", inst.Type())
 		}
 		if _, dup := registered[inst.Type()]; dup {

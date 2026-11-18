@@ -173,7 +173,7 @@ func (r TaskReporter) Message(message string) {
 }
 
 // TaskID 返回当前任务 ID，供任务体把结构化产出与任务关联
-//（事件只带进度，业务结果由服务自己按 ID 暂存，前端结束后取回）。
+// （事件只带进度，业务结果由服务自己按 ID 暂存，前端结束后取回）。
 func (r TaskReporter) TaskID() string {
 	if r.entry == nil {
 		return ""

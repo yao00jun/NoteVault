@@ -1,12 +1,13 @@
 package plugin
 
 import (
-	"github.com/notevault/notevault/internal/core"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/notevault/notevault/internal/core"
 )
 
 func newPluginTestService(t *testing.T) (*PluginService, string) {

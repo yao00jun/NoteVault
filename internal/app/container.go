@@ -150,7 +150,7 @@ func NewContainer(cfg ContainerConfig) *Container {
 			fileService,
 			summarizeService,
 		),
-		Indexes:      indexRegistry,
+		Indexes: indexRegistry,
 	}
 }
 

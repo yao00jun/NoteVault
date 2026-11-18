@@ -89,7 +89,7 @@ func (s windowsCredentialStore) Save(key, value string) error {
 	blob := utf16.Encode([]rune(value))
 	var blobPtr unsafe.Pointer
 	if len(blob) > 0 {
-		blobPtr = unsafe.Pointer(&blob[0])
+		blobPtr = unsafe.Pointer(&blob[0]) //nolint:gosec // DPAPI 需要裸指针传递 UTF-16 blob
 	}
 
 	target, err := syscall.UTF16PtrFromString(s.target(key))
@@ -109,7 +109,7 @@ func (s windowsCredentialStore) Save(key, value string) error {
 		Persist:            credPersistLocalMachine,
 		UserName:           user,
 	}
-	r1, _, callErr := procCredWrite.Call(uintptr(unsafe.Pointer(&cred)), 0)
+	r1, _, callErr := procCredWrite.Call(uintptr(unsafe.Pointer(&cred)), 0) //nolint:gosec // 调用 Win32 CredWriteW 必须传结构体指针
 	// blob 通过 cred.CredentialBlob 传给了系统调用，Call 期间必须保持存活
 	runtime.KeepAlive(blob)
 	if r1 == 0 {
@@ -127,10 +127,10 @@ func (s windowsCredentialStore) Load(key string) (string, error) {
 
 	var cred *credentialW
 	r1, _, callErr := procCredRead.Call(
-		uintptr(unsafe.Pointer(target)),
+		uintptr(unsafe.Pointer(target)), //nolint:gosec // 调用 Win32 Cred API 必须传裸指针
 		credTypeGeneric,
 		0,
-		uintptr(unsafe.Pointer(&cred)),
+		uintptr(unsafe.Pointer(&cred)), //nolint:gosec // 调用 Win32 CredReadW 必须传结构体指针
 	)
 	if r1 == 0 {
 		if errors.Is(callErr, windows.ERROR_NOT_FOUND) {
@@ -139,12 +139,12 @@ func (s windowsCredentialStore) Load(key string) (string, error) {
 		return "", fmt.Errorf("CredRead 失败: %w", callErr)
 	}
 	// CredRead 成功后必须 CredFree 释放系统分配的缓冲区，否则泄漏。
-	defer procCredFree.Call(uintptr(unsafe.Pointer(cred)))
+	defer func() { _, _, _ = procCredFree.Call(uintptr(unsafe.Pointer(cred))) }() //nolint:gosec // CredFree 必须传 CredRead 返回的指针
 
 	if cred.CredentialBlob == nil || cred.CredentialBlobSize == 0 {
 		return "", nil
 	}
-	blob := unsafe.Slice((*uint16)(cred.CredentialBlob), cred.CredentialBlobSize/2)
+	blob := unsafe.Slice((*uint16)(cred.CredentialBlob), cred.CredentialBlobSize/2) //nolint:gosec // 系统分配的 UTF-16 缓冲区，长度来自 CredRead
 	return string(utf16.Decode(blob)), nil
 }
 
@@ -154,7 +154,7 @@ func (s windowsCredentialStore) Delete(key string) error {
 	if err != nil {
 		return fmt.Errorf("凭据名不合法: %w", err)
 	}
-	r1, _, callErr := procCredDelete.Call(uintptr(unsafe.Pointer(target)), credTypeGeneric, 0)
+	r1, _, callErr := procCredDelete.Call(uintptr(unsafe.Pointer(target)), credTypeGeneric, 0) //nolint:gosec // 调用 Win32 CredDeleteW 必须传裸指针
 	if r1 == 0 && !errors.Is(callErr, windows.ERROR_NOT_FOUND) {
 		return fmt.Errorf("CredDelete 失败: %w", callErr)
 	}

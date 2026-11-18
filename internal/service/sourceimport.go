@@ -413,7 +413,7 @@ func prepareSourceImportSetup(workspacePath string, request SourceImportRequest)
 	if err != nil {
 		return setup, fmt.Errorf("无法打开工作区")
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	for _, rel := range []string{target, setup.metadata, path.Join(target, sourceLedgerName), path.Join(target, sourceAIName)} {
 		if err := sourceCheckPath(root, rel); err != nil {
 			return setup, err
@@ -508,7 +508,7 @@ func (s *ImportService) prepareSourceImportPlan(ctx context.Context, setup sourc
 	if err != nil {
 		return plan, fmt.Errorf("无法打开工作区")
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	if _, _, _, err := sourceLoadManifest(root, setup.request.TargetFolder); err != nil {
 		return plan, err
 	}

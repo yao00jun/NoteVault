@@ -350,7 +350,7 @@ func llmChatGoogleGemini(ctx context.Context, client *http.Client, apiKey, baseU
 func llmChatGoogleVertex(ctx context.Context, client *http.Client, apiKey, baseURL, model, systemPrompt, userPrompt string) (string, error) {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL == "" {
-		return "", fmt.Errorf("Vertex AI 必须填写 Base URL（含项目/区域）")
+		return "", fmt.Errorf("Vertex AI 必须填写 Base URL（含项目/区域）") //nolint:staticcheck // ST1005：句首 Vertex 是专有名词
 	}
 	url := fmt.Sprintf("%s/models/%s:generateContent", baseURL, model)
 	reqBody := geminiRequest{

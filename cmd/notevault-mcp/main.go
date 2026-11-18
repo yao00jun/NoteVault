@@ -44,21 +44,21 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		ws = os.Getenv("NOTEVAULT_WORKSPACE")
 	}
 	if ws == "" {
-		fmt.Fprintln(stderr, "notevault-mcp: --workspace (or NOTEVAULT_WORKSPACE) is required")
+		_, _ = fmt.Fprintln(stderr, "notevault-mcp: --workspace (or NOTEVAULT_WORKSPACE) is required")
 		return 2
 	}
 	info, err := os.Stat(ws)
 	if err != nil || !info.IsDir() {
-		fmt.Fprintf(stderr, "notevault-mcp: workspace %q is not a directory\n", ws)
+		_, _ = fmt.Fprintf(stderr, "notevault-mcp: workspace %q is not a directory\n", ws)
 		return 2
 	}
 
 	server := mcp.NewServer(ws, *enableWrite)
-	fmt.Fprintf(stderr, "notevault-mcp: serving workspace %q (write=%v)\n", ws, *enableWrite)
+	_, _ = fmt.Fprintf(stderr, "notevault-mcp: serving workspace %q (write=%v)\n", ws, *enableWrite)
 
 	reader := bufio.NewReader(stdin)
 	writer := bufio.NewWriter(stdout)
-	defer writer.Flush()
+	defer func() { _ = writer.Flush() }()
 
 	for {
 		line, err := reader.ReadString('\n')
@@ -67,9 +67,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			if len(trimmed) > 0 {
 				resp, hasResp := server.Process([]byte(trimmed))
 				if hasResp {
-					writer.Write(resp)
-					writer.WriteByte('\n')
-					writer.Flush()
+					_, _ = writer.Write(resp)
+					_ = writer.WriteByte('\n')
+					_ = writer.Flush()
 				}
 			}
 		}

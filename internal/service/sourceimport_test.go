@@ -466,7 +466,7 @@ func TestSourceImportFailureReturnsPartialAndWorkspaceOwnsResults(t *testing.T) 
 func TestSourceImportQueuedCancellationCreatesNoFiles(t *testing.T) {
 	tasks := NewTaskServiceWithOptions(nil, 1, 20)
 	started, release := make(chan struct{}), make(chan struct{})
-	tasks.submit(nil, "block queue", func(_ context.Context, _ TaskReporter) error { close(started); <-release; return nil })
+	tasks.submit(context.TODO(), "block queue", func(_ context.Context, _ TaskReporter) error { close(started); <-release; return nil })
 	<-started
 	svc := NewImportServiceWithTasks(tasks)
 	workspace := t.TempDir()

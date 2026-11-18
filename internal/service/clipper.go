@@ -59,10 +59,10 @@ type ClipperService struct {
 	tokenPath string // 为空用默认位置（%APPDATA%/NoteVault/clipper-token.txt）；测试注入临时文件
 	port      int    // 0 = 仅用于测试的随机端口
 
-	mu      sync.Mutex
-	token   string
-	server  *http.Server
-	aiCfg   *clipAIConfig
+	mu     sync.Mutex
+	token  string
+	server *http.Server
+	aiCfg  *clipAIConfig
 }
 
 // NewClipperService 构造剪藏服务。summarizer 可为 nil（无 AI 时纯落盘）。

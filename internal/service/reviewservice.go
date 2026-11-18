@@ -97,8 +97,8 @@ func (s *ReviewService) GenerateReview(workspacePath string, ai WeeklyReportAICo
 	aiReady := strings.TrimSpace(ai.BaseURL) != "" && strings.TrimSpace(ai.Model) != ""
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# 定期回顾 %s\n\n", now.Format("2006-01-02")))
-	sb.WriteString(fmt.Sprintf("> 覆盖近 %d 天改动 %d 篇 · 旧笔记重温 %d 篇\n\n", days, len(inWindow), len(old)))
+	fmt.Fprintf(&sb, "# 定期回顾 %s\n\n", now.Format("2006-01-02"))
+	fmt.Fprintf(&sb, "> 覆盖近 %d 天改动 %d 篇 · 旧笔记重温 %d 篇\n\n", days, len(inWindow), len(old))
 
 	sb.WriteString("## 本期笔记摘要\n\n")
 	if len(inWindow) == 0 {
@@ -106,7 +106,7 @@ func (s *ReviewService) GenerateReview(workspacePath string, ai WeeklyReportAICo
 	}
 	for _, r := range inWindow {
 		title := strings.TrimSuffix(filepath.Base(r.rel), filepath.Ext(r.rel))
-		sb.WriteString(fmt.Sprintf("### [[%s|%s]]\n\n", r.rel, title))
+		fmt.Fprintf(&sb, "### [[%s|%s]]\n\n", r.rel, title)
 		if !aiReady || s.summarize == nil {
 			continue
 		}
@@ -117,7 +117,7 @@ func (s *ReviewService) GenerateReview(workspacePath string, ai WeeklyReportAICo
 		summary, serr := s.summarize.Summarize(ai.APIKey, ai.BaseURL, ai.Model, ai.Protocol, content)
 		if serr != nil {
 			result.Failed++
-			sb.WriteString(fmt.Sprintf("> 摘要生成失败：%v\n\n", serr))
+			fmt.Fprintf(&sb, "> 摘要生成失败：%v\n\n", serr)
 			continue
 		}
 		result.Summarized++
@@ -131,7 +131,7 @@ func (s *ReviewService) GenerateReview(workspacePath string, ai WeeklyReportAICo
 	for _, r := range old {
 		title := strings.TrimSuffix(filepath.Base(r.rel), filepath.Ext(r.rel))
 		result.RecapTitles = append(result.RecapTitles, r.rel)
-		sb.WriteString(fmt.Sprintf("- [[%s|%s]]（上次改动 %s）\n", r.rel, title, r.mod.Format("2006-01-02")))
+		fmt.Fprintf(&sb, "- [[%s|%s]]（上次改动 %s）\n", r.rel, title, r.mod.Format("2006-01-02"))
 	}
 	sb.WriteString("\n---\n\n重温方法：读一遍，把仍然认同的划掉「已回顾」，有新想法的直接补进笔记；确定过时的移入归档。\n")
 

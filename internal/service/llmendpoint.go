@@ -372,7 +372,7 @@ func newProbeRequest(apiKey, baseURL string, p LLMProtocol) (*http.Request, stri
 		case LLMProtocolGoogleGemini:
 			baseURL = "https://generativelanguage.googleapis.com/v1beta"
 		case LLMProtocolGoogleVertex:
-			return nil, "", fmt.Errorf("Vertex AI 必须填写 Base URL")
+			return nil, "", fmt.Errorf("Vertex AI 必须填写 Base URL") //nolint:staticcheck // ST1005：句首 Vertex 是专有名词
 		default:
 			baseURL = "https://api.openai.com/v1"
 		}

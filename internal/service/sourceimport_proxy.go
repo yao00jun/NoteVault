@@ -212,10 +212,10 @@ func (transport *sourceHTTPTransport) connect(ctx context.Context, proxy *url.UR
 	succeeded := false
 	defer func() {
 		if !succeeded {
-			raw.Close()
+			_ = raw.Close()
 		}
 	}()
-	stopCancellation := context.AfterFunc(ctx, func() { raw.Close() })
+	stopCancellation := context.AfterFunc(ctx, func() { _ = raw.Close() })
 	defer stopCancellation()
 	deadline := time.Now().Add(10 * time.Second)
 	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
@@ -382,7 +382,7 @@ func (transport *sourceHTTPTransport) resolveDoH(ctx context.Context, host strin
 			return nil, sourceNetworkError("无法通过固定代理验证公共 DNS；请检查代理连接")
 		}
 		if response.StatusCode != http.StatusOK || response.ContentLength > 64<<10 {
-			response.Body.Close()
+			_ = response.Body.Close()
 			return nil, sourceNetworkError("公共 DNS 响应失败或超过 64 KiB 上限")
 		}
 		body, readErr := io.ReadAll(io.LimitReader(response.Body, 64<<10|1))
