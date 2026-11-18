@@ -1,7 +1,7 @@
 # NoteVault 用户手册
 
 > 本地优先的个人知识库 · 桌面版
-> 手册对应版本：v1.2（2026-09）。界面语言支持简体中文 / English，可在设置中切换。
+> 手册对应版本：v3.0（2026-11）。界面语言支持简体中文 / English，可在设置中切换。
 
 ---
 
@@ -339,4 +339,4 @@ Embedding 端点可以指向本机 Ollama 等本地服务，全程离线；用�
 
 ---
 
-*本手册与代码同步维护于 `docs/UserManual.md`；开发与架构细节见 `docs/HANDOFF.md` 与 `README.md`。*
+*本手册与代码同步维护于 `docs/UserManual.md`；需求与接口规范见 `docs/PRD.md`、`docs/API.json` 与 `README.md`。*
