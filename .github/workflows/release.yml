@@ -124,11 +124,14 @@ jobs:
         # MCP 是零 CGO 纯 Go 二进制，直接交叉编译出对应架构
         run: |
           # Info.plist 里的版本号（CFBundleVersion / CFBundleShortVersionString）
-          # 是本地兜底默认值，CI 按 tag 覆写，dmg 内应用版本与 Release 一致
+          # 是本地兜底默认值，CI 按 tag 覆写，dmg 内应用版本与 Release 一致。
+          # 不用 sed -i：macOS 的 BSD sed 会把 -i 后的第一个参数当备份后缀吞掉
+          #（首跑踩坑），改为输出到临时文件再替换
           plist_ver="${VERSION#v}"
-          sed -i -e "/CFBundleVersion/{n; s|<string>.*</string>|<string>$plist_ver</string>|;}" \
-                 -e "/CFBundleShortVersionString/{n; s|<string>.*</string>|<string>$plist_ver</string>|;}" \
-                 build/darwin/Info.plist
+          sed -e "/CFBundleVersion/{n; s|<string>.*</string>|<string>$plist_ver</string>|;}" \
+              -e "/CFBundleShortVersionString/{n; s|<string>.*</string>|<string>$plist_ver</string>|;}" \
+              build/darwin/Info.plist > build/darwin/Info.plist.tmp \
+            && mv build/darwin/Info.plist.tmp build/darwin/Info.plist
           wails3 task darwin:package:dmg VERSION="$VERSION" ARCH="${{ matrix.arch }}"
           GOARCH="${{ matrix.arch }}" wails3 task mcp:build
 
