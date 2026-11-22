@@ -97,6 +97,7 @@ export type {
     LLMEndpointPreset,
     LLMProbeResult,
     LinkCandidate,
+    OutlookEmail,
     OutlookMeeting,
     PropertyMeta,
     QnACitation,
