@@ -3,26 +3,30 @@
 #
 # The lines below are called `modelines`. See `:help modeline`
 
-name: "notevault.exe"
+# version 是本地兜底默认值；CI（release.yml）在打包前按当前 tag
+# sed 覆写为真实版本号，保证 deb/rpm 的包名与元数据跟 Release 一致。
+name: "notevault"
 arch: ${GOARCH}
 platform: "linux"
 version: "0.1.0"
 section: "default"
 priority: "extra"
-maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "本地优先的个人知识库管理工具"
-vendor: "My Company"
-homepage: "https://wails.io"
-license: "MIT"
+# 不用 ${GIT_COMMITTER_NAME}：GitHub Actions 不保证导出该环境变量，
+# 展开成空值会让 nfpm 校验失败。
+maintainer: "NoteVault Maintainers <notevault@users.noreply.github.com>"
+description: "本地优先的个人知识库与研发工作台"
+vendor: "NoteVault"
+homepage: "https://github.com/yao00jun/NoteVault"
+license: "Apache-2.0"
 release: "1"
 
 contents:
-  - src: "./bin/notevault.exe"
-    dst: "/usr/local/bin/notevault.exe"
+  - src: "./bin/notevault"
+    dst: "/usr/local/bin/notevault"
   - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/128x128/apps/notevault.exe.png"
-  - src: "./build/linux/notevault.exe.desktop"
-    dst: "/usr/share/applications/notevault.exe.desktop"
+    dst: "/usr/share/icons/hicolor/128x128/apps/notevault.png"
+  - src: "./build/linux/notevault.desktop"
+    dst: "/usr/share/applications/notevault.desktop"
 
 # Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
 depends:

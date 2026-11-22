@@ -1,7 +1,7 @@
 name: Release
 
 # 触发：推送 vX.Y.Z tag（或手动指定已有 tag 重跑）。
-# 产物：Windows 安装包 + 裸 exe、macOS dmg、Linux tar.gz，全部挂到 GitHub Release。
+# 产物：Windows 安装包 + 裸 exe、macOS dmg、Linux tar.gz/deb/rpm/AppImage，全部挂到 GitHub Release。
 #
 # 与本地 `wails3 task release VERSION=vX.Y.Z` 的关系：
 #   本地脚本负责「构建 → 冒烟 → 推送 → 建 Release」；
@@ -56,10 +56,11 @@ jobs:
             label: darwin-amd64
             package: dmg
             arch: amd64
-          # Linux：静态二进制打 tar.gz（deb/rpm/AppImage 依赖额外工具链，暂不进流水线）
+          # Linux：tar.gz + deb + rpm + AppImage。deb/rpm 走 wails3 内置的
+          # nfpm（纯 Go，无需 rpmbuild/dpkg 工具链）；AppImage 需联网下载 linuxdeploy。
           - os: ubuntu-24.04
             label: linux-amd64
-            package: tarball
+            package: linux
 
     steps:
       - uses: actions/checkout@v4
@@ -125,12 +126,24 @@ jobs:
           wails3 task darwin:package:dmg VERSION="$VERSION" ARCH="${{ matrix.arch }}"
           GOARCH="${{ matrix.arch }}" wails3 task mcp:build
 
-      - name: Build Linux binaries
-        if: matrix.package == 'tarball'
+      - name: Build Linux binaries and packages
+        if: matrix.package == 'linux'
         shell: bash
+        env:
+          # linuxdeploy 是 AppImage 自身，runner 没有 FUSE，只能解包运行
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          # nfpm.yaml 的 arch: ${GOARCH} 靠环境变量展开，Actions 默认不导出它
+          GOARCH: amd64
         run: |
+          # deb/rpm 的版本号进包名与元数据：nfpm.yaml 里写的是本地兜底默认值，
+          # CI 按当前 tag 覆写（去掉 v 前缀），保证与 Release 版本一致
+          sed -i "s/^version: .*/version: \"${VERSION#v}\"/" build/linux/nfpm/nfpm.yaml
           wails3 task linux:build VERSION="$VERSION"
           wails3 task mcp:build
+          # 三个打包任务各自依赖 build：go build 有缓存，多跑几次只是重复 vite 构建
+          wails3 task linux:create:deb
+          wails3 task linux:create:rpm
+          wails3 task linux:create:appimage
 
       # 统一产物命名，并把 MCP 二进制一并打包（它不在安装包里）
       - name: Collect release assets
@@ -158,6 +171,11 @@ jobs:
               ;;
             linux-amd64)
               tar -czf "release/notevault-${VERSION}-linux-amd64.tar.gz" -C bin notevault notevault-mcp
+              cp bin/*.deb "release/notevault-${VERSION}-linux-amd64.deb"
+              cp bin/*.rpm "release/notevault-${VERSION}-linux-amd64.rpm"
+              # AppImage 的落盘位置视 wails3 generate appimage 的实现而定，双路径兜底
+              cp "$(ls bin/notevault.AppImage build/linux/appimage/notevault.AppImage 2>/dev/null | head -1)" \
+                "release/notevault-${VERSION}-linux-amd64.AppImage"
               ;;
           esac
           ls -lh release
