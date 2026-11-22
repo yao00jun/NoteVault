@@ -97,10 +97,13 @@ jobs:
       - name: Install Wails v3 CLI
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
 
-      # windows-latest 镜像不再预装 NSIS（首跑实测 makensis 不在 PATH）
+      # windows-latest 镜像不再预装 NSIS（首跑实测 makensis 不在 PATH）；
+      # choco 的 nsis 包走自家安装器、不自动建 shim，需手动把安装目录挂进 GITHUB_PATH
       - name: Install NSIS
         if: runner.os == 'Windows'
-        run: choco install nsis -y --no-progress
+        run: |
+          choco install nsis -y --no-progress
+          Add-Content $env:GITHUB_PATH "C:\Program Files (x86)\NSIS"
 
       - name: Resolve version
         shell: bash
