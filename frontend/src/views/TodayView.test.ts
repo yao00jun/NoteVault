@@ -20,6 +20,7 @@ const harness = vi.hoisted(() => ({
   cancel: vi.fn(),
   listMeetings: vi.fn(),
   listFlaggedEmails: vi.fn(),
+  emailBody: vi.fn(),
   createFile: vi.fn(),
   setMilestone: vi.fn(),
   refresh: vi.fn(),
@@ -34,7 +35,7 @@ vi.mock('@/api', () => ({
     DailyBriefingTaskResult: harness.briefingResult,
   },
   TaskService: { Cancel: harness.cancel },
-  OutlookService: { ListMeetings: harness.listMeetings, ListFlaggedEmails: harness.listFlaggedEmails },
+  OutlookService: { ListMeetings: harness.listMeetings, ListFlaggedEmails: harness.listFlaggedEmails, GetEmailBody: harness.emailBody },
   FileService: { CreateFile: harness.createFile },
   WorkbenchService: { SetProjectMilestoneDone: harness.setMilestone },
   CredentialService: { GetCredential: vi.fn(async () => ''), SaveCredential: vi.fn(async () => undefined) },
@@ -80,6 +81,7 @@ beforeEach(() => {
   // 会议默认空列表：条带隐藏，不影响既有用例
   harness.listMeetings.mockReset().mockResolvedValue([])
   harness.listFlaggedEmails.mockReset().mockResolvedValue([])
+  harness.emailBody.mockReset().mockResolvedValue('')
   harness.createFile.mockReset().mockResolvedValue('Daily/Meetings/x.md')
   harness.setMilestone.mockReset().mockResolvedValue(undefined)
   harness.refresh.mockReset().mockResolvedValue(undefined)
@@ -446,6 +448,7 @@ describe('Today workspace boundaries', () => {
   })
 
   it('lists flagged emails and collects one into Inbox on demand', async () => {
+    harness.emailBody.mockResolvedValue('邮件全文：请今天下班前回复评审意见。')
     harness.listFlaggedEmails.mockResolvedValue([
       { subject: '评审请示', sender: '领导', receivedTime: '2026-09-08 10:00', entryId: 'E1', excerpt: '请今天回复' },
       { subject: '周报催收', sender: 'PMO', receivedTime: '2026-09-07 18:00', entryId: 'E2', excerpt: '' },
@@ -463,7 +466,8 @@ describe('Today workspace boundaries', () => {
     await rows[0]!.get('.email-collect').trigger('click')
     await flushPromises()
     // 收录：Inbox/邮件/<接收日期>-<主题>.md，frontmatter 带来源元数据
-    expect(harness.createFile).toHaveBeenCalledWith('/a', 'Inbox/邮件/2026-09-08-评审请示.md', expect.stringContaining('source: outlook'))
+    expect(harness.emailBody).toHaveBeenCalledWith('E1')
+    expect(harness.createFile).toHaveBeenCalledWith('/a', 'Inbox/邮件/2026-09-08-评审请示.md', expect.stringContaining('邮件全文：请今天下班前回复评审意见。'))
     // 收录后从条带移除
     expect(strip.findAll('.email-row')).toHaveLength(1)
     expect(strip.text()).toContain('周报催收')

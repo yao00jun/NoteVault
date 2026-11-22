@@ -154,6 +154,7 @@ describe('weekly work report', () => {
     expect(minutes).toContain('# 周会 会议纪要')
     expect(minutes).toContain('location: 会议室A')
     expect(minutes).toContain('attendees: [王五, 赵六]')
+    expect(minutes).toContain('- 参会人：王五、赵六')
     const noAttendees = buildMeetingMinutes({ subject: '站会', start: '2026-11-24 10:00', end: '2026-11-24 10:15', location: '', organizer: '', attendees: [], allDay: false })
     expect(noAttendees).not.toContain('attendees:')
   })

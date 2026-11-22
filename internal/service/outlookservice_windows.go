@@ -66,6 +66,12 @@ func (p outlookComTimeoutProvider) listFlagged(limit int) ([]OutlookEmail, error
 	})
 }
 
+func (p outlookComTimeoutProvider) emailBody(entryID string) (string, error) {
+	return withOutlookTimeout(func() (string, error) {
+		return outlookComProvider{}.emailBody(entryID)
+	})
+}
+
 func (outlookComProvider) list(start, end time.Time) ([]OutlookMeeting, error) {
 	// COM 要求每线程初始化；锁住 OS 线程避免 goroutine 调度把调用挪到未初始化线程
 	runtime.LockOSThread()
@@ -336,4 +342,47 @@ func readAttendeeNames(item *ole.IDispatch, property string) []string {
 		}
 	}
 	return names
+}
+
+// emailBody 按 EntryID 读取邮件全文（不截断）。
+// Namespace.GetItemFromID 是 Outlook 定位已有条目的标准方式；
+// 邮件可能已被删除/移走，此时返回明确错误由前端降级为摘要。
+func (outlookComProvider) emailBody(entryID string) (string, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if err := ole.CoInitialize(0); err != nil {
+		return "", fmt.Errorf("COM 初始化失败：%w", err)
+	}
+	defer ole.CoUninitialize()
+
+	appUnknown, err := oleutil.CreateObject("Outlook.Application")
+	if err != nil {
+		return "", fmt.Errorf("无法连接 Outlook（请确认已安装并启动桌面版）：%w", err)
+	}
+	defer appUnknown.Release()
+	app, err := appUnknown.QueryInterface(ole.IID_IDispatch)
+	if err != nil {
+		return "", fmt.Errorf("连接 Outlook 失败：%w", err)
+	}
+	defer app.Release()
+
+	sessionRaw, err := oleutil.GetProperty(app, "Session")
+	if err != nil {
+		return "", fmt.Errorf("获取 Outlook 会话失败：%w", err)
+	}
+	session := sessionRaw.ToIDispatch()
+	defer session.Release()
+
+	itemRaw, err := oleutil.CallMethod(session, "GetItemFromID", entryID)
+	if err != nil {
+		return "", fmt.Errorf("定位邮件失败（可能已被删除或移动）：%w", err)
+	}
+	item := itemRaw.ToIDispatch()
+	defer item.Release()
+
+	body := outlookString(item, "Body")
+	if strings.TrimSpace(body) == "" {
+		return "", fmt.Errorf("邮件正文为空")
+	}
+	return body, nil
 }

@@ -10,7 +10,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkLog } from '@/composables/useWorkLog'
 import { renderBriefingHtml, useBriefing } from '@/composables/useBriefing'
 import { isImeComposing } from '@/utils/ime'
-import { addCalendarDays, buildEmailNote, buildMeetingMinutes, emailNotePath, fetchFlaggedEmailsSafe, fetchMeetingsSafe, isCarryoverTask, meetingMinutesPath, type OutlookEmail, type OutlookMeeting } from '@/utils/workbench'
+import { addCalendarDays, buildEmailNote, buildMeetingMinutes, emailNotePath, fetchEmailBodySafe, fetchFlaggedEmailsSafe, fetchMeetingsSafe, isCarryoverTask, meetingMinutesPath, type OutlookEmail, type OutlookMeeting } from '@/utils/workbench'
 import { defaultTaskProject, GENERAL_PROJECT_FOLDER } from '@/utils/defaultTaskProject'
 import TaskCard from '@/components/workbench/TaskCard.vue'
 import InterviewReview from '@/components/workbench/InterviewReview.vue'
@@ -138,7 +138,9 @@ async function collectEmail(email: OutlookEmail) {
   const path = emailNotePath(receivedDate, email.subject)
   collecting.value = email.entryId
   try {
-    await FileService.CreateFile(ws.path, path, buildEmailNote(email))
+    // 先拉全文（失败降级为列表带回的 2000 字摘要），再落盘
+    const fullBody = await fetchEmailBodySafe(email.entryId)
+    await FileService.CreateFile(ws.path, path, buildEmailNote(email, fullBody))
   } catch {
     // 已存在同名笔记 → 直接打开继续补
   }

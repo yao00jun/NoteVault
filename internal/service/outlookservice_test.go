@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -11,9 +12,12 @@ type fakeMeetingProvider struct {
 	meetings []OutlookMeeting
 	emails   []OutlookEmail
 	err      error
+	body     string
+	bodyErr  error
 	gotStart time.Time
 	gotEnd   time.Time
 	gotLimit int
+	gotEntry string
 }
 
 func (p *fakeMeetingProvider) list(start, end time.Time) ([]OutlookMeeting, error) {
@@ -22,6 +26,11 @@ func (p *fakeMeetingProvider) list(start, end time.Time) ([]OutlookMeeting, erro
 		return nil, p.err
 	}
 	return p.meetings, nil
+}
+
+func (p *fakeMeetingProvider) emailBody(entryID string) (string, error) {
+	p.gotEntry = entryID
+	return p.body, p.bodyErr
 }
 
 func (p *fakeMeetingProvider) listFlagged(limit int) ([]OutlookEmail, error) {
@@ -152,5 +161,31 @@ func TestOutlookService_ListFlaggedEmailsPropagatesErrorAndNeverNil(t *testing.T
 	}
 	if emails == nil {
 		t.Fatal("empty result must be an empty slice, not nil")
+	}
+}
+
+func TestOutlookService_GetEmailBodyValidatesAndPropagates(t *testing.T) {
+	fake := &fakeMeetingProvider{body: "全文正文"}
+	svc := NewOutlookServiceWithProvider(fake)
+
+	// 空 entryID 直接拒绝，不打到 provider
+	if _, err := svc.GetEmailBody("  "); err == nil {
+		t.Fatal("empty entryID must be rejected")
+	}
+	body, err := svc.GetEmailBody("ENTRY-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body != "全文正文" {
+		t.Fatalf("unexpected body: %q", body)
+	}
+	if fake.gotEntry != "ENTRY-1" {
+		t.Fatalf("entryID must be passed through, got %q", fake.gotEntry)
+	}
+
+	// provider 错误传播
+	svc2 := NewOutlookServiceWithProvider(&fakeMeetingProvider{bodyErr: errors.New("邮件已被删除")})
+	if _, err := svc2.GetEmailBody("ENTRY-2"); err == nil || !strings.Contains(err.Error(), "邮件已被删除") {
+		t.Fatalf("provider error must propagate: %v", err)
 	}
 }

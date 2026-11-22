@@ -43,6 +43,7 @@ type OutlookEmail struct {
 type outlookProvider interface {
 	list(start, end time.Time) ([]OutlookMeeting, error)
 	listFlagged(limit int) ([]OutlookEmail, error)
+	emailBody(entryID string) (string, error)
 }
 
 // OutlookService 提供只读 Outlook 数据查询。
@@ -111,6 +112,15 @@ func (s *OutlookService) ListFlaggedEmails(limit int) ([]OutlookEmail, error) {
 		emails = []OutlookEmail{}
 	}
 	return emails, nil
+}
+
+// GetEmailBody 按 EntryID 读取邮件全文（不截断），供收录笔记使用。
+// COM 端经 Namespace.GetItemFromID 定位；失败由前端降级为摘要。
+func (s *OutlookService) GetEmailBody(entryID string) (string, error) {
+	if strings.TrimSpace(entryID) == "" {
+		return "", fmt.Errorf("entryID 不能为空")
+	}
+	return s.provider.emailBody(entryID)
 }
 
 // parseMeetingBoundary 解析日期键（零点）或日期时间键。

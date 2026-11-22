@@ -15,6 +15,14 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * GetEmailBody 按 EntryID 读取邮件全文（不截断），供收录笔记使用。
+ * COM 端经 Namespace.GetItemFromID 定位；失败由前端降级为摘要。
+ */
+export function GetEmailBody(entryID: string): $CancellablePromise<string> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.OutlookService.GetEmailBody", entryID);
+}
+
+/**
  * ListFlaggedEmails 返回收件箱中带旗标（用户标记为待办）的邮件，按接收时间倒序。
  * limit <= 0 用默认 10，超过 50 截到 50。
  */

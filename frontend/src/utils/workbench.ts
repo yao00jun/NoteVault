@@ -257,6 +257,7 @@ export function buildMeetingMinutes(meeting: OutlookMeeting): string {
   if (meeting.organizer) lines.push(`organizer: ${meeting.organizer}`)
   if (meeting.attendees?.length) lines.push(`attendees: [${meeting.attendees.join(', ')}]`)
   lines.push('---', '', `# ${meeting.subject} 会议纪要`, '')
+  if (meeting.attendees?.length) lines.push(`- 参会人：${meeting.attendees.join('、')}`, '')
   return lines.join('\n')
 }
 
@@ -279,8 +280,20 @@ export function emailNotePath(date: string, subject: string): string {
   return `Inbox/邮件/${date}-${clean}.md`
 }
 
+// fetchEmailBodySafe 按 EntryID 拉取邮件全文：失败降级返回空串（调用方回落摘要）。
+export async function fetchEmailBodySafe(entryId: string): Promise<string> {
+  try {
+    return (await OutlookService.GetEmailBody(entryId)) as string
+  } catch (cause) {
+    console.warn('Outlook 邮件全文不可用，收录笔记将使用摘要：', cause)
+    return ''
+  }
+}
+
 // buildEmailNote 生成收录笔记：frontmatter 保留来源元数据，正文供蒸馏流提炼。
-export function buildEmailNote(email: OutlookEmail): string {
+// fullBody 非空时用全文替换列表接口带回的 2000 字摘要。
+export function buildEmailNote(email: OutlookEmail, fullBody = ''): string {
+  const body = fullBody.trim() || email.excerpt
   const lines = [
     '---',
     'type: email',
@@ -294,7 +307,7 @@ export function buildEmailNote(email: OutlookEmail): string {
     '## 要点',
     '',
   ]
-  if (email.excerpt) lines.push(email.excerpt, '')
+  if (body) lines.push(body, '')
   lines.push('## 待办', '', '- [ ] ')
   return lines.join('\n')
 }
