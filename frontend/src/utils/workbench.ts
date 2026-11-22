@@ -311,3 +311,31 @@ export function buildEmailNote(email: OutlookEmail, fullBody = ''): string {
   lines.push('## 待办', '', '- [ ] ')
   return lines.join('\n')
 }
+
+// --- 学习卡点拆解（学习闭环）：看不懂 X → AI 拆前置 → Inbox 笔记 ---
+
+// buildBlockerNote 把拆解结果落成 Inbox 笔记：frontmatter 带概念与上下文，
+// 前置清单为勾选项（学完一个勾一个），正文骨架供蒸馏流提炼。
+export function buildBlockerNote(
+  concept: string,
+  contextText: string,
+  prerequisites: Array<{ name: string; reason: string; hours: number }>,
+): string {
+  const lines = [
+    '---',
+    'type: blocker',
+    `concept: ${concept}`,
+  ]
+  if (contextText.trim()) lines.push(`context: "${contextText.trim().replace(/"/g, '\\"')}"`)
+  lines.push('---', '', `# 卡点：${concept}`, '')
+  if (prerequisites.length) {
+    lines.push('## 前置知识（按学习顺序）', '')
+    for (const item of prerequisites) {
+      const hours = item.hours ? `（约 ${item.hours}h）` : ''
+      lines.push(`- [ ] ${item.name}${hours}——${item.reason}`)
+    }
+    lines.push('')
+  }
+  lines.push('## 我卡在哪', '', contextText.trim() || '（补充你具体卡在哪一步）', '', '## 已试过', '', '- ')
+  return lines.join('\n')
+}

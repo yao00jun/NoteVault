@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useViewRoute } from '@/composables/useViewRoute'
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
@@ -25,13 +25,15 @@ import {
   Terminal,
 } from '@lucide/vue'
 import type { InterviewCard, WorkbenchBook } from '@/api/workbench'
-import { AppService, RoadmapService, type RoadmapProgress } from '@/api'
+import { AppService, FileService, ReportService, RoadmapService, type RoadmapProgress } from '@/api'
 import InterviewReview from '@/components/workbench/InterviewReview.vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useToast } from '@/composables/useToast'
+import { useSettingsStore } from '@/stores/settings'
 import { requestCopilot } from '@/composables/useCopilotRequest'
 import { collectionDateLabel, parseTechnologyRadar } from '@/utils/workbenchCollections'
+import { buildBlockerNote, localDateKey } from '@/utils/workbench'
 import '@/styles/workbench-collections.css'
 import { requestSourceImport } from '@/composables/useSourceImport'
 import CollectionOnboarding from '@/components/workbench/CollectionOnboarding.vue'
@@ -39,6 +41,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 
 const workbench = useWorkbenchStore()
 const workspace = useWorkspaceStore()
+const settingsStore = useSettingsStore()
 const route = useViewRoute('/learning')
 const router = useRouter()
 const toast = useToast()
@@ -92,6 +95,138 @@ watch(
   },
   { immediate: true }, // 挂载时若已在路径页签也要加载
 )
+
+// --- 学习卡点拆解（学习闭环）：看不懂 X → AI 拆前置 → Inbox 笔记 ---
+interface BlockerPrerequisite {
+  name: string
+  reason: string
+  hours: number
+}
+interface BlockerDecomposition {
+  concept: string
+  context: string
+  prerequisites: BlockerPrerequisite[] | null
+  message: string
+}
+const blockerOpen = ref(false)
+const blockerConcept = ref('')
+const blockerContext = ref('')
+const blockerBusy = ref(false)
+const blockerResult = ref<BlockerDecomposition | null>(null)
+const blockerTaskID = ref<string | null>(null)
+let stopBlockerEvents: (() => void) | undefined
+
+interface BlockerEventPayload {
+  id?: string
+  status?: string
+  error?: string
+}
+
+onUnmounted(() => {
+  stopBlockerEvents?.()
+  stopBlockerEvents = undefined
+})
+
+// 卡点拆解的事件订阅懒建立：只在打开表单后需要（复用全局 task 事件流）
+async function ensureBlockerEvents() {
+  if (stopBlockerEvents) return
+  try {
+    const { Events } = await import('@wailsio/runtime')
+    const offFinished = Events.On('task:finished', (ev?: { data?: BlockerEventPayload }) => {
+      const info = ev?.data
+      if (!info || !blockerTaskID.value || info.id !== blockerTaskID.value) return
+      blockerTaskID.value = null
+      blockerBusy.value = false
+      if (info.status === 'failed') {
+        toast.error(info.error || t('learning.blockerFailed'))
+        return
+      }
+      void finishBlocker(info.id as string)
+    })
+    stopBlockerEvents = () => {
+      offFinished?.()
+    }
+  } catch {
+    // 无 runtime（单测）：同步结果不可用，仅提示
+  }
+}
+
+async function finishBlocker(id: string) {
+  try {
+    blockerResult.value = (await ReportService.DecomposeTaskResult(id)) as BlockerDecomposition | null
+  } catch (cause) {
+    toast.error((cause as Error).message)
+  }
+  if (!blockerResult.value || !blockerResult.value.prerequisites?.length) {
+    toast.warning(blockerResult.value?.message || t('learning.blockerEmpty'))
+  }
+}
+
+function openBlocker() {
+  blockerOpen.value = !blockerOpen.value
+  blockerResult.value = null
+  if (blockerOpen.value) void ensureBlockerEvents()
+}
+
+function closeBlocker() {
+  blockerOpen.value = false
+  blockerResult.value = null
+  blockerConcept.value = ''
+  blockerContext.value = ''
+}
+
+async function submitBlocker() {
+  const ws = workspace.currentWorkspace
+  if (!ws?.path || blockerBusy.value) return
+  if (!blockerConcept.value.trim()) {
+    toast.warning(t('learning.blockerConceptRequired'))
+    return
+  }
+  blockerBusy.value = true
+  blockerResult.value = null
+  try {
+    const ai = settingsStore.settings.ai
+    const taskID = (await ReportService.StartDecomposeBlocker(blockerConcept.value.trim(), blockerContext.value, {
+      baseURL: ai.baseURL,
+      model: ai.model,
+      apiKey: ai.apiKey,
+      protocol: ai.protocol,
+    })) as string | null
+    if (!taskID) {
+      blockerBusy.value = false
+      toast.warning(t('learning.blockerNoQueue'))
+      return
+    }
+    blockerTaskID.value = taskID
+    await ensureBlockerEvents()
+  } catch (cause) {
+    blockerBusy.value = false
+    toast.error((cause as Error).message)
+  }
+}
+
+async function saveBlockerNote() {
+  const ws = workspace.currentWorkspace
+  const result = blockerResult.value
+  if (!ws?.path || !result) return
+  const date = localDateKey()
+  const path = `Inbox/卡点/${date}-${result.concept.replace(/[\\/:*?"<>|]/g, '-') || '卡点'}.md`
+  const note = buildBlockerNote(result.concept, result.context, result.prerequisites ?? [])
+  try {
+    await FileService.CreateFile(ws.path, path, note)
+    toast.success(t('learning.blockerSaved', { path }))
+    closeBlocker()
+    void router.push({ path: '/editor', query: { file: path } })
+  } catch {
+    // 已存在同名笔记 → 直接打开继续补
+    openFileNote(path)
+  }
+}
+
+function openFileNote(path: string) {
+  workspace.openFile(path)
+  void router.push({ path: '/editor', query: { file: path } })
+}
 const noteCount = computed(() => workbench.books.reduce((sum, book) => sum + book.noteCount, 0))
 const reviewTarget = computed(() => Math.min(5, workbench.reviewTarget))
 const reviewedCount = computed(() => Math.min(reviewTarget.value, workbench.reviewedToday))
@@ -796,13 +931,96 @@ watch(
           >
             <div class="collection-section-title">
               <h2><Route :size="17" /> {{ t('learning.roadmapTitle') }}</h2>
-              <button
-                class="collection-button"
-                type="button"
-                @click="loadRoadmaps"
+              <div class="roadmap-actions">
+                <button
+                  class="collection-button"
+                  type="button"
+                  @click="loadRoadmaps"
+                >
+                  <RefreshCw :size="14" /> {{ t('learning.roadmapRefresh') }}
+                </button>
+                <button
+                  class="collection-button"
+                  type="button"
+                  data-testid="blocker-record"
+                  @click="openBlocker"
+                >
+                  <Brain :size="14" /> {{ t('learning.blockerRecord') }}
+                </button>
+              </div>
+            </div>
+            <div
+              v-if="blockerOpen"
+              class="blocker-panel"
+              data-testid="blocker-panel"
+            >
+              <label class="blocker-label">{{ t('learning.blockerConceptLabel') }}
+                <input
+                  v-model="blockerConcept"
+                  type="text"
+                  :placeholder="t('learning.blockerConceptPlaceholder')"
+                  data-testid="blocker-concept"
+                >
+              </label>
+              <label class="blocker-label">{{ t('learning.blockerContextLabel') }}
+                <textarea
+                  v-model="blockerContext"
+                  rows="3"
+                  :placeholder="t('learning.blockerContextPlaceholder')"
+                  data-testid="blocker-context"
+                />
+              </label>
+              <div class="blocker-actions">
+                <button
+                  class="collection-button"
+                  type="button"
+                  :disabled="blockerBusy"
+                  data-testid="blocker-submit"
+                  @click="submitBlocker"
+                >
+                  <Sparkles :size="14" /> {{ blockerBusy ? t('learning.blockerBusy') : t('learning.blockerSubmit') }}
+                </button>
+                <button
+                  class="collection-button subtle"
+                  type="button"
+                  @click="closeBlocker"
+                >
+                  {{ t('learning.blockerClose') }}
+                </button>
+              </div>
+              <div
+                v-if="blockerResult?.prerequisites?.length"
+                class="blocker-result"
+                data-testid="blocker-result"
               >
-                <RefreshCw :size="14" /> {{ t('learning.roadmapRefresh') }}
-              </button>
+                <h4>{{ t('learning.blockerResultTitle') }}</h4>
+                <div
+                  v-for="(pre, index) in blockerResult.prerequisites"
+                  :key="index"
+                  class="blocker-pre"
+                >
+                  <span class="blocker-pre-name">{{ pre.name }}</span>
+                  <span class="blocker-pre-reason">{{ pre.reason }}</span>
+                  <span
+                    v-if="pre.hours"
+                    class="blocker-pre-hours"
+                  >约 {{ pre.hours }}h</span>
+                </div>
+                <button
+                  class="collection-button"
+                  type="button"
+                  data-testid="blocker-save"
+                  @click="saveBlockerNote"
+                >
+                  <FileText :size="14" /> {{ t('learning.blockerSave') }}
+                </button>
+              </div>
+              <p
+                v-else-if="blockerResult && blockerResult.message"
+                class="blocker-message"
+              >
+                {{ blockerResult.message }}
+              </p>
             </div>
             <p class="learning-section-intro">
               {{ t('learning.roadmapIntro') }}
@@ -1455,4 +1673,19 @@ watch(
 .roadmap-next { margin: 0; font-size: 12px; color: var(--text-primary); }
 .roadmap-next-label { display: inline-block; padding: 1px 8px; margin-right: 8px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-size: 11px; font-weight: 600; }
 .roadmap-next-hours { margin-left: 8px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+</style>
+<style scoped>
+/* 卡点拆解面板 */
+.roadmap-actions { display: flex; gap: 8px; }
+.blocker-panel { display: grid; gap: 10px; padding: 14px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: 10px; background: color-mix(in srgb, var(--accent) 4%, var(--bg-card)); }
+.blocker-label { display: grid; gap: 5px; font-size: 11px; color: var(--text-muted); }
+.blocker-label input, .blocker-label textarea { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; background: var(--bg-content); color: var(--text-primary); font-size: 12px; font-family: inherit; }
+.blocker-actions { display: flex; gap: 8px; }
+.blocker-result { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-content); }
+.blocker-result h4 { margin: 0; font-size: 12px; color: var(--text-primary); }
+.blocker-pre { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.blocker-pre-name { color: var(--text-primary); font-weight: 600; flex-shrink: 0; }
+.blocker-pre-reason { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+.blocker-pre-hours { flex-shrink: 0; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.blocker-message { margin: 0; font-size: 12px; color: var(--text-muted); }
 </style>

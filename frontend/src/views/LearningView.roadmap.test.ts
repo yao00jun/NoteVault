@@ -6,28 +6,57 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useSettingsStore } from '@/stores/settings'
+import { useToast } from '@/composables/useToast'
 import LearningView from './LearningView.vue'
+import { localDateKey } from '@/utils/workbench'
 
 const harness = vi.hoisted(() => ({
   state: {} as Record<string, unknown>,
   progress: vi.fn(),
+  decompose: vi.fn(),
+  blockerResult: vi.fn(),
+  createFile: vi.fn(),
+  refresh: vi.fn(),
+  handlers: {} as Record<string, (ev?: unknown) => void>,
 }))
 vi.mock('@/stores/workbench', () => ({ useWorkbenchStore: () => harness.state }))
 vi.mock('@/api', () => ({
   AppService: { OpenWorkspaceAttachment: vi.fn().mockResolvedValue(undefined) },
   RoadmapService: { GetRoadmapProgress: harness.progress },
+  ReportService: { StartDecomposeBlocker: harness.decompose, DecomposeTaskResult: harness.blockerResult },
+  FileService: { CreateFile: harness.createFile },
+  TaskService: { Cancel: vi.fn() },
+  ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
+  CredentialService: { GetCredential: vi.fn(async () => ''), SaveCredential: vi.fn(async () => undefined) },
 }))
 vi.mock('@/composables/useCopilotRequest', () => ({ requestCopilot: vi.fn() }))
 vi.mock('@/composables/useSourceImport', () => ({ requestSourceImport: vi.fn() }))
+vi.mock('@wailsio/runtime', () => ({
+    Events: {
+      On: (name: string, cb: (ev?: unknown) => void) => {
+        harness.handlers[name] = cb
+        return () => {}
+      },
+    },
+  }))
 
 enableAutoUnmount(afterEach)
 
 beforeEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
+  harness.decompose.mockReset().mockResolvedValue('task-9')
+  harness.blockerResult.mockReset().mockResolvedValue({
+    concept: 'RAG 分块策略', context: '', message: '',
+    prerequisites: [{ name: 'Python 基础', reason: '先会读代码', hours: 1.5 }],
+  })
+  harness.createFile.mockReset().mockResolvedValue('Inbox/卡点/x.md')
+  harness.handlers = {}
   harness.state = reactive({
     books: [], cards: [], documents: [], reviewTarget: 0, reviewedToday: 0,
     reviewQueue: [], radar: { path: '', content: '' }, loading: false, error: '',
+    addTask: vi.fn(), refresh: harness.refresh,
   })
 })
 
@@ -40,7 +69,7 @@ async function render() {
   await router.isReady()
   const wrapper = mount(LearningView, { global: { plugins: [router, i18n] } })
   await flushPromises()
-  return { wrapper }
+  return { wrapper, router }
 }
 
 describe('Learning roadmap progress projection', () => {
@@ -87,5 +116,49 @@ describe('Learning roadmap progress projection', () => {
     const { wrapper } = await render()
     expect(wrapper.get('[role="alert"]').text()).toContain('目录读取失败')
     expect(wrapper.find('[data-testid="roadmap-progress"]').exists()).toBe(true)
+  })
+})
+
+describe('Learning blocker decomposition (学习卡点拆解)', () => {
+  it('submits the blocker task, renders prerequisites and saves to Inbox', async () => {
+    const { wrapper, router } = await render()
+    await wrapper.get('[data-testid="blocker-record"]').trigger('click')
+    await wrapper.get('[data-testid="blocker-concept"]').setValue('RAG 分块策略')
+    await wrapper.get('[data-testid="blocker-context"]').setValue('在读第 4 章')
+    useSettingsStore().settings.ai.baseURL = 'http://127.0.0.1:11434/v1'
+    useSettingsStore().settings.ai.model = 'qwen2.5:7b'
+    useSettingsStore().settings.ai.protocol = 'openai-chat'
+    await wrapper.get('[data-testid="blocker-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(harness.decompose).toHaveBeenCalledWith('RAG 分块策略', '在读第 4 章', {
+      baseURL: 'http://127.0.0.1:11434/v1', model: 'qwen2.5:7b', apiKey: '', protocol: 'openai-chat',
+    })
+    // finished 事件 → 按 ID 取回结果 → 前置清单渲染
+    harness.handlers['task:finished']?.({ data: { id: 'task-9', status: 'succeeded' } })
+    await flushPromises()
+    const result = wrapper.get('[data-testid="blocker-result"]')
+    expect(result.text()).toContain('Python 基础')
+    expect(result.text()).toContain('先会读代码')
+
+    await wrapper.get('[data-testid="blocker-save"]').trigger('click')
+    await flushPromises()
+    const today = localDateKey()
+    const notePath = `Inbox/卡点/${today}-RAG 分块策略.md`
+    expect(harness.createFile).toHaveBeenCalledWith(
+      'E:/Vault',
+      notePath,
+      expect.stringContaining('# 卡点：RAG 分块策略'),
+    )
+    expect(router.currentRoute.value.query.file).toBe(notePath)
+  })
+
+  it('warns instead of decomposing when the concept is blank', async () => {
+    const { wrapper } = await render()
+    await wrapper.get('[data-testid="blocker-record"]').trigger('click')
+    await wrapper.get('[data-testid="blocker-submit"]').trigger('click')
+    await flushPromises()
+    expect(harness.decompose).not.toHaveBeenCalled()
+    expect(useToast().toasts.value.some(t => t.message.includes('先写下看不懂的概念'))).toBe(true)
   })
 })

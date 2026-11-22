@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -445,4 +447,118 @@ func truncateRunes(s string, max int) string {
 		return string(runes)
 	}
 	return string(runes[:max]) + "…"
+}
+
+// ---------------------------------------------------------------------------
+// 学习卡点拆解（学习闭环）：「看不懂 X」→ AI 拆前置 → 落 Inbox → 蒸馏/排期
+// ---------------------------------------------------------------------------
+
+// BlockerPrerequisite 是拆解出的单个前置知识点。
+type BlockerPrerequisite struct {
+	Name   string  `json:"name"`
+	Reason string  `json:"reason"`
+	Hours  float64 `json:"hours"`
+}
+
+// BlockerDecompositionResult 是卡点拆解任务的结构化产出。
+// AI 失败时 Prerequisites 为空、Message 带降级说明（AI 可选不阻断）。
+type BlockerDecompositionResult struct {
+	Concept       string                `json:"concept"`
+	Context       string                `json:"context"`
+	Prerequisites []BlockerPrerequisite `json:"prerequisites"`
+	Message       string                `json:"message"`
+}
+
+// decomposeResults 是卡点拆解任务的独立结果表（与周报/简报同口径 FIFO）。
+var decomposeResults = struct {
+	sync.Mutex
+	m   map[string]*BlockerDecompositionResult
+	seq []string
+}{m: make(map[string]*BlockerDecompositionResult)}
+
+// DecomposeTaskResult 取回某个拆解任务的结构化结果。
+func (s *ReportService) DecomposeTaskResult(taskID string) *BlockerDecompositionResult {
+	decomposeResults.Lock()
+	defer decomposeResults.Unlock()
+	return decomposeResults.m[taskID]
+}
+
+func saveDecomposeResult(taskID string, res *BlockerDecompositionResult) {
+	if taskID == "" || res == nil {
+		return
+	}
+	decomposeResults.Lock()
+	defer decomposeResults.Unlock()
+	decomposeResults.m[taskID] = res
+	decomposeResults.seq = append(decomposeResults.seq, taskID)
+	for len(decomposeResults.seq) > maxStoredReportResults {
+		oldest := decomposeResults.seq[0]
+		decomposeResults.seq = decomposeResults.seq[1:]
+		delete(decomposeResults.m, oldest)
+	}
+}
+
+// blockerPRELineRE 解析模型输出的前置行：PRE: 名称 | 理由 | 建议时长(h)
+var blockerPRELineRE = regexp.MustCompile(`^PRE:\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(\d+(?:\.\d+)?)\s*h?$`)
+
+// parseBlockerPrerequisites 从模型输出解析前置清单；格式不合的行跳过。
+func parseBlockerPrerequisites(raw string) []BlockerPrerequisite {
+	out := []BlockerPrerequisite{}
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if match := blockerPRELineRE.FindStringSubmatch(line); match != nil {
+			hours, _ := strconv.ParseFloat(match[3], 64)
+			out = append(out, BlockerPrerequisite{Name: match[1], Reason: match[2], Hours: hours})
+		}
+	}
+	return out
+}
+
+// StartDecomposeBlocker 提交「学习卡点拆解」异步任务，返回任务 ID。
+// concept 是看不懂的概念；context 是用户补充的上下文（可空）。
+// 结果按任务 ID 暂存（DecomposeTaskResult 取回）；AI 未配置/失败时结果
+// 仍暂存但 Prerequisites 为空、Message 带说明（AI 可选，不阻断主链路）。
+// 未注入任务队列时返回空串，调用方退回同步路径。
+func (s *ReportService) StartDecomposeBlocker(concept, contextText string, ai WeeklyReportAIConfig) string {
+	if s.tasks == nil {
+		return ""
+	}
+	handle := s.tasks.submit(context.Background(), "拆解学习卡点", func(ctx context.Context, rep TaskReporter) error {
+		res := s.decomposeBlocker(ctx, rep, concept, contextText, ai)
+		saveDecomposeResult(rep.TaskID(), res)
+		rep.Report(1, 1)
+		return nil
+	})
+	return handle.ID()
+}
+
+// decomposeBlocker 是拆解任务体：拼提示词 → 调 LLM → 解析结构化结果。
+func (s *ReportService) decomposeBlocker(ctx context.Context, rep TaskReporter, concept, contextText string, ai WeeklyReportAIConfig) *BlockerDecompositionResult {
+	res := &BlockerDecompositionResult{Concept: concept, Context: contextText}
+	baseURL := strings.TrimSpace(ai.BaseURL)
+	model := strings.TrimSpace(ai.Model)
+	if baseURL == "" || model == "" {
+		res.Message = "未配置 AI 端点，可在设置页配置后重试"
+		return res
+	}
+	rep.Message("正在拆解前置知识")
+	systemPrompt := "你是学习规划助手。用户在学习某个概念时遇到困难（看不懂）。" +
+		"根据概念名称与用户上下文，拆解出 3-5 个需要先掌握的前置知识点，" +
+		"按学习顺序输出。严格格式，每行一条：\n" +
+		"PRE: 前置名称 | 为什么要先补它（一句话，结合用户上下文） | 建议学习时长数字h\n" +
+		"不要输出任何其他内容。"
+	userPrompt := "看不懂的概念：" + concept
+	if strings.TrimSpace(contextText) != "" {
+		userPrompt += "\n\n上下文：\n" + contextText
+	}
+	answer, aerr := llmChatComplete(ctx, s.client, ai.APIKey, baseURL, model, ai.Protocol, systemPrompt, userPrompt)
+	if aerr != nil {
+		res.Message = "AI 拆解失败：" + aerr.Error()
+		return res
+	}
+	res.Prerequisites = parseBlockerPrerequisites(answer)
+	if len(res.Prerequisites) == 0 {
+		res.Message = "AI 未返回有效的前置清单，请换个说法重试"
+	}
+	return res
 }

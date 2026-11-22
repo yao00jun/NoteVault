@@ -49,6 +49,12 @@ func TestRoadmapService_ParsesTracksHoursAndProgress(t *testing.T) {
 	if rm.Tracks[0].DoneHours != 1 || rm.Tracks[0].TotalHours != 5 {
 		t.Fatalf("unexpected hours: %+v", rm.Tracks[0])
 	}
+	if rm.NextStep != "[[第2章 语法基础]] #est/1.5h" || rm.NextHours != 1.5 {
+		t.Fatalf("unexpected next step: %q (%vh)", rm.NextStep, rm.NextHours)
+	}
+	if rm.Tracks[1].Next != "[[AI应用开发#第1章 LLM 与 API 调用]] #est/2.5h" {
+		t.Fatalf("unexpected track 2 next: %q", rm.Tracks[1].Next)
+	}
 	if rm.Total != 4 || rm.Done != 1 || rm.Percent != 25 {
 		t.Fatalf("unexpected overall: %+v", rm)
 	}

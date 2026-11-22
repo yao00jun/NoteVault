@@ -154,6 +154,26 @@ export interface BaseView {
 }
 
 /**
+ * BlockerDecompositionResult 是卡点拆解任务的结构化产出。
+ * AI 失败时 Prerequisites 为空、Message 带降级说明（AI 可选不阻断）。
+ */
+export interface BlockerDecompositionResult {
+    "concept": string;
+    "context": string;
+    "prerequisites": BlockerPrerequisite[] | null;
+    "message": string;
+}
+
+/**
+ * BlockerPrerequisite 是拆解出的单个前置知识点。
+ */
+export interface BlockerPrerequisite {
+    "name": string;
+    "reason": string;
+    "hours": number;
+}
+
+/**
  * BuiltinTemplate 描述一个内置模板。
  */
 export interface BuiltinTemplate {

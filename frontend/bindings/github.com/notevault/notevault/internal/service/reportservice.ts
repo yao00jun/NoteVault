@@ -23,6 +23,13 @@ export function DailyBriefingTaskResult(taskID: string): $CancellablePromise<$mo
 }
 
 /**
+ * DecomposeTaskResult 取回某个拆解任务的结构化结果。
+ */
+export function DecomposeTaskResult(taskID: string): $CancellablePromise<$models.BlockerDecompositionResult | null> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.ReportService.DecomposeTaskResult", taskID);
+}
+
+/**
  * GenerateDailyBriefing 生成今日 AI 简报。
  * 保留同步语义给测试、MCP 与未注入任务队列的装配；前端走 StartDailyBriefing。
  */
@@ -47,6 +54,17 @@ export function GenerateWeeklyReport(workspacePath: string, ai: $models.WeeklyRe
  */
 export function StartDailyBriefing(workspacePath: string, date: string, ai: $models.WeeklyReportAIConfig): $CancellablePromise<string> {
     return $Call.ByName("github.com/notevault/notevault/internal/service.ReportService.StartDailyBriefing", workspacePath, date, ai);
+}
+
+/**
+ * StartDecomposeBlocker 提交「学习卡点拆解」异步任务，返回任务 ID。
+ * concept 是看不懂的概念；context 是用户补充的上下文（可空）。
+ * 结果按任务 ID 暂存（DecomposeTaskResult 取回）；AI 未配置/失败时结果
+ * 仍暂存但 Prerequisites 为空、Message 带说明（AI 可选，不阻断主链路）。
+ * 未注入任务队列时返回空串，调用方退回同步路径。
+ */
+export function StartDecomposeBlocker(concept: string, contextText: string, ai: $models.WeeklyReportAIConfig): $CancellablePromise<string> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.ReportService.StartDecomposeBlocker", concept, contextText, ai);
 }
 
 /**
