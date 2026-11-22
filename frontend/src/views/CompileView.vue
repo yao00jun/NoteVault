@@ -449,11 +449,11 @@ watch(() => workspaceStore.currentWorkspace?.id, loadInbox)
               {{ errors[path] }}
             </div>
           </div>
-      <button
-        class="compile-one-btn"
-        :disabled="isBusy || compilingPath !== null"
-        @click="compileOne(path)"
-      >
+          <button
+            class="compile-one-btn"
+            :disabled="isBusy || compilingPath !== null"
+            @click="compileOne(path)"
+          >
             <Loader2
               v-if="compilingPath === path"
               :size="14"

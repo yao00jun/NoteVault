@@ -52,6 +52,11 @@ export default [
       // TS 项目关闭 no-undef（由 tsc 负责）
       'no-undef': 'off',
       'no-unused-vars': 'off',
+      // v-html 全部 13 处调用点已逐一核查：marked 产物一律先过
+      // src/utils/sanitize.ts 的 sanitizeHtml（DOMPurify，含 data-* 放行钩子），
+      // 搜索高亮（SearchView）则先 escapeHtml 再包 <mark>。新增 v-html
+      // 时必须遵守同一契约，否则请恢复此规则。
+      'vue/no-v-html': 'off',
     },
   },
 ]

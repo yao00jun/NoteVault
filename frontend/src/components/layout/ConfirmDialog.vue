@@ -56,7 +56,9 @@ onBeforeUnmount(() => {
       >
         {{ state.title }}
       </p>
-      <p class="confirm-text">{{ state.message }}</p>
+      <p class="confirm-text">
+        {{ state.message }}
+      </p>
       <div class="confirm-actions">
         <button
           class="confirm-btn cancel"

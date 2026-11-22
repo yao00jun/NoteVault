@@ -284,7 +284,10 @@ async function scrollToSection(id: string) {
             <span class="setting-label">{{ t('settings.appearance.theme') }}</span>
             <span class="setting-desc">{{ t('settings.appearance.themeDesc') }}</span>
           </div>
-          <div class="theme-previews" :class="{ dimmed: settingsStore.settings.followSystemTheme }">
+          <div
+            class="theme-previews"
+            :class="{ dimmed: settingsStore.settings.followSystemTheme }"
+          >
             <ThemePreview
               v-for="th in themes"
               :key="th.value"
@@ -293,7 +296,10 @@ async function scrollToSection(id: string) {
               @select="settingsStore.setTheme"
             />
           </div>
-          <label class="follow-system-toggle" data-testid="follow-system-toggle">
+          <label
+            class="follow-system-toggle"
+            data-testid="follow-system-toggle"
+          >
             <input
               type="checkbox"
               :checked="settingsStore.settings.followSystemTheme"
@@ -1271,7 +1277,9 @@ async function scrollToSection(id: string) {
             data-testid="clipper-copy-token"
             :disabled="!clipperStatus?.token"
             @click="copyClipperToken"
-          >{{ t('settings.clipper.copyToken') }}</button>
+          >
+            {{ t('settings.clipper.copyToken') }}
+          </button>
         </div>
         <code
           class="mcp-snippet"
@@ -1307,7 +1315,9 @@ async function scrollToSection(id: string) {
                 class="preset-btn"
                 :disabled="!workspaceStore.currentWorkspace || applyingPreset === preset.id"
                 @click="applyWorkspacePreset(preset.id)"
-              >{{ applyingPreset === preset.id ? t('settings.presets.applying') : t('settings.presets.apply') }}</button>
+              >
+                {{ applyingPreset === preset.id ? t('settings.presets.applying') : t('settings.presets.apply') }}
+              </button>
             </div>
             <p class="preset-card-desc">
               {{ preset.description }}

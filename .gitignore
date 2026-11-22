@@ -13,6 +13,8 @@ build/windows/info.release.json
 
 # Local build artifacts (root)
 notevault.exe
+# 打包时由 generate:dotdesktop 生成（create:deb/appimage 的前置步骤）
+build/linux/*.desktop
 *.syso
 *.log
 coverage.out

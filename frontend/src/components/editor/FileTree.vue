@@ -57,7 +57,13 @@ const props = withDefaults(
     /** 是否显示「收起文件树」按钮（知识库浏览模式下树固定展开，不提供） */
     collapsible?: boolean
   }>(),
-  { isRoot: true, collapsible: false },
+  {
+    activeFilePath: null,
+    focusFolder: null,
+    folderDisplayNames: () => ({}),
+    isRoot: true,
+    collapsible: false,
+  },
 )
 
 const emit = defineEmits<{
@@ -252,11 +258,21 @@ const menuItems = computed(() => {
 </script>
 
 <template>
-  <div class="file-tree" :class="{ 'is-root': isRoot }" @click="closeContextMenu">
+  <div
+    class="file-tree"
+    :class="{ 'is-root': isRoot }"
+    @click="closeContextMenu"
+  >
     <!-- 顶部过滤与操作条（仅根树展示） -->
-    <div v-if="isRoot" class="tree-toolbar">
+    <div
+      v-if="isRoot"
+      class="tree-toolbar"
+    >
       <div class="tree-search-wrapper">
-        <Search :size="13" class="search-icon" />
+        <Search
+          :size="13"
+          class="search-icon"
+        />
         <input
           v-model="searchQuery"
           type="text"
@@ -264,7 +280,12 @@ const menuItems = computed(() => {
           :placeholder="t('editor.tree.filterPlaceholder')"
           :aria-label="t('editor.tree.filterAria')"
         >
-        <button v-if="searchQuery" class="search-clear-btn" :title="t('editor.tree.clearSearch')" @click="clearSearch">
+        <button
+          v-if="searchQuery"
+          class="search-clear-btn"
+          :title="t('editor.tree.clearSearch')"
+          @click="clearSearch"
+        >
           <X :size="12" />
         </button>
       </div>
@@ -342,15 +363,24 @@ const menuItems = computed(() => {
           @click="looseExpanded = !looseExpanded"
         >
           <span class="node-toggle">
-            <ChevronRight v-if="!looseExpanded" :size="14" />
-            <ChevronDown v-else :size="14" />
+            <ChevronRight
+              v-if="!looseExpanded"
+              :size="14"
+            />
+            <ChevronDown
+              v-else
+              :size="14"
+            />
           </span>
           <span class="node-icon"><Files :size="15" /></span>
           <span class="node-name system-name">{{ t('editor.tree.looseFiles') }}</span>
           <span class="system-badge">{{ rootLooseFiles.length }}</span>
         </div>
 
-        <div v-if="looseExpanded" class="system-children">
+        <div
+          v-if="looseExpanded"
+          class="system-children"
+        >
           <WorkflowTreeItem
             v-for="node in (searchQuery.trim() ? displayLooseFiles : rootLooseFiles)"
             :key="node.path"
@@ -372,22 +402,34 @@ const menuItems = computed(() => {
       </div>
 
       <!-- 底部系统与模板折叠区（仅根树展示） -->
-      <div v-if="isRoot && systemNodes.length > 0" class="system-section">
+      <div
+        v-if="isRoot && systemNodes.length > 0"
+        class="system-section"
+      >
         <div
           class="tree-node system-header-node"
           :class="{ 'is-open': systemExpanded }"
           @click="systemExpanded = !systemExpanded"
         >
           <span class="node-toggle">
-            <ChevronRight v-if="!systemExpanded" :size="14" />
-            <ChevronDown v-else :size="14" />
+            <ChevronRight
+              v-if="!systemExpanded"
+              :size="14"
+            />
+            <ChevronDown
+              v-else
+              :size="14"
+            />
           </span>
           <span class="node-icon"><FolderCog :size="15" /></span>
           <span class="node-name system-name">{{ t('editor.tree.systemSection') }}</span>
           <span class="system-badge">{{ systemNodes.length }}</span>
         </div>
 
-        <div v-if="systemExpanded" class="system-children">
+        <div
+          v-if="systemExpanded"
+          class="system-children"
+        >
           <WorkflowTreeItem
             v-for="node in (searchQuery.trim() ? displaySystemNodes : systemNodes)"
             :key="node.path"
@@ -416,14 +458,24 @@ const menuItems = computed(() => {
       :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
       @click.stop
     >
-      <template v-for="item in menuItems" :key="item.key">
-        <div v-if="item.dividerBefore" class="context-menu-divider" />
+      <template
+        v-for="item in menuItems"
+        :key="item.key"
+      >
+        <div
+          v-if="item.dividerBefore"
+          class="context-menu-divider"
+        />
         <button
           class="context-menu-item"
           :class="{ danger: item.danger }"
           @click="item.action()"
         >
-          <component :is="item.icon" v-if="item.icon" :size="14" />
+          <component
+            :is="item.icon"
+            v-if="item.icon"
+            :size="14"
+          />
           <span>{{ item.label }}</span>
         </button>
       </template>

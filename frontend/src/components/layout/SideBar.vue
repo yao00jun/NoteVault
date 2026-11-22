@@ -570,7 +570,6 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
           </div>
         </div>
       </nav>
-
     </div>
 
     <div class="sidebar-footer">

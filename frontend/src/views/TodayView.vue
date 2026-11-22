@@ -278,7 +278,9 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
                   v-model="newType"
                   :aria-label="t('today.typeAria')"
                 >
-                  <option>US</option><option>DTS</option><option value="额外">{{ t('today.filter.extra') }}</option><option value="todo">
+                  <option>US</option><option>DTS</option><option value="额外">
+                    {{ t('today.filter.extra') }}
+                  </option><option value="todo">
                     {{ t('today.typeTodo') }}
                   </option>
                 </select><select

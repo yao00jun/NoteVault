@@ -139,10 +139,16 @@ const outlinkCount = computed(() => props.outlinks.length)
           :title="link.path"
           @click="emit('open-path', link.path)"
         >
-          <FileText :size="14" class="ctx-backlink-icon" />
+          <FileText
+            :size="14"
+            class="ctx-backlink-icon"
+          />
           <div class="ctx-backlink-meta">
             <span class="ctx-backlink-title">{{ link.name }}</span>
-            <span v-if="link.path" class="ctx-backlink-path">{{ link.path }}</span>
+            <span
+              v-if="link.path"
+              class="ctx-backlink-path"
+            >{{ link.path }}</span>
           </div>
         </button>
       </div>
@@ -166,10 +172,16 @@ const outlinkCount = computed(() => props.outlinks.length)
           :title="link.path"
           @click="emit('open-path', link.path)"
         >
-          <FileText :size="14" class="ctx-backlink-icon" />
+          <FileText
+            :size="14"
+            class="ctx-backlink-icon"
+          />
           <div class="ctx-backlink-meta">
             <span class="ctx-backlink-title">{{ link.name }}</span>
-            <span v-if="link.path" class="ctx-backlink-path">{{ link.path }}</span>
+            <span
+              v-if="link.path"
+              class="ctx-backlink-path"
+            >{{ link.path }}</span>
           </div>
         </button>
       </div>
