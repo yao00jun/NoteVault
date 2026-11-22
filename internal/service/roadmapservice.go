@@ -31,6 +31,10 @@ type RoadmapTrack struct {
 	Percent    int     `json:"percent"`
 	TotalHours float64 `json:"totalHours"`
 	DoneHours  float64 `json:"doneHours"`
+	// Next 是本轨第一个未完成项的行内容（勾选标记已剥除，保留双链与估时标记）；
+	// 分节内全部完成时为空串。
+	Next      string  `json:"next,omitempty"`
+	NextHours float64 `json:"nextHours,omitempty"`
 }
 
 // RoadmapProgress 是一份路径文档的完整投影。
@@ -46,6 +50,9 @@ type RoadmapProgress struct {
 	Percent     int            `json:"percent"`
 	TotalHours  float64        `json:"totalHours"`
 	DoneHours   float64        `json:"doneHours"`
+	// NextStep 是整份文档的第一个未完成项（跨轨按文档顺序）；全部完成时为空串。
+	NextStep  string  `json:"nextStep,omitempty"`
+	NextHours float64 `json:"nextHours,omitempty"`
 }
 
 // RoadmapService 把路径文档投影为进度数据。
@@ -141,6 +148,10 @@ func parseRoadmap(relativePath, content string) (*RoadmapProgress, bool) {
 			progress.Done += track.Done
 			progress.TotalHours += track.TotalHours
 			progress.DoneHours += track.DoneHours
+			if progress.NextStep == "" && track.Next != "" {
+				progress.NextStep = track.Next
+				progress.NextHours = track.NextHours
+			}
 		}
 	}
 	for i, line := range lines {
@@ -156,7 +167,7 @@ func parseRoadmap(relativePath, content string) (*RoadmapProgress, bool) {
 	return progress, true
 }
 
-// buildRoadmapTrack 统计一个分节的勾选与估时。
+// buildRoadmapTrack 统计一个分节的勾选与估时，并记录第一个未完成项。
 func buildRoadmapTrack(name string, lines []string) RoadmapTrack {
 	track := RoadmapTrack{Name: name}
 	for _, line := range lines {
@@ -173,6 +184,10 @@ func buildRoadmapTrack(name string, lines []string) RoadmapTrack {
 			track.DoneHours += est
 		case roadmapPendingRE.MatchString(line):
 			track.Total++
+			if track.Next == "" {
+				track.Next = strings.TrimSpace(roadmapPendingRE.ReplaceAllString(line, ""))
+				track.NextHours = est
+			}
 		}
 	}
 	track.Percent = percentOrZero(track.Done, track.Total)

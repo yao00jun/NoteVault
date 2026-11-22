@@ -2039,6 +2039,7 @@ export default {
     roadmapDeadline: '截止',
     roadmapWeeklyHours: '每周预算 {hours}h',
     roadmapHours: '{done}h / 共 {total}h',
+    roadmapNext: '下一步',
     radarAdopt: '采用推荐',
     radarTrial: '尝试中',
     radarAssess: '评估中',

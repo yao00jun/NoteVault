@@ -53,10 +53,10 @@ describe('Learning roadmap progress projection', () => {
         deadline: '2027-02-22',
         weeklyHours: '6',
         tracks: [
-          { name: '轨一：语言基础', total: 3, done: 1, percent: 33, totalHours: 5, doneHours: 1 },
+          { name: '轨一：语言基础', total: 3, done: 1, percent: 33, totalHours: 5, doneHours: 1, next: '[[第2章 语法基础]] #est/1.5h', nextHours: 1.5 },
           { name: '轨二：AI 应用开发', total: 1, done: 0, percent: 0, totalHours: 2.5, doneHours: 0 },
         ],
-        total: 4, done: 1, percent: 25, totalHours: 7.5, doneHours: 1,
+        total: 4, done: 1, percent: 25, totalHours: 7.5, doneHours: 1, nextStep: '[[第2章 语法基础]] #est/1.5h', nextHours: 1.5,
       },
     ])
     const { wrapper } = await render()
@@ -68,6 +68,9 @@ describe('Learning roadmap progress projection', () => {
     expect(card.text()).toContain('轨一：语言基础')
     expect(card.text()).toContain('1/3')
     expect(card.text()).toContain('1h / 共 5h')
+    expect(card.text()).toContain('下一步')
+    expect(card.text()).toContain('[[第2章 语法基础]] #est/1.5h')
+    expect(card.text()).toContain('约 1.5h')
     expect(card.text()).toContain('2027-02-22')
     expect(harness.progress).toHaveBeenCalledWith('E:/Vault')
   })

@@ -888,6 +888,12 @@ export interface RoadmapProgress {
     "percent": number;
     "totalHours": number;
     "doneHours": number;
+
+    /**
+     * NextStep 是整份文档的第一个未完成项（跨轨按文档顺序）；全部完成时为空串。
+     */
+    "nextStep"?: string;
+    "nextHours"?: number;
 }
 
 /**
@@ -900,6 +906,13 @@ export interface RoadmapTrack {
     "percent": number;
     "totalHours": number;
     "doneHours": number;
+
+    /**
+     * Next 是本轨第一个未完成项的行内容（勾选标记已剥除，保留双链与估时标记）；
+     * 分节内全部完成时为空串。
+     */
+    "next"?: string;
+    "nextHours"?: number;
 }
 
 /**

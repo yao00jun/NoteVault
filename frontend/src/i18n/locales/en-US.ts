@@ -2039,6 +2039,7 @@ export default {
     roadmapDeadline: 'Due',
     roadmapWeeklyHours: 'Weekly budget {hours}h',
     roadmapHours: '{done}h of {total}h',
+    roadmapNext: 'Next up',
     radarAdopt: 'Adopt',
     radarTrial: 'Trial',
     radarAssess: 'Assess',

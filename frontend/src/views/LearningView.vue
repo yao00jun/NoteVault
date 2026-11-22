@@ -847,6 +847,16 @@ watch(
               <div class="roadmap-track">
                 <div class="roadmap-track-fill" :style="{ width: rm.percent + '%' }" />
               </div>
+              <p
+                v-if="rm.nextStep"
+                class="roadmap-next"
+              >
+                <span class="roadmap-next-label">{{ t('learning.roadmapNext') }}</span>{{ rm.nextStep }}
+                <span
+                  v-if="rm.nextHours"
+                  class="roadmap-next-hours"
+                >约 {{ rm.nextHours }}h</span>
+              </p>
               <p class="roadmap-meta">
                 <span v-if="rm.deadline"> {{ t('learning.roadmapDeadline') }} {{ rm.deadline }} ·</span>
                 <span v-if="rm.weeklyHours"> {{ t('learning.roadmapWeeklyHours', { hours: rm.weeklyHours }) }} ·</span>
@@ -1442,4 +1452,7 @@ watch(
 .roadmap-track-count { font-variant-numeric: tabular-nums; color: var(--text-muted); flex-shrink: 0; }
 .roadmap-track-row .roadmap-track { flex: 1; }
 .roadmap-track-hours { font-variant-numeric: tabular-nums; font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+.roadmap-next { margin: 0; font-size: 12px; color: var(--text-primary); }
+.roadmap-next-label { display: inline-block; padding: 1px 8px; margin-right: 8px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-size: 11px; font-weight: 600; }
+.roadmap-next-hours { margin-left: 8px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 </style>
