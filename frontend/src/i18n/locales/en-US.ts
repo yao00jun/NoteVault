@@ -353,6 +353,8 @@ export default {
     milestones: {
       title: 'Upcoming milestones',
       openProject: 'Open the owning project',
+      markDone: 'Mark as done',
+      doneToast: 'Milestone "{name}" completed',
     },
     emails: {
       title: 'Flagged emails',

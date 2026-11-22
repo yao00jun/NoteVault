@@ -353,6 +353,8 @@ export default {
     milestones: {
       title: '近期里程碑',
       openProject: '打开所属项目',
+      markDone: '标记完成',
+      doneToast: '里程碑「{name}」已完成',
     },
     emails: {
       title: '待处理邮件',

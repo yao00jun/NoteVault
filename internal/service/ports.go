@@ -93,6 +93,7 @@ type TodoOperator interface {
 	SaveDailyReport(workspacePath string, date string, content string, expectedContent string) (string, error)
 	ReadWeeklyReport(workspacePath string, week string) (string, error)
 	SaveWeeklyReport(workspacePath string, week string, content string, expectedContent string) (string, error)
+	SetProjectMilestoneDone(workspacePath string, folder string, name string, done bool) error
 	AddWorkbenchTask(workspacePath string, projectFolder string, title string, kind string, due string, date string) error
 	DistillKnowledge(workspacePath string, req DistillRequest) error
 }

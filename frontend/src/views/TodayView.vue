@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowRight, CalendarDays, FileCheck2, CheckCircle2, CircleAlert, Clock3, FileText, Flag, Mail, Plus, RefreshCw, Sparkles, X, BookOpen, MessageSquarePlus, Bot, Loader2 } from '@lucide/vue'
-import { FileService } from '@/api'
+import { FileService, WorkbenchService } from '@/api'
 import { useToast } from '@/composables/useToast'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -107,6 +107,7 @@ const milestoneItems = computed(() => {
 // null = 数据源不可用（非 Windows / 未装 Outlook / 超时）→ 条带整体隐藏
 const meetings = ref<OutlookMeeting[] | null>(null)
 const minutesBusy = ref('')
+const milestoneBusy = ref('')
 
 async function fetchMeetings() {
   const day = store.today
@@ -145,6 +146,21 @@ async function collectEmail(email: OutlookEmail) {
   toast.success(t('today.emails.collected'))
   openFile(path)
   collecting.value = ''
+}
+
+async function toggleMilestone(item: { name: string; folder: string }) {
+  const ws = workspace.currentWorkspace
+  if (!ws?.path || milestoneBusy.value) return
+  milestoneBusy.value = item.folder + item.name
+  try {
+    await WorkbenchService.SetProjectMilestoneDone(ws.path, item.folder, item.name, true)
+    await store.refresh()
+    toast.success(t('today.milestones.doneToast', { name: item.name }))
+  } catch (cause) {
+    toast.error(cause instanceof Error ? cause.message : String(cause))
+  } finally {
+    milestoneBusy.value = ''
+  }
 }
 
 watch(() => [workspace.currentWorkspace?.path, store.today], () => {
@@ -489,14 +505,16 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
             <header>
               <h3><Flag :size="15" />{{ t('today.milestones.title') }}</h3>
             </header>
-            <button
+            <div
               v-for="item in milestoneItems"
               :key="item.project + item.name"
-              type="button"
+              role="button"
+              tabindex="0"
               class="milestone-row"
               :class="{ overdue: item.overdue }"
               :title="t('today.milestones.openProject')"
               @click="openProject(item.folder)"
+              @keydown.enter="openProject(item.folder)"
             >
               <Flag
                 :size="13"
@@ -505,7 +523,16 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
               <span class="milestone-date">{{ item.date }}</span>
               <span class="milestone-name">{{ item.name }}</span>
               <span class="milestone-project">{{ item.project }}</span>
-            </button>
+              <button
+                type="button"
+                class="milestone-done"
+                :disabled="milestoneBusy === item.folder + item.name"
+                :title="t('today.milestones.markDone')"
+                @click.stop="toggleMilestone(item)"
+              >
+                <CheckCircle2 :size="13" />
+              </button>
+            </div>
           </section>
           <!-- 旗标邮件条带（Outlook 摄取二期）：一键收录到 Inbox 蒸馏流 -->
           <section
@@ -786,7 +813,7 @@ h1 { font-size: 22px; font-weight: 600; letter-spacing: -.03em; margin: 0 0 8px;
 .email-collect:disabled { opacity: .6; cursor: default; }
 .milestones-card { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--warning) 5%, var(--bg-card)); }
 .milestones-card header h3 { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text-primary); }
-.milestone-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); border: none; background: transparent; text-align: left; cursor: pointer; padding: 0; }
+.milestone-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); text-align: left; cursor: pointer; padding: 0; border-radius: 6px; }
 .milestone-row:hover .milestone-name { color: var(--accent); }
 .milestone-flag { color: var(--warning); flex-shrink: 0; }
 .milestone-row.overdue .milestone-flag { color: var(--danger, #ef4444); }

@@ -449,3 +449,69 @@ func (s *TodoService) AddWorkbenchTask(workspacePath, projectFolder, title, kind
 	}
 	return commitWorkbenchChanges(change)
 }
+
+// SetProjectMilestoneDone 切换项目 frontmatter 里指定里程碑的完成状态。
+// 在 project.md 的 frontmatter 块内定位含该名称的 milestones 列表行，
+// 切换 [ ] ↔ [x] 标记；正文里的同名引用不受影响，找不到时返回错误。
+// 写入走 workbench 变更管线（快照 + 文件事件），并发由 workbenchMu 保护。
+func (s *TodoService) SetProjectMilestoneDone(workspacePath, folder, name string, done bool) error {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return fmt.Errorf("里程碑名称不能为空")
+	}
+	if folder == "" || strings.Contains(folder, "..") {
+		return fmt.Errorf("项目目录无效：%q", folder)
+	}
+	relative := folder + "/project.md"
+	s.workbenchMu.Lock()
+	defer s.workbenchMu.Unlock()
+	change, err := readWorkbenchChange(workspacePath, relative)
+	if err != nil {
+		return err
+	}
+	if change.before == "" {
+		return fmt.Errorf("项目文档不存在：%s", relative)
+	}
+
+	lines := strings.Split(change.before, "\n")
+	// 只在 frontmatter 块（首尾 --- 之间）内定位，正文同名标题/引用不误伤
+	frontmatterEnd := -1
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "---" {
+			frontmatterEnd = i
+			break
+		}
+	}
+	if frontmatterEnd == -1 {
+		return fmt.Errorf("未找到里程碑「%s」（项目文档缺少 frontmatter）", trimmed)
+	}
+	found := false
+	for i := 1; i < frontmatterEnd; i++ {
+		line := lines[i]
+		if !strings.Contains(line, trimmed) {
+			continue
+		}
+		isDone := strings.Contains(line, "[x]") || strings.Contains(line, "[X]")
+		if done {
+			if isDone {
+				return fmt.Errorf("里程碑「%s」已是完成状态（可能已被其他窗口修改，请刷新后重试）", trimmed)
+			}
+			if !strings.Contains(line, "[ ]") {
+				continue
+			}
+			lines[i] = strings.Replace(line, "[ ]", "[x]", 1)
+		} else {
+			if !isDone {
+				continue
+			}
+			lines[i] = strings.Replace(strings.Replace(line, "[x]", "[ ]", 1), "[X]", "[ ]", 1)
+		}
+		found = true
+		break
+	}
+	if !found {
+		return fmt.Errorf("未找到里程碑「%s」（可能已被修改，请刷新后重试）", trimmed)
+	}
+	change.after = strings.Join(lines, "\n")
+	return commitWorkbenchChanges(change)
+}

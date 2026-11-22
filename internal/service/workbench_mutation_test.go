@@ -419,3 +419,56 @@ func TestWorkbenchDailyReportRejectsStaleDraft(t *testing.T) {
 		t.Fatalf("latest report content: %q", got)
 	}
 }
+
+func TestTodoService_SetProjectMilestoneDoneTogglesFrontmatterLine(t *testing.T) {
+	service := NewTodoService()
+	mutator, ok := any(service).(interface {
+		SetProjectMilestoneDone(string, string, string, bool) error
+	})
+	if !ok {
+		t.Fatal("TodoService must expose milestone toggle")
+	}
+	root := t.TempDir()
+	// 引号包裹 + 带日期的里程碑行（与 AI 转型 project.md 同构），正文含同名标题不误伤
+	doc := "---\nname: AI 转型\nmilestones:\n  - \"[ ] 第 4 周 demo #due/2026-12-20\"\n  - \"[x] 环境搭建 #due/2026-11-20\"\n---\n# AI 转型\n\n## 第 4 周 demo\n\n正文同名小节。\n"
+	if err := os.MkdirAll(filepath.Join(root, "Projects", "转型"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Projects", "转型", "project.md"), []byte(doc), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 标记完成：只动 frontmatter 里对应行，正文不动
+	if err := mutator.SetProjectMilestoneDone(root, "Projects/转型", "第 4 周 demo", true); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(root, "Projects", "转型", "project.md"))
+	text := string(data)
+	if !strings.Contains(text, `- "[x] 第 4 周 demo #due/2026-12-20"`) {
+		t.Fatalf("frontmatter milestone should be checked: %q", text)
+	}
+	if !strings.Contains(text, "## 第 4 周 demo") {
+		t.Fatal("body heading must be untouched")
+	}
+
+	// 重复标记 → 明确报错
+	if err := mutator.SetProjectMilestoneDone(root, "Projects/转型", "第 4 周 demo", true); err == nil {
+		t.Fatal("re-checking an already-done milestone must fail")
+	}
+	// 取消完成
+	if err := mutator.SetProjectMilestoneDone(root, "Projects/转型", "第 4 周 demo", false); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(filepath.Join(root, "Projects", "转型", "project.md"))
+	if !strings.Contains(string(data), `- "[ ] 第 4 周 demo #due/2026-12-20"`) {
+		t.Fatalf("un-check should restore pending marker: %s", data)
+	}
+	// 名称不存在 → 报错
+	if err := mutator.SetProjectMilestoneDone(root, "Projects/转型", "不存在的里程碑", true); err == nil {
+		t.Fatal("unknown milestone name must fail")
+	}
+	// 目录穿越拒绝
+	if err := mutator.SetProjectMilestoneDone(root, "../escape", "x", true); err == nil {
+		t.Fatal("path traversal must be rejected")
+	}
+}

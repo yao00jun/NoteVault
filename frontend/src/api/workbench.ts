@@ -182,6 +182,9 @@ export const WorkbenchService = {
   SaveDailyReport(workspacePath: string, date: string, content: string, expectedContent: string): Promise<string> {
     return Call.ByName(`${service}.SaveDailyReport`, workspacePath, date, content, expectedContent)
   },
+  SetProjectMilestoneDone(workspacePath: string, folder: string, name: string, done: boolean): Promise<void> {
+    return Call.ByName(`${service}.SetProjectMilestoneDone`, workspacePath, folder, name, done)
+  },
   ReadWeeklyReport(workspacePath: string, week: string): Promise<string> {
     return Call.ByName(`${service}.ReadWeeklyReport`, workspacePath, week)
   },

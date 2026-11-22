@@ -21,6 +21,8 @@ const harness = vi.hoisted(() => ({
   listMeetings: vi.fn(),
   listFlaggedEmails: vi.fn(),
   createFile: vi.fn(),
+  setMilestone: vi.fn(),
+  refresh: vi.fn(),
   handlers: {} as Record<string, (ev?: unknown) => void>,
 }))
 vi.mock('@/stores/workbench', () => ({ useWorkbenchStore: () => harness.state }))
@@ -34,6 +36,7 @@ vi.mock('@/api', () => ({
   TaskService: { Cancel: harness.cancel },
   OutlookService: { ListMeetings: harness.listMeetings, ListFlaggedEmails: harness.listFlaggedEmails },
   FileService: { CreateFile: harness.createFile },
+  WorkbenchService: { SetProjectMilestoneDone: harness.setMilestone },
   CredentialService: { GetCredential: vi.fn(async () => ''), SaveCredential: vi.fn(async () => undefined) },
   ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
 }))
@@ -78,6 +81,8 @@ beforeEach(() => {
   harness.listMeetings.mockReset().mockResolvedValue([])
   harness.listFlaggedEmails.mockReset().mockResolvedValue([])
   harness.createFile.mockReset().mockResolvedValue('Daily/Meetings/x.md')
+  harness.setMilestone.mockReset().mockResolvedValue(undefined)
+  harness.refresh.mockReset().mockResolvedValue(undefined)
   harness.handlers = {}
   harness.state = reactive({
     today: '2026-09-08', tasks: [], todayTasks: [], blockers: [], reviewQueue: [], reviewedToday: 0,
@@ -85,7 +90,7 @@ beforeEach(() => {
     error: '', reminderError: '', lastUpdated: '2026-09-08T10:00:00+08:00',
     agentEvents: [],
     projects: [project('A')],
-    addTask: harness.addTask, refresh: vi.fn(),
+    addTask: harness.addTask, refresh: harness.refresh,
   })
 })
 
@@ -405,6 +410,39 @@ describe('Today workspace boundaries', () => {
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/projects')
     expect(router!.currentRoute.value.query.project).toBe('Projects/AI 转型/project.md')
+  })
+
+  it('marks a milestone done from the strip and refreshes the projection', async () => {
+    harness.state = reactive({
+      ...harness.state,
+      projects: [
+        project('AI 转型', {
+          milestones: [
+            { name: '已逾期里程碑', date: '2026-09-01', done: false },
+          ],
+        }),
+      ],
+    })
+    const { wrapper } = await renderToday()
+    await flushPromises()
+
+    const doneButton = wrapper.get('[data-testid="today-milestones"] .milestone-done')
+    await doneButton.trigger('click')
+    await flushPromises()
+
+    expect(harness.setMilestone).toHaveBeenCalledWith('/a', 'Projects/AI 转型', '已逾期里程碑', true)
+    expect(harness.refresh).toHaveBeenCalledTimes(1)
+    // 模拟 refresh 后的投影：done 置真 → 里程碑移出 7 天窗口
+    // 注意：必须原地修改 reactive 对象——组件闭包持有的是旧引用，整体替换不会触发更新
+    harness.state.projects = [
+      project('AI 转型', {
+        milestones: [
+          { name: '已逾期里程碑', date: '2026-09-01', done: true },
+        ],
+      }),
+    ]
+    await flushPromises()
+    expect(wrapper.find('[data-testid="today-milestones"]').exists()).toBe(false)
   })
 
   it('lists flagged emails and collects one into Inbox on demand', async () => {

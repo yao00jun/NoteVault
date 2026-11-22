@@ -78,6 +78,16 @@ export function SaveWeeklyReport(workspacePath: string, week: string, content: s
 }
 
 /**
+ * SetProjectMilestoneDone 切换项目 frontmatter 里指定里程碑的完成状态。
+ * 在 project.md 的 frontmatter 块内定位含该名称的 milestones 列表行，
+ * 切换 [ ] ↔ [x] 标记；正文里的同名引用不受影响，找不到时返回错误。
+ * 写入走 workbench 变更管线（快照 + 文件事件），并发由 workbenchMu 保护。
+ */
+export function SetProjectMilestoneDone(workspacePath: string, folder: string, name: string, done: boolean): $CancellablePromise<void> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.TodoService.SetProjectMilestoneDone", workspacePath, folder, name, done);
+}
+
+/**
  * ToggleTodo 切换待办事项的完成状态
  */
 export function ToggleTodo(workspacePath: string, filePath: string, lineIndex: number): $CancellablePromise<void> {
