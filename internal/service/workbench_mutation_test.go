@@ -200,6 +200,44 @@ func TestWorkbenchDailyReportsPersistExactDraftAndPropagateErrors(t *testing.T) 
 	}
 }
 
+func TestWorkbenchWeeklyReportsPersistExactDraftAndValidateWeek(t *testing.T) {
+	service := NewTodoService()
+	reports, ok := any(service).(interface {
+		ReadWeeklyReport(string, string) (string, error)
+		SaveWeeklyReport(string, string, string, string) (string, error)
+	})
+	if !ok {
+		t.Fatal("TodoService must expose Markdown weekly reports")
+	}
+	root := t.TempDir()
+	if content, err := reports.ReadWeeklyReport(root, "2026-W47"); err != nil || content != "" {
+		t.Fatalf("a missing weekly report is an empty draft: %q, %v", content, err)
+	}
+	draft := "主题：【周报】测试\r\n\r\n本周完成：\r\n1. 保留文字  \r\n"
+	if relative, err := reports.SaveWeeklyReport(root, "2026-W47", draft, ""); err != nil || relative != "Daily/Reports/2026-W47-周报.md" {
+		t.Fatalf("save weekly report: %q, %v", relative, err)
+	}
+	if content, err := reports.ReadWeeklyReport(root, "2026-W47"); err != nil || content != draft {
+		t.Fatalf("weekly report draft must round-trip verbatim: %q, %v", content, err)
+	}
+	// 周标识非法（非 ISO 周格式 / 路径穿越）一律拒绝
+	for _, bad := range []string{"2026W47", "2026-W4", "2026-W478", "../W47", "2026-09-08"} {
+		if _, err := reports.SaveWeeklyReport(root, bad, draft, ""); err == nil {
+			t.Fatalf("invalid week %q must be rejected", bad)
+		}
+	}
+	// 并发保护：expectedContent 不一致时拒绝覆盖
+	if _, err := reports.SaveWeeklyReport(root, "2026-W47", "覆盖", "旧内容"); err == nil {
+		t.Fatal("stale expected content must be rejected")
+	}
+	if err := os.MkdirAll(filepath.Join(root, "Daily", "Reports", "2026-W48-周报.md"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reports.ReadWeeklyReport(root, "2026-W48"); err == nil {
+		t.Fatal("non-missing read errors must be surfaced")
+	}
+}
+
 func TestWorkbenchAddTaskCreatesPortableProjectAndGeneralTasks(t *testing.T) {
 	service := NewTodoService()
 	adder, ok := any(service).(interface {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { InterviewCard, WorkbenchTask } from '@/api/workbench'
-import { addCalendarDays, buildDailyReport, isCarryoverTask, localDateKey, selectReviewSession, selectTodayTasks } from './workbench'
+import { addCalendarDays, buildDailyReport, buildWeeklyReport, isCarryoverTask, isoWeekWindow, localDateKey, selectReviewSession, selectTodayTasks } from './workbench'
 
 function task(id: string, fields: Partial<WorkbenchTask> = {}): WorkbenchTask {
   return { id, filePath: 'Projects/商城/Tasks.md', fileName: 'Tasks.md', lineIndex: 0, sourceLine: '- [ ] 任务', content: id, title: id, type: 'US', project: '商城', projectPath: 'Projects/商城', completed: false, priority: 'medium', due: '', date: '', completedAt: '', status: 'pending', blocker: '', progress: [], ...fields }
@@ -54,5 +54,67 @@ describe('daily email report', () => {
     expect(report).not.toContain('历史完成')
     expect(report).not.toContain('下月发布')
     expect(report).not.toContain('<!--')
+  })
+
+  it('appends milestone reminders only when something is overdue or due within seven days', () => {
+    const milestones = [
+      { name: '已逾期', date: '2026-11-20', done: false },
+      { name: '七天内', date: '2026-12-02', done: false },
+      { name: '更远', date: '2027-01-01', done: false },
+      { name: '已完成', date: '2026-11-26', done: true },
+    ]
+    const report = buildDailyReport({ date: '2026-11-26', tasks: [], milestones })
+    expect(report).toContain('近期里程碑：\n1. 已逾期（2026-11-20，已逾期）\n2. 七天内（2026-12-02）')
+    expect(report).not.toContain('更远')
+    expect(report).not.toContain('已完成')
+    const quiet = buildDailyReport({ date: '2026-11-26', tasks: [], milestones: [milestones[2]] })
+    expect(quiet).not.toContain('近期里程碑')
+  })
+})
+
+describe('weekly work report', () => {
+  const window = isoWeekWindow('2026-11-23') // 周一
+
+  it('derives the ISO week window with the Thursday year-anchor rule', () => {
+    expect(window.week).toBe('2026-W48')
+    expect(window.weekStart).toBe('2026-11-23')
+    expect(window.weekEnd).toBe('2026-11-29')
+    expect(window.nextWeekStart).toBe('2026-11-30')
+    expect(window.nextWeekEnd).toBe('2026-12-06')
+    // 跨年：2027-01-01 是周五，属于 2026 年的第 53 周
+    expect(isoWeekWindow('2027-01-01').week).toBe('2026-W53')
+    // 年首恰逢周四：2026-01-01 自己就是第 1 周
+    expect(isoWeekWindow('2026-01-01').week).toBe('2026-W01')
+  })
+
+  it('assembles week completion, risks, milestones and next-week plan', () => {
+    const report = buildWeeklyReport({
+      author: '张三',
+      team: '全栈研发组',
+      tasks: [
+        task('本周完成', { completed: true, completedAt: '2026-11-25' }),
+        task('有进展', { progress: [{ id: 'p', taskId: '有进展', filePath: 'Tasks.md', taskTitle: '有进展', project: '商城', note: '联调中', at: '2026-11-26T10:00:00+08:00' }] }),
+        task('阻塞任务', { type: 'DTS', blocker: '等待测试环境', status: 'blocked' }),
+        task('下周到期', { due: '2026-12-02' }),
+        task('上周完成', { completed: true, completedAt: '2026-11-15' }),
+        task('远期任务', { due: '2027-01-20' }),
+      ],
+      milestones: [
+        { name: '一期上线', date: '2026-11-20', done: false },
+        { name: '需求评审', date: '2026-11-26', done: false },
+        { name: '环境搭建', date: '2026-11-24', done: true },
+        { name: '远期里程碑', date: '2027-01-15', done: false },
+      ],
+      window,
+    })
+    expect(report).toContain('主题：【周报】张三 - 2026 年第 48 周 - 全栈研发组')
+    expect(report).toContain('本周完成：\n1. [商城][US] 本周完成')
+    expect(report).toContain('本周推进（进行中）：\n1. [商城][US] 有进展；联调中')
+    expect(report).toContain('风险与求助：\n1. [商城][DTS] 阻塞任务；等待测试环境\n2. 一期上线（2026-11-20，已逾期）')
+    expect(report).toContain('里程碑进展：\n1. ⏳ 需求评审（2026-11-26）\n2. ✅ 环境搭建（2026-11-24，已完成）')
+    expect(report).toContain('下周计划：\n1. [商城][US] 下周到期')
+    expect(report).not.toContain('上周完成')
+    expect(report).not.toContain('远期任务')
+    expect(report).not.toContain('远期里程碑')
   })
 })

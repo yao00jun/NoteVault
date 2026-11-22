@@ -91,6 +91,8 @@ type TodoOperator interface {
 	ReviewInterviewCard(workspacePath string, filePath string, lineIndex int, expectedComment string, level string, date string) error
 	ReadDailyReport(workspacePath string, date string) (string, error)
 	SaveDailyReport(workspacePath string, date string, content string, expectedContent string) (string, error)
+	ReadWeeklyReport(workspacePath string, week string) (string, error)
+	SaveWeeklyReport(workspacePath string, week string, content string, expectedContent string) (string, error)
 	AddWorkbenchTask(workspacePath string, projectFolder string, title string, kind string, due string, date string) error
 	DistillKnowledge(workspacePath string, req DistillRequest) error
 }

@@ -58,9 +58,38 @@ interface ReportOptions {
   author?: string
   team?: string
   tasks: WorkbenchTask[]
+  /** 项目里程碑（全项目扁平列表）：配置后日报带「近期里程碑」提醒段 */
+  milestones?: MilestoneLite[]
 }
 
-export function buildDailyReport({ date, author = '', team = '', tasks }: ReportOptions): string {
+/** 报告里的任务行：[项目][类型] 标题（Markdown 噪声已剥除）。 */
+export function reportTaskLabel(task: WorkbenchTask): string {
+  const project = task.project ? `[${task.project}]` : ''
+  const kind = task.type !== 'todo' ? `[${task.type}]` : ''
+  return `${project}${kind}${project || kind ? ' ' : ''}${plainReportText(task.title || task.content)}`
+}
+
+function reportSection(title: string, lines: string[]): string {
+  return i18n.global.t('workbench.report.sectionFormat', {
+    title,
+    items: lines.length ? lines.map((line, index) => `${index + 1}. ${line}`).join('\n') : i18n.global.t('workbench.report.none'),
+  })
+}
+
+function withProgressNotes(task: WorkbenchTask, days: (day: string) => boolean): string {
+  const notes = task.progress.filter(entry => days(entry.at.slice(0, 10))).map(entry => plainReportText(entry.note))
+  return [reportTaskLabel(task), ...notes].join(i18n.global.t('workbench.report.clauseJoiner'))
+}
+
+function milestoneReminderLines(milestones: MilestoneLite[], date: string): string[] {
+  const overdue = milestones.filter(m => !m.done && !!m.date && m.date < date)
+    .map(m => i18n.global.t('workbench.report.milestoneLine', { name: plainReportText(m.name), date: m.date, state: i18n.global.t('workbench.report.milestoneOverdue') }))
+  const soon = milestones.filter(m => !m.done && !!m.date && m.date >= date && m.date <= addCalendarDays(date, 7))
+    .map(m => i18n.global.t('workbench.report.milestoneLine', { name: plainReportText(m.name), date: m.date, state: '' }))
+  return [...overdue, ...soon].filter(line => !line.includes('undefined'))
+}
+
+export function buildDailyReport({ date, author = '', team = '', tasks, milestones = [] }: ReportOptions): string {
   const today = selectTodayTasks(tasks, date)
   const tomorrow = addCalendarDays(date, 1)
   const done = today.filter(task => task.completed)
@@ -70,24 +99,93 @@ export function buildDailyReport({ date, author = '', team = '', tasks }: Report
   const [year, month, day] = date.split('-').map(Number)
   const subject = [author.trim(), i18n.global.t('workbench.report.dateTitle', { year, month, day }), team.trim()].filter(Boolean).join(' - ')
 
-  const label = (task: WorkbenchTask) => {
-    const project = task.project ? `[${task.project}]` : ''
-    const kind = task.type !== 'todo' ? `[${task.type}]` : ''
-    return `${project}${kind}${project || kind ? ' ' : ''}${plainReportText(task.title || task.content)}`
-  }
-  const withProgress = (task: WorkbenchTask) => {
-    const notes = task.progress.filter(entry => entry.at.slice(0, 10) === date).map(entry => plainReportText(entry.note))
-    return [label(task), ...notes].join(i18n.global.t('workbench.report.clauseJoiner'))
-  }
-  const section = (title: string, lines: string[]) => i18n.global.t('workbench.report.sectionFormat', {
-    title,
-    items: lines.length ? lines.map((line, index) => `${index + 1}. ${line}`).join('\n') : i18n.global.t('workbench.report.none'),
-  })
-  return [
+  const withProgress = (task: WorkbenchTask) => withProgressNotes(task, at => at === date)
+  const joiner = i18n.global.t('workbench.report.clauseJoiner')
+  const reminderLines = milestoneReminderLines(milestones, date)
+  const sections = [
     i18n.global.t('workbench.report.subjectLine', { subject }),
-    section(i18n.global.t('workbench.report.sectionDone'), done.map(withProgress)),
-    section(i18n.global.t('workbench.report.sectionActive'), active.map(withProgress)),
-    section(i18n.global.t('workbench.report.sectionBlocked'), blocked.map(task => `${label(task)}${i18n.global.t('workbench.report.clauseJoiner')}${plainReportText(task.blocker) || i18n.global.t('workbench.report.noBlockerNote')}`)),
-    section(i18n.global.t('workbench.report.sectionPlan'), plan.map(label)),
+    reportSection(i18n.global.t('workbench.report.sectionDone'), done.map(withProgress)),
+    reportSection(i18n.global.t('workbench.report.sectionActive'), active.map(withProgress)),
+    reportSection(i18n.global.t('workbench.report.sectionBlocked'), blocked.map(task => `${reportTaskLabel(task)}${joiner}${plainReportText(task.blocker) || i18n.global.t('workbench.report.noBlockerNote')}`)),
+    reportSection(i18n.global.t('workbench.report.sectionPlan'), plan.map(reportTaskLabel)),
+  ]
+  if (reminderLines.length) {
+    sections.push(reportSection(i18n.global.t('workbench.report.sectionMilestoneReminders'), reminderLines))
+  }
+  return sections.join('\n\n')
+}
+
+/** ISO 周窗口：周四所在年份决定 ISO 年与周号（本地时区，正午规避夏令时边界）。 */
+export interface WeekWindow {
+  week: string
+  year: number
+  weekNumber: number
+  weekStart: string
+  weekEnd: string
+  nextWeekStart: string
+  nextWeekEnd: string
+}
+
+export function isoWeekWindow(day: string): WeekWindow {
+  const [year, month, date] = day.split('-').map(Number)
+  const anchor = new Date(year, month - 1, date, 12)
+  const dayNum = (anchor.getDay() + 6) % 7 // 周一=0 … 周日=6
+  const monday = new Date(year, month - 1, date - dayNum, 12)
+  const thursday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 3, 12)
+  const yearStart = new Date(thursday.getFullYear(), 0, 1, 12)
+  const weekNumber = Math.floor((thursday.getTime() - yearStart.getTime()) / (7 * 86400000)) + 1
+  const at = (offset: number) => localDateKey(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + offset, 12))
+  return {
+    week: `${thursday.getFullYear()}-W${String(weekNumber).padStart(2, '0')}`,
+    year: thursday.getFullYear(),
+    weekNumber,
+    weekStart: at(0),
+    weekEnd: at(6),
+    nextWeekStart: at(7),
+    nextWeekEnd: at(13),
+  }
+}
+
+export interface MilestoneLite {
+  name: string
+  date: string
+  done: boolean
+}
+
+export interface WeeklyReportOptions {
+  author?: string
+  team?: string
+  tasks: WorkbenchTask[]
+  milestones?: MilestoneLite[]
+  window: WeekWindow
+}
+
+export function buildWeeklyReport({ author = '', team = '', tasks, milestones = [], window: w }: WeeklyReportOptions): string {
+  const inRange = (day: string | undefined, start: string, end: string) => !!day && day >= start && day <= end
+  const inWeek = (day?: string) => inRange(day, w.weekStart, w.weekEnd)
+  // 本周完成：完成时间落在周内；旧数据无 completedAt 时回退到 due/date 在周内
+  const done = tasks.filter(task => task.completed && (inWeek(task.completedAt) || (!task.completedAt && (inWeek(task.due) || inWeek(task.date)))))
+  const active = tasks.filter(task => !task.completed && task.progress.some(entry => inWeek(entry.at.slice(0, 10))))
+  const blocked = tasks.filter(task => !task.completed && (task.blocker || task.status === 'blocked'))
+  const overdueMilestones = milestones.filter(m => !m.done && !!m.date && m.date < w.weekStart)
+  const weekMilestones = milestones.filter(m => inWeek(m.date))
+  const plan = tasks.filter(task => !task.completed && (inRange(task.due, w.nextWeekStart, w.nextWeekEnd) || inRange(task.date, w.nextWeekStart, w.nextWeekEnd)))
+
+  const subject = [author.trim(), i18n.global.t('workbench.report.weekTitle', { year: w.year, week: w.weekNumber }), team.trim()].filter(Boolean).join(' - ')
+  const joiner = i18n.global.t('workbench.report.clauseJoiner')
+  const riskLines = [
+    ...blocked.map(task => `${reportTaskLabel(task)}${joiner}${plainReportText(task.blocker) || i18n.global.t('workbench.report.noBlockerNote')}`),
+    ...overdueMilestones.map(m => i18n.global.t('workbench.report.milestoneLine', { name: plainReportText(m.name), date: m.date, state: i18n.global.t('workbench.report.milestoneOverdue') })),
+  ]
+  const milestoneLines = weekMilestones.map(m =>
+    `${m.done ? '✅' : '⏳'} ${i18n.global.t('workbench.report.milestoneLine', { name: plainReportText(m.name), date: m.date, state: m.done ? i18n.global.t('workbench.report.milestoneDone') : '' })}`
+  )
+  return [
+    i18n.global.t('workbench.report.weekSubjectLine', { subject }),
+    reportSection(i18n.global.t('workbench.report.sectionWeekDone'), done.map(task => withProgressNotes(task, inWeek))),
+    reportSection(i18n.global.t('workbench.report.sectionWeekActive'), active.map(task => withProgressNotes(task, inWeek))),
+    reportSection(i18n.global.t('workbench.report.sectionWeekRisk'), riskLines),
+    reportSection(i18n.global.t('workbench.report.sectionWeekMilestones'), milestoneLines),
+    reportSection(i18n.global.t('workbench.report.sectionWeekPlan'), plan.map(reportTaskLabel)),
   ].join('\n\n')
 }

@@ -13,6 +13,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { BarChart3, Flame, Link2, CalendarRange, Activity, FileText, History, Loader2, X } from '@lucide/vue'
 import { StatsService, GraphService, ReportService, ReviewService, ReminderService, TaskService } from '@/api'
+import WeeklyReportModal from '@/components/workbench/WeeklyReportModal.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
@@ -51,6 +52,7 @@ const errorMsg = ref('')
 const generating = ref(false)
 const generateMsg = ref('')
 const generateOk = ref(false)
+const weeklyVisible = ref(false)
 
 // --- 周报异步任务状态 ---
 // 生成走 TaskService 后，进度来自 task:progress 事件；只关注「当前这个任务」，
@@ -340,6 +342,15 @@ async function finishTask(info: TaskEventPayload) {
         </p>
       </div>
       <div class="rp-banner-actions">
+        <button
+          class="rp-weekly-btn"
+          type="button"
+          data-testid="generate-work-weekly"
+          @click="weeklyVisible = true"
+        >
+          <CalendarRange :size="14" />
+          <span>{{ t('reports.generateWorkWeekly') }}</span>
+        </button>
         <button
           class="rp-generate-btn"
           :disabled="generating"
@@ -642,6 +653,10 @@ async function finishTask(info: TaskEventPayload) {
         </div>
       </section>
     </template>
+    <WeeklyReportModal
+      :visible="weeklyVisible"
+      @close="weeklyVisible = false"
+    />
   </div>
 </template>
 
@@ -830,6 +845,21 @@ async function finishTask(info: TaskEventPayload) {
 .rp-banner-text {
   flex: 1;
   min-width: 0;
+}
+.rp-weekly-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.rp-weekly-btn:hover {
+  color: var(--text-primary);
 }
 .rp-banner-actions {
   flex-shrink: 0;

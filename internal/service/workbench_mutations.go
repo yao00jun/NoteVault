@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -329,6 +330,46 @@ func (s *TodoService) SaveDailyReport(workspacePath, date, content, expectedCont
 	}
 	if change.before != expectedContent {
 		return "", fmt.Errorf("日报已在其他位置修改，请重新载入并合并后再保存")
+	}
+	change.after = content
+	if err := commitWorkbenchChanges(change); err != nil {
+		return "", err
+	}
+	return relative, nil
+}
+
+// weeklyReportRE 校验周报标识：ISO 周，形如 2026-W47。
+var weeklyReportRE = regexp.MustCompile(`^\d{4}-W\d{2}$`)
+
+// ReadWeeklyReport 读取工作周报（Daily/Reports/<week>-周报.md），无文件返回空串。
+func (s *TodoService) ReadWeeklyReport(workspacePath, week string) (string, error) {
+	if !weeklyReportRE.MatchString(week) {
+		return "", fmt.Errorf("周报标识无效：%q（应为 2026-W47 形式）", week)
+	}
+	s.workbenchMu.RLock()
+	defer s.workbenchMu.RUnlock()
+	change, err := readWorkbenchChange(workspacePath, "Daily/Reports/"+week+"-周报.md")
+	if err != nil {
+		return "", err
+	}
+	return change.before, nil
+}
+
+// SaveWeeklyReport 保存工作周报；expectedContent 与盘上不一致时拒绝写入
+// （并发保护与日报同一约定）。
+func (s *TodoService) SaveWeeklyReport(workspacePath, week, content, expectedContent string) (string, error) {
+	if !weeklyReportRE.MatchString(week) {
+		return "", fmt.Errorf("周报标识无效：%q（应为 2026-W47 形式）", week)
+	}
+	s.workbenchMu.Lock()
+	defer s.workbenchMu.Unlock()
+	relative := "Daily/Reports/" + week + "-周报.md"
+	change, err := readWorkbenchChange(workspacePath, relative)
+	if err != nil {
+		return "", err
+	}
+	if change.before != expectedContent {
+		return "", fmt.Errorf("周报已在其他位置修改，请重新载入并合并后再保存")
 	}
 	change.after = content
 	if err := commitWorkbenchChanges(change); err != nil {

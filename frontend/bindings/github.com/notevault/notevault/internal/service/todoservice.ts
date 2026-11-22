@@ -52,6 +52,13 @@ export function ReadDailyReport(workspacePath: string, date: string): $Cancellab
 }
 
 /**
+ * ReadWeeklyReport 读取工作周报（Daily/Reports/<week>-周报.md），无文件返回空串。
+ */
+export function ReadWeeklyReport(workspacePath: string, week: string): $CancellablePromise<string> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.TodoService.ReadWeeklyReport", workspacePath, week);
+}
+
+/**
  * ReviewInterviewCard updates only known JSON values inside the original comment.
  */
 export function ReviewInterviewCard(workspacePath: string, filePath: string, lineIndex: number, expectedComment: string, level: string, date: string): $CancellablePromise<void> {
@@ -60,6 +67,14 @@ export function ReviewInterviewCard(workspacePath: string, filePath: string, lin
 
 export function SaveDailyReport(workspacePath: string, date: string, content: string, expectedContent: string): $CancellablePromise<string> {
     return $Call.ByName("github.com/notevault/notevault/internal/service.TodoService.SaveDailyReport", workspacePath, date, content, expectedContent);
+}
+
+/**
+ * SaveWeeklyReport 保存工作周报；expectedContent 与盘上不一致时拒绝写入
+ * （并发保护与日报同一约定）。
+ */
+export function SaveWeeklyReport(workspacePath: string, week: string, content: string, expectedContent: string): $CancellablePromise<string> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.TodoService.SaveWeeklyReport", workspacePath, week, content, expectedContent);
 }
 
 /**

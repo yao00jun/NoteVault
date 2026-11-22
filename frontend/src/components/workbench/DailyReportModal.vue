@@ -49,7 +49,13 @@ function loadProfile() {
   } catch { /* A missing UI preference does not affect Markdown reports. */ }
 }
 function generate() {
-  return buildDailyReport({ date: day.value, author: author.value, team: team.value, tasks: workbench.tasks })
+  return buildDailyReport({
+    date: day.value,
+    author: author.value,
+    team: team.value,
+    tasks: workbench.tasks,
+    milestones: workbench.projects.flatMap(project => project.milestones ?? []),
+  })
 }
 
 /** Serialize disk writes; every queued write captures its original workspace/day. */
