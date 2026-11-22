@@ -44,13 +44,18 @@ jobs:
           - os: windows-latest
             label: windows-amd64
             package: installer
-          # macOS：dmg（arm64 与 x86_64 各出一份，Intel 机器仍可用）
-          - os: macos-14
+          # macOS：dmg（arm64 与 x86_64 各出一份，Intel 机器仍可用）。
+          # 两个 job 都跑 macos-latest（Apple Silicon）：arm64 原生编译，
+          # amd64 走 Apple clang 交叉（go 对 darwin cgo 自动传 -arch）。
+          # 不要用 macos-14/macos-13：前者触发即被取消，后者长期排队不分配。
+          - os: macos-latest
             label: darwin-arm64
             package: dmg
-          - os: macos-13
+            arch: arm64
+          - os: macos-latest
             label: darwin-amd64
             package: dmg
+            arch: amd64
           # Linux：静态二进制打 tar.gz（deb/rpm/AppImage 依赖额外工具链，暂不进流水线）
           - os: ubuntu-24.04
             label: linux-amd64
@@ -77,19 +82,25 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Install Wails v3 CLI
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
-
-      # Wails v3 的 Linux 后端是 CGO + GTK4 + WebKitGTK 6.0（不是 v2 的 GTK3）。
-      # 官方支持矩阵以 Ubuntu 24.04 为基线，故构建机也钉在 24.04；
-      # 代价是产物要求目标机 glibc ≥ 2.39（22.04 及更早跑不起来）。
       - name: Install Linux build dependencies
         if: matrix.os == 'ubuntu-24.04'
+        # 必须在安装 wails3 CLI 之前：go install 编译 CLI 本身就要 GTK4 头文件
+        # （Wails v3 的 Linux 后端是 CGO + GTK4 + WebKitGTK 6.0，不是 v2 的 GTK3）。
+        # 官方支持矩阵以 Ubuntu 24.04 为基线，故构建机也钉在 24.04；
+        # 代价是产物要求目标机 glibc ≥ 2.39（22.04 及更早跑不起来）。
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev \
             libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install Wails v3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+
+      # windows-latest 镜像不再预装 NSIS（首跑实测 makensis 不在 PATH）
+      - name: Install NSIS
+        if: runner.os == 'Windows'
+        run: choco install nsis -y --no-progress
 
       - name: Resolve version
         shell: bash
@@ -105,9 +116,11 @@ jobs:
       - name: Build macOS dmg
         if: matrix.package == 'dmg'
         shell: bash
+        # ARCH 经 CLI 全局变量透传到 build:native 的 GOARCH（与 VERSION 同机制）；
+        # MCP 是零 CGO 纯 Go 二进制，直接交叉编译出对应架构
         run: |
-          wails3 task darwin:package:dmg VERSION="$VERSION"
-          wails3 task mcp:build
+          wails3 task darwin:package:dmg VERSION="$VERSION" ARCH="${{ matrix.arch }}"
+          GOARCH="${{ matrix.arch }}" wails3 task mcp:build
 
       - name: Build Linux binaries
         if: matrix.package == 'tarball'
