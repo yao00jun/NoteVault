@@ -596,6 +596,25 @@ export interface LinkCandidate {
 }
 
 /**
+ * OutlookEmail 是一封旗标邮件的只读投影。
+ */
+export interface OutlookEmail {
+    "subject": string;
+    "sender": string;
+
+    /**
+     * 本地时间 YYYY-MM-DD HH:mm
+     */
+    "receivedTime": string;
+    "entryId": string;
+
+    /**
+     * 正文摘要（≤2000 字符）
+     */
+    "excerpt": string;
+}
+
+/**
  * OutlookMeeting 是一次日历会议的只读投影。
  */
 export interface OutlookMeeting {

@@ -350,6 +350,14 @@ export default {
       minutesCreated: 'Meeting minutes created',
       loadFailedSilent: 'Outlook meetings unavailable',
     },
+    milestones: {
+      title: 'Upcoming milestones',
+    },
+    emails: {
+      title: 'Flagged emails',
+      collect: 'Collect',
+      collected: 'Collected to Inbox; distill it in Knowledge Compile',
+    },
     tasksTitle: 'Todos',
     carryoverTip: '{n} carry-over tasks are queued; handle them first.',
     focusTip: 'Focus on one thing at a time.',

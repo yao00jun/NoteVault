@@ -29,14 +29,24 @@ type OutlookMeeting struct {
 	AllDay    bool   `json:"allDay"`
 }
 
-// meetingProvider 抽象日历来源：Windows 走 COM 实现，测试注入桩。
-type meetingProvider interface {
-	list(start, end time.Time) ([]OutlookMeeting, error)
+// OutlookEmail 是一封旗标邮件的只读投影。
+type OutlookEmail struct {
+	Subject      string `json:"subject"`
+	Sender       string `json:"sender"`
+	ReceivedTime string `json:"receivedTime"` // 本地时间 YYYY-MM-DD HH:mm
+	EntryID      string `json:"entryId"`
+	Excerpt      string `json:"excerpt"` // 正文摘要（≤2000 字符）
 }
 
-// OutlookService 提供只读日历会议查询。
+// outlookProvider 抽象 Outlook 数据源（日历 + 邮件）：Windows 走 COM 实现，测试注入桩。
+type outlookProvider interface {
+	list(start, end time.Time) ([]OutlookMeeting, error)
+	listFlagged(limit int) ([]OutlookEmail, error)
+}
+
+// OutlookService 提供只读 Outlook 数据查询。
 type OutlookService struct {
-	provider meetingProvider
+	provider outlookProvider
 }
 
 // NewOutlookService 构造 Outlook 服务（生产用，平台决定数据源）。
@@ -45,7 +55,7 @@ func NewOutlookService() *OutlookService {
 }
 
 // NewOutlookServiceWithProvider 允许注入自定义数据源（测试用）。
-func NewOutlookServiceWithProvider(provider meetingProvider) *OutlookService {
+func NewOutlookServiceWithProvider(provider outlookProvider) *OutlookService {
 	if provider == nil {
 		provider = newOutlookProvider()
 	}
@@ -75,6 +85,31 @@ func (s *OutlookService) ListMeetings(start, end string) ([]OutlookMeeting, erro
 	}
 	sort.SliceStable(meetings, func(i, j int) bool { return meetings[i].Start < meetings[j].Start })
 	return meetings, nil
+}
+
+// listFlaggedEmailsLimit 收录邮件单次拉取的默认/上限。
+const (
+	emailLimitDefault = 10
+	emailLimitMax     = 50
+)
+
+// ListFlaggedEmails 返回收件箱中带旗标（用户标记为待办）的邮件，按接收时间倒序。
+// limit <= 0 用默认 10，超过 50 截到 50。
+func (s *OutlookService) ListFlaggedEmails(limit int) ([]OutlookEmail, error) {
+	if limit <= 0 {
+		limit = emailLimitDefault
+	}
+	if limit > emailLimitMax {
+		limit = emailLimitMax
+	}
+	emails, err := s.provider.listFlagged(limit)
+	if err != nil {
+		return nil, err
+	}
+	if emails == nil {
+		emails = []OutlookEmail{}
+	}
+	return emails, nil
 }
 
 // parseMeetingBoundary 解析日期键（零点）或日期时间键。

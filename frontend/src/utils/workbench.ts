@@ -1,9 +1,9 @@
 import type { InterviewCard, WorkbenchTask } from '@/api/workbench'
-import { OutlookService, type OutlookMeeting } from '@/api'
+import { OutlookService, type OutlookEmail, type OutlookMeeting } from '@/api'
 import { i18n } from '@/i18n'
 
-// 报告构建器的会议入参类型从这里统一出口（组件不直接 import '@/api' 的绑定模型）
-export type { OutlookMeeting }
+// 报告构建器的 Outlook 入参类型从这里统一出口（组件不直接 import '@/api' 的绑定模型）
+export type { OutlookEmail, OutlookMeeting }
 
 /** Use the user's calendar day, never UTC's date (which changes at 08:00 in China). */
 export function localDateKey(now = new Date()): string {
@@ -256,5 +256,44 @@ export function buildMeetingMinutes(meeting: OutlookMeeting): string {
   if (meeting.location) lines.push(`location: ${meeting.location}`)
   if (meeting.organizer) lines.push(`organizer: ${meeting.organizer}`)
   lines.push('---', '', `# ${meeting.subject} 会议纪要`, '')
+  return lines.join('\n')
+}
+
+// --- Outlook 邮件摄取（二期）：旗标邮件 → Inbox 笔记 → 蒸馏流 ---
+
+// fetchFlaggedEmailsSafe 邮件数据源的安全封装：COM 不可用一律降级为空列表。
+export async function fetchFlaggedEmailsSafe(limit = 10): Promise<OutlookEmail[]> {
+  try {
+    const emails = (await OutlookService.ListFlaggedEmails(limit)) as OutlookEmail[] | null
+    return emails ?? []
+  } catch (cause) {
+    console.warn('Outlook 旗标邮件不可用：', cause)
+    return []
+  }
+}
+
+// emailNotePath 旗标邮件收录到 Inbox 的落盘路径（清洗规则与会议纪要一致）。
+export function emailNotePath(date: string, subject: string): string {
+  const clean = subject.trim().replace(/[:*?"<>|]/g, '-') || '邮件'
+  return `Inbox/邮件/${date}-${clean}.md`
+}
+
+// buildEmailNote 生成收录笔记：frontmatter 保留来源元数据，正文供蒸馏流提炼。
+export function buildEmailNote(email: OutlookEmail): string {
+  const lines = [
+    '---',
+    'type: email',
+    'source: outlook',
+    `from: ${email.sender}`,
+    `received: ${email.receivedTime}`,
+    '---',
+    '',
+    `# 邮件：${email.subject}`,
+    '',
+    '## 要点',
+    '',
+  ]
+  if (email.excerpt) lines.push(email.excerpt, '')
+  lines.push('## 待办', '', '- [ ] ')
   return lines.join('\n')
 }

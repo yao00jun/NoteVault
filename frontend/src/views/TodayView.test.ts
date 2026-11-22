@@ -19,6 +19,7 @@ const harness = vi.hoisted(() => ({
   briefingResult: vi.fn(),
   cancel: vi.fn(),
   listMeetings: vi.fn(),
+  listFlaggedEmails: vi.fn(),
   createFile: vi.fn(),
   handlers: {} as Record<string, (ev?: unknown) => void>,
 }))
@@ -31,7 +32,7 @@ vi.mock('@/api', () => ({
     DailyBriefingTaskResult: harness.briefingResult,
   },
   TaskService: { Cancel: harness.cancel },
-  OutlookService: { ListMeetings: harness.listMeetings },
+  OutlookService: { ListMeetings: harness.listMeetings, ListFlaggedEmails: harness.listFlaggedEmails },
   FileService: { CreateFile: harness.createFile },
   CredentialService: { GetCredential: vi.fn(async () => ''), SaveCredential: vi.fn(async () => undefined) },
   ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
@@ -75,6 +76,7 @@ beforeEach(() => {
   harness.cancel.mockReset().mockResolvedValue(true)
   // 会议默认空列表：条带隐藏，不影响既有用例
   harness.listMeetings.mockReset().mockResolvedValue([])
+  harness.listFlaggedEmails.mockReset().mockResolvedValue([])
   harness.createFile.mockReset().mockResolvedValue('Daily/Meetings/x.md')
   harness.handlers = {}
   harness.state = reactive({
@@ -360,6 +362,75 @@ describe('Today workspace boundaries', () => {
     await flushPromises()
     // 数据源失败静默降级：条带不渲染、页面其余部分不受影响
     expect(wrapper.find('[data-testid="today-meetings"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="today-briefing"]').exists()).toBe(true)
+  })
+
+  it('shows upcoming and overdue milestones from all projects', async () => {
+    harness.state = reactive({
+      ...harness.state,
+      projects: [
+        project('商城', {
+          milestones: [
+            { name: '需求评审通过', date: '2026-09-10', done: false },
+            { name: '已完成项', date: '2026-09-01', done: true },
+            { name: '无日期项', date: '', done: false },
+          ],
+        }),
+        project('AI 转型', {
+          milestones: [
+            { name: '已逾期里程碑', date: '2026-09-01', done: false },
+            { name: '远期里程碑', date: '2026-12-01', done: false },
+          ],
+        }),
+      ],
+    })
+    const { wrapper } = await renderToday()
+    await flushPromises()
+
+    // 7 天窗口（09-08 ~ 09-15）：逾期 + 本周到期待办可见；已完成/无日期/远期不进
+    const strip = wrapper.get('[data-testid="today-milestones"]')
+    expect(strip.text()).toContain('近期里程碑')
+    expect(strip.text()).toContain('需求评审通过')
+    expect(strip.text()).toContain('已逾期里程碑')
+    expect(strip.text()).not.toContain('已完成项')
+    expect(strip.text()).not.toContain('无日期项')
+    expect(strip.text()).not.toContain('远期里程碑')
+    const rows = strip.findAll('.milestone-row')
+    expect(rows[0]!.classes()).toContain('overdue')
+    expect(rows[1]!.classes()).not.toContain('overdue')
+    expect(rows[0]!.text()).toContain('AI 转型')
+  })
+
+  it('lists flagged emails and collects one into Inbox on demand', async () => {
+    harness.listFlaggedEmails.mockResolvedValue([
+      { subject: '评审请示', sender: '领导', receivedTime: '2026-09-08 10:00', entryId: 'E1', excerpt: '请今天回复' },
+      { subject: '周报催收', sender: 'PMO', receivedTime: '2026-09-07 18:00', entryId: 'E2', excerpt: '' },
+    ])
+    const { wrapper } = await renderToday()
+    await flushPromises()
+
+    expect(harness.listFlaggedEmails).toHaveBeenCalledTimes(1)
+    const strip = wrapper.get('[data-testid="today-emails"]')
+    expect(strip.text()).toContain('待处理邮件')
+    expect(strip.text()).toContain('评审请示')
+    expect(strip.text()).toContain('领导')
+
+    const rows = strip.findAll('.email-row')
+    await rows[0]!.get('.email-collect').trigger('click')
+    await flushPromises()
+    // 收录：Inbox/邮件/<接收日期>-<主题>.md，frontmatter 带来源元数据
+    expect(harness.createFile).toHaveBeenCalledWith('/a', 'Inbox/邮件/2026-09-08-评审请示.md', expect.stringContaining('source: outlook'))
+    // 收录后从条带移除
+    expect(strip.findAll('.email-row')).toHaveLength(1)
+    expect(strip.text()).toContain('周报催收')
+    expect(strip.text()).not.toContain('评审请示')
+  })
+
+  it('hides the emails strip when Outlook is unavailable', async () => {
+    harness.listFlaggedEmails.mockRejectedValue(new Error('COM down'))
+    const { wrapper } = await renderToday()
+    await flushPromises()
+    expect(wrapper.find('[data-testid="today-emails"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="today-briefing"]').exists()).toBe(true)
   })
 

@@ -350,6 +350,14 @@ export default {
       minutesCreated: '会议纪要已创建',
       loadFailedSilent: 'Outlook 会议不可用',
     },
+    milestones: {
+      title: '近期里程碑',
+    },
+    emails: {
+      title: '待处理邮件',
+      collect: '收录',
+      collected: '已收录到 Inbox，可在知识编译中提炼',
+    },
     tasksTitle: '今日待办',
     carryoverTip: '{n} 项昨日或逾期任务已顺延，优先处理。',
     focusTip: '专注一件事，完成一件事。',

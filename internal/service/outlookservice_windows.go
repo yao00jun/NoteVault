@@ -12,15 +12,18 @@ import (
 	"github.com/go-ole/go-ole/oleutil"
 )
 
-// outlookComProvider 通过本机桌面版 Outlook 的 COM 接口只读日历。
-// 只调用 Outlook.Application → Session → GetDefaultFolder(9)（olFolderCalendar），
-// 不写任何数据；Outlook 未安装 / 对象被占用时返回错误，由上层降级。
+// outlookComProvider 通过本机桌面版 Outlook 的 COM 接口只读日历与邮件。
+// 只调用 Outlook.Application → Session → GetDefaultFolder(…)，不写任何数据；
+// Outlook 未安装 / 对象被占用时返回错误，由上层降级。
 type outlookComProvider struct{}
 
-// olFolderCalendar 是 Outlook 默认日历文件夹的枚举值。
-const olFolderCalendar = 9
+// Outlook 默认文件夹枚举值。
+const (
+	olFolderCalendar = 9
+	olFolderInbox    = 6
+)
 
-func newOutlookProvider() meetingProvider { return outlookComTimeoutProvider{} }
+func newOutlookProvider() outlookProvider { return outlookComTimeoutProvider{} }
 
 // outlookComTimeoutProvider 给 COM 调用加超时护栏：Outlook 有未处理完的
 // 首启对话框 / 配置向导时，COM 调用会无限阻塞（本机实测踩坑）——服务层
@@ -30,23 +33,37 @@ type outlookComTimeoutProvider struct{}
 
 const outlookComTimeout = 20 * time.Second
 
-func (p outlookComTimeoutProvider) list(start, end time.Time) ([]OutlookMeeting, error) {
-	type result struct {
-		meetings []OutlookMeeting
-		err      error
+// withOutlookTimeout 统一的超时包装（泛型：会议与邮件共用）。
+func withOutlookTimeout[T any](fn func() (T, error)) (T, error) {
+	type result[T any] struct {
+		value T
+		err   error
 	}
-	done := make(chan result, 1) // 带缓冲：超时后 COM goroutine 写入也不阻塞
+	done := make(chan result[T], 1) // 带缓冲：超时后 COM goroutine 写入也不阻塞
 	go func() {
-		meetings, err := outlookComProvider{}.list(start, end)
-		done <- result{meetings, err}
+		value, err := fn()
+		done <- result[T]{value, err}
 	}()
 	select {
 	case r := <-done:
-		return r.meetings, r.err
+		return r.value, r.err
 	case <-time.After(outlookComTimeout):
+		var zero T
 		//nolint:staticcheck // Outlook 是专有名词，错误串以大写开头沿用既有口径
-		return nil, fmt.Errorf("Outlook 日历读取超时（%s）：请确认桌面版 Outlook 已启动且没有未处理的首启对话框", outlookComTimeout)
+		return zero, fmt.Errorf("Outlook 数据读取超时（%s）：请确认桌面版 Outlook 已启动且没有未处理的首启对话框", outlookComTimeout)
 	}
+}
+
+func (p outlookComTimeoutProvider) list(start, end time.Time) ([]OutlookMeeting, error) {
+	return withOutlookTimeout(func() ([]OutlookMeeting, error) {
+		return outlookComProvider{}.list(start, end)
+	})
+}
+
+func (p outlookComTimeoutProvider) listFlagged(limit int) ([]OutlookEmail, error) {
+	return withOutlookTimeout(func() ([]OutlookEmail, error) {
+		return outlookComProvider{}.listFlagged(limit)
+	})
 }
 
 func (outlookComProvider) list(start, end time.Time) ([]OutlookMeeting, error) {
@@ -174,4 +191,116 @@ func outlookBool(item *ole.IDispatch, name string) bool {
 		return false
 	}
 	return raw.Val != 0
+}
+
+// listFlagged 读取收件箱中带旗标（用户标记为待办）的邮件，按接收时间倒序。
+// 旗标邮件是用户显式标记的动作项，信号强度远高于未读，故一期只取旗标。
+func (outlookComProvider) listFlagged(limit int) ([]OutlookEmail, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if err := ole.CoInitialize(0); err != nil {
+		return nil, fmt.Errorf("COM 初始化失败：%w", err)
+	}
+	defer ole.CoUninitialize()
+
+	appUnknown, err := oleutil.CreateObject("Outlook.Application")
+	if err != nil {
+		return nil, fmt.Errorf("无法连接 Outlook（请确认已安装并启动桌面版）：%w", err)
+	}
+	defer appUnknown.Release()
+	app, err := appUnknown.QueryInterface(ole.IID_IDispatch)
+	if err != nil {
+		return nil, fmt.Errorf("连接 Outlook 失败：%w", err)
+	}
+	defer app.Release()
+
+	sessionRaw, err := oleutil.GetProperty(app, "Session")
+	if err != nil {
+		return nil, fmt.Errorf("获取 Outlook 会话失败：%w", err)
+	}
+	session := sessionRaw.ToIDispatch()
+	defer session.Release()
+
+	inboxRaw, err := oleutil.GetProperty(session, "GetDefaultFolder", olFolderInbox)
+	if err != nil {
+		return nil, fmt.Errorf("获取收件箱失败：%w", err)
+	}
+	inbox := inboxRaw.ToIDispatch()
+	defer inbox.Release()
+
+	itemsRaw, err := oleutil.GetProperty(inbox, "Items")
+	if err != nil {
+		return nil, fmt.Errorf("获取邮件条目失败：%w", err)
+	}
+	items := itemsRaw.ToIDispatch()
+	defer items.Release()
+
+	// olFlagMarked = 2：用户打了旗标待办的邮件
+	restrictedRaw, err := oleutil.CallMethod(items, "Restrict", "[FlagStatus] = 2")
+	if err != nil {
+		return nil, fmt.Errorf("过滤旗标邮件失败：%w", err)
+	}
+	restricted := restrictedRaw.ToIDispatch()
+	defer restricted.Release()
+
+	// 按接收时间倒序，取前 limit 封（Sort 返回空的 VARIANT，显式释放）
+	sortRaw, err := oleutil.CallMethod(restricted, "Sort", "[ReceivedTime]", true)
+	if err != nil {
+		return nil, fmt.Errorf("邮件排序失败：%w", err)
+	}
+	_ = sortRaw.Clear()
+
+	countRaw, err := oleutil.GetProperty(restricted, "Count")
+	if err != nil {
+		return nil, fmt.Errorf("读取邮件数量失败：%w", err)
+	}
+	count := int(countRaw.Val)
+	if count > limit {
+		count = limit
+	}
+
+	emails := make([]OutlookEmail, 0, count)
+	for i := 1; i <= count; i++ {
+		itemRaw, err := oleutil.GetProperty(restricted, "Item", i)
+		if err != nil {
+			continue
+		}
+		item := itemRaw.ToIDispatch()
+		email, readErr := readEmail(item)
+		item.Release()
+		if readErr != nil {
+			continue
+		}
+		emails = append(emails, *email)
+	}
+	return emails, nil
+}
+
+// emailExcerptLimit 邮件正文摘要的最大字符数。
+const emailExcerptLimit = 2000
+
+// readEmail 读取单封 MailItem 的展示字段与正文摘要。
+func readEmail(item *ole.IDispatch) (*OutlookEmail, error) {
+	subject := outlookString(item, "Subject")
+	sender := outlookString(item, "SenderName")
+	entryID := outlookString(item, "EntryID")
+	body := outlookString(item, "Body")
+	// 纯文本近似：压缩多余空行，截到摘要上限
+	body = strings.Join(strings.Fields(body), "\n")
+
+	receivedRaw, err := oleutil.GetProperty(item, "ReceivedTime")
+	if err != nil {
+		return nil, fmt.Errorf("读取邮件接收时间失败：%w", err)
+	}
+	received, err := ole.GetVariantDate(uint64(receivedRaw.Val))
+	if err != nil {
+		return nil, fmt.Errorf("解析邮件接收时间失败：%w", err)
+	}
+	return &OutlookEmail{
+		Subject:      strings.TrimSpace(subject),
+		Sender:       strings.TrimSpace(sender),
+		ReceivedTime: received.Format("2006-01-02 15:04"),
+		EntryID:      entryID,
+		Excerpt:      truncateRunes(body, emailExcerptLimit),
+	}, nil
 }

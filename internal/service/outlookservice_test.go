@@ -6,12 +6,14 @@ import (
 	"time"
 )
 
-// fakeMeetingProvider 是日历来源的测试桩：记录时间窗口并返回固定结果。
+// fakeMeetingProvider 是 Outlook 数据源的测试桩：记录调用参数并返回固定结果。
 type fakeMeetingProvider struct {
 	meetings []OutlookMeeting
+	emails   []OutlookEmail
 	err      error
 	gotStart time.Time
 	gotEnd   time.Time
+	gotLimit int
 }
 
 func (p *fakeMeetingProvider) list(start, end time.Time) ([]OutlookMeeting, error) {
@@ -20,6 +22,14 @@ func (p *fakeMeetingProvider) list(start, end time.Time) ([]OutlookMeeting, erro
 		return nil, p.err
 	}
 	return p.meetings, nil
+}
+
+func (p *fakeMeetingProvider) listFlagged(limit int) ([]OutlookEmail, error) {
+	p.gotLimit = limit
+	if p.err != nil {
+		return nil, p.err
+	}
+	return p.emails, nil
 }
 
 func TestOutlookService_ListMeetingsSortsAndPassesWindow(t *testing.T) {
@@ -96,5 +106,51 @@ func TestOutlookService_MeetingFileNameSanitizes(t *testing.T) {
 	}
 	if got := meetingFileName("2026-11-23", ""); got != "Daily/Meetings/2026-11-23-会议.md" {
 		t.Fatalf("empty subject should fall back: %q", got)
+	}
+}
+
+func TestOutlookService_ListFlaggedEmailsClampsLimitAndDefaults(t *testing.T) {
+	fake := &fakeMeetingProvider{emails: []OutlookEmail{
+		{Subject: "评审请示", Sender: "领导", ReceivedTime: "2026-11-23 10:00", Excerpt: "请今天回复"},
+	}}
+	svc := NewOutlookServiceWithProvider(fake)
+
+	// limit <= 0 → 默认 10
+	if _, err := svc.ListFlaggedEmails(0); err != nil {
+		t.Fatal(err)
+	}
+	if fake.gotLimit != emailLimitDefault {
+		t.Fatalf("zero limit should fall back to default 10, got %d", fake.gotLimit)
+	}
+	// limit > 50 → 截到 50
+	if _, err := svc.ListFlaggedEmails(500); err != nil {
+		t.Fatal(err)
+	}
+	if fake.gotLimit != emailLimitMax {
+		t.Fatalf("oversized limit should clamp to 50, got %d", fake.gotLimit)
+	}
+	// 正常路径返回数据
+	emails, err := svc.ListFlaggedEmails(5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(emails) != 1 || emails[0].Subject != "评审请示" || emails[0].Excerpt != "请今天回复" {
+		t.Fatalf("unexpected emails: %+v", emails)
+	}
+}
+
+func TestOutlookService_ListFlaggedEmailsPropagatesErrorAndNeverNil(t *testing.T) {
+	providerErr := errors.New("outlook down")
+	svc := NewOutlookServiceWithProvider(&fakeMeetingProvider{err: providerErr})
+	if _, err := svc.ListFlaggedEmails(10); !errors.Is(err, providerErr) {
+		t.Fatalf("provider error must propagate: %v", err)
+	}
+	svc2 := NewOutlookServiceWithProvider(&fakeMeetingProvider{})
+	emails, err := svc2.ListFlaggedEmails(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if emails == nil {
+		t.Fatal("empty result must be an empty slice, not nil")
 	}
 }

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowRight, CalendarDays, FileCheck2, CheckCircle2, CircleAlert, Clock3, FileText, Plus, RefreshCw, Sparkles, X, BookOpen, MessageSquarePlus, Bot, Loader2 } from '@lucide/vue'
+import { ArrowRight, CalendarDays, FileCheck2, CheckCircle2, CircleAlert, Clock3, FileText, Flag, Mail, Plus, RefreshCw, Sparkles, X, BookOpen, MessageSquarePlus, Bot, Loader2 } from '@lucide/vue'
 import { FileService } from '@/api'
 import { useToast } from '@/composables/useToast'
 import { useWorkbenchStore } from '@/stores/workbench'
@@ -10,7 +10,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkLog } from '@/composables/useWorkLog'
 import { renderBriefingHtml, useBriefing } from '@/composables/useBriefing'
 import { isImeComposing } from '@/utils/ime'
-import { addCalendarDays, buildMeetingMinutes, fetchMeetingsSafe, isCarryoverTask, meetingMinutesPath, type OutlookMeeting } from '@/utils/workbench'
+import { addCalendarDays, buildEmailNote, buildMeetingMinutes, emailNotePath, fetchFlaggedEmailsSafe, fetchMeetingsSafe, isCarryoverTask, meetingMinutesPath, type OutlookEmail, type OutlookMeeting } from '@/utils/workbench'
 import { defaultTaskProject, GENERAL_PROJECT_FOLDER } from '@/utils/defaultTaskProject'
 import TaskCard from '@/components/workbench/TaskCard.vue'
 import InterviewReview from '@/components/workbench/InterviewReview.vue'
@@ -87,6 +87,21 @@ const taskFilters = computed(() => [
 function openReport() { window.dispatchEvent(new CustomEvent('notevault:daily-report')) }
 function openFile(path: string) { workspace.openFile(path); void router.push({ path: '/editor', query: { file: path } }) }
 
+// --- 近期里程碑（7 天内到期或已逾期，来自各项目 frontmatter）---
+const milestoneItems = computed(() => {
+  const today = store.today
+  const horizon = addCalendarDays(today, 7)
+  const out: Array<{ name: string; date: string; overdue: boolean; project: string }> = []
+  for (const project of store.projects) {
+    for (const milestone of project.milestones ?? []) {
+      if (milestone.done || !milestone.date) continue
+      if (milestone.date > horizon) continue
+      out.push({ name: milestone.name, date: milestone.date, overdue: milestone.date < today, project: project.name })
+    }
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date) || a.project.localeCompare(b.project))
+})
+
 // --- 今日会议（Outlook 摄取一期）---
 // null = 数据源不可用（非 Windows / 未装 Outlook / 超时）→ 条带整体隐藏
 const meetings = ref<OutlookMeeting[] | null>(null)
@@ -100,8 +115,43 @@ async function fetchMeetings() {
   }
   meetings.value = await fetchMeetingsSafe(`${day} 00:00`, `${addCalendarDays(day, 1)} 00:00`)
 }
-watch(() => [workspace.currentWorkspace?.path, store.today], () => { void fetchMeetings() })
+
+// --- 旗标邮件（Outlook 摄取二期）---
+// null = 数据源不可用 → 条带隐藏；旗标邮件是用户标记的待办，与日期无关，只随工作区刷新
+const emails = ref<OutlookEmail[] | null>(null)
+const collecting = ref('')
+
+async function fetchEmails() {
+  if (!workspace.currentWorkspace?.path) {
+    emails.value = null
+    return
+  }
+  emails.value = await fetchFlaggedEmailsSafe()
+}
+
+async function collectEmail(email: OutlookEmail) {
+  const ws = workspace.currentWorkspace
+  if (!ws?.path || collecting.value) return
+  const receivedDate = email.receivedTime.slice(0, 10)
+  const path = emailNotePath(receivedDate, email.subject)
+  collecting.value = email.entryId
+  try {
+    await FileService.CreateFile(ws.path, path, buildEmailNote(email))
+  } catch {
+    // 已存在同名笔记 → 直接打开继续补
+  }
+  emails.value = (emails.value ?? []).filter(item => item.entryId !== email.entryId)
+  toast.success(t('today.emails.collected'))
+  openFile(path)
+  collecting.value = ''
+}
+
+watch(() => [workspace.currentWorkspace?.path, store.today], () => {
+  void fetchMeetings()
+  void fetchEmails()
+})
 void fetchMeetings()
+void fetchEmails()
 
 async function createMinutes(meeting: OutlookMeeting) {
   const ws = workspace.currentWorkspace
@@ -429,6 +479,57 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
               {{ t('today.previewReport') }}<ArrowRight :size="15" />
             </button><small><Sparkles :size="11" />{{ t('today.reportFootnote') }}</small>
           </section>
+          <!-- 近期里程碑条带：7 天内到期或已逾期，只有存在时才渲染 -->
+          <section
+            v-if="milestoneItems.length"
+            class="milestones-card"
+            data-testid="today-milestones"
+          >
+            <header>
+              <h3><Flag :size="15" />{{ t('today.milestones.title') }}</h3>
+            </header>
+            <div
+              v-for="item in milestoneItems"
+              :key="item.project + item.name"
+              class="milestone-row"
+              :class="{ overdue: item.overdue }"
+            >
+              <Flag
+                :size="13"
+                class="milestone-flag"
+              />
+              <span class="milestone-date">{{ item.date }}</span>
+              <span class="milestone-name">{{ item.name }}</span>
+              <span class="milestone-project">{{ item.project }}</span>
+            </div>
+          </section>
+          <!-- 旗标邮件条带（Outlook 摄取二期）：一键收录到 Inbox 蒸馏流 -->
+          <section
+            v-if="emails && emails.length"
+            class="emails-card"
+            data-testid="today-emails"
+          >
+            <header>
+              <h3><Mail :size="15" />{{ t('today.emails.title') }}</h3>
+            </header>
+            <div
+              v-for="email in emails"
+              :key="email.entryId"
+              class="email-row"
+            >
+              <span class="email-meta">{{ email.receivedTime.slice(5, 16) }}</span>
+              <span class="email-subject">{{ email.subject }}</span>
+              <span class="email-sender">{{ email.sender }}</span>
+              <button
+                type="button"
+                class="email-collect"
+                :disabled="collecting === email.entryId"
+                @click="collectEmail(email)"
+              >
+                {{ t('today.emails.collect') }}
+              </button>
+            </div>
+          </section>
           <!-- 今日会议条带（Outlook 摄取）：一键创建纪要 -->
           <section
             v-if="meetings && meetings.length"
@@ -670,6 +771,24 @@ h1 { font-size: 22px; font-weight: 600; letter-spacing: -.03em; margin: 0 0 8px;
 .agent-card { padding: 14px 16px; border: 1px solid color-mix(in srgb, #78a2c8 30%, var(--border)); border-radius: 12px; background: linear-gradient(145deg, color-mix(in srgb, #8bb4ca 8%, var(--bg-card)), var(--bg-card)); }
 .briefing-card { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--accent) 5%, var(--bg-card)); }
 .meetings-card { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid color-mix(in srgb, #78a2c8 30%, var(--border)); border-radius: 12px; background: color-mix(in srgb, #8bb4ca 6%, var(--bg-card)); }
+.emails-card { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid color-mix(in srgb, #d97706 30%, var(--border)); border-radius: 12px; background: color-mix(in srgb, #d97706 5%, var(--bg-card)); }
+.emails-card header h3 { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text-primary); }
+.email-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+.email-meta { font-variant-numeric: tabular-nums; color: var(--text-muted); flex-shrink: 0; }
+.email-subject { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.email-sender { flex-shrink: 0; font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 22%; }
+.email-collect { flex-shrink: 0; margin-left: auto; padding: 2px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-window); color: var(--accent); font-size: 10px; cursor: pointer; }
+.email-collect:hover:not(:disabled) { border-color: var(--accent); }
+.email-collect:disabled { opacity: .6; cursor: default; }
+.milestones-card { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--warning) 5%, var(--bg-card)); }
+.milestones-card header h3 { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text-primary); }
+.milestone-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+.milestone-flag { color: var(--warning); flex-shrink: 0; }
+.milestone-row.overdue .milestone-flag { color: var(--danger, #ef4444); }
+.milestone-date { font-variant-numeric: tabular-nums; color: var(--text-muted); flex-shrink: 0; }
+.milestone-row.overdue .milestone-date { color: var(--danger, #ef4444); font-weight: 600; }
+.milestone-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.milestone-project { flex-shrink: 0; margin-left: auto; font-size: 11px; color: var(--text-muted); }
 .meetings-card header h3 { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text-primary); }
 .meeting-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
 .meeting-clock { color: var(--text-muted); flex-shrink: 0; }
