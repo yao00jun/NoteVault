@@ -5,7 +5,7 @@ import { Calendar, Check, ChevronLeft, ChevronRight, Copy, FileText, RefreshCw, 
 import { WorkbenchService } from '@/api'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { buildWeeklyReport, isoWeekWindow, plainReportText, type WeekWindow } from '@/utils/workbench'
+import { buildWeeklyReport, fetchMeetingsSafe, isoWeekWindow, plainReportText, type OutlookMeeting, type WeekWindow } from '@/utils/workbench'
 import { requestCopilot } from '@/composables/useCopilotRequest'
 
 // 工作周报弹窗：与日报同一套骨架（姓名/团队 → 自动拼装 → 可编辑 → 归档 → 复制/AI 润色），
@@ -27,6 +27,7 @@ const loaded = ref(false)
 const error = ref('')
 const copied = ref(false)
 const savedText = ref('')
+const meetings = ref<OutlookMeeting[]>([])
 
 const window = computed<WeekWindow>(() => isoWeekWindow(anchor.value))
 const archivePath = computed(() => `Daily/Reports/${window.value.week}-周报.md`)
@@ -60,6 +61,7 @@ function generate(): string {
     team: team.value,
     tasks: workbench.tasks,
     milestones: workbench.projects.flatMap(project => project.milestones ?? []),
+    meetings: meetings.value,
     window: window.value,
   })
 }
@@ -79,6 +81,8 @@ async function loadReport() {
     const week = window.value.week
     const stored = (await WorkbenchService.ReadWeeklyReport(path, week)) || ''
     savedText.value = stored
+    // 本周会议摄取：失败静默降级为空段
+    meetings.value = await fetchMeetingsSafe(`${window.value.weekStart} 00:00`, `${window.value.nextWeekStart} 00:00`)
     draft.value = stored || generate()
     loaded.value = true
   } catch (cause) {

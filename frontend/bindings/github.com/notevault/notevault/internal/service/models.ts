@@ -596,6 +596,22 @@ export interface LinkCandidate {
 }
 
 /**
+ * OutlookMeeting 是一次日历会议的只读投影。
+ */
+export interface OutlookMeeting {
+    "subject": string;
+
+    /**
+     * 本地时间 YYYY-MM-DD HH:mm
+     */
+    "start": string;
+    "end": string;
+    "location": string;
+    "organizer": string;
+    "allDay": boolean;
+}
+
+/**
  * PropKind 是属性值的推断类型。
  * 
  * 为什么必须带类型：Bases 的筛选与排序要按语义比较，不能一律当字符串。

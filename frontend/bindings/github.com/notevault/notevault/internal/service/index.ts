@@ -12,6 +12,7 @@ import * as GitService from "./gitservice.js";
 import * as GraphService from "./graphservice.js";
 import * as ImportService from "./importservice.js";
 import * as LLMConfigService from "./llmconfigservice.js";
+import * as OutlookService from "./outlookservice.js";
 import * as QnAService from "./qnaservice.js";
 import * as ReminderService from "./reminderservice.js";
 import * as ReportService from "./reportservice.js";
@@ -38,6 +39,7 @@ export {
     GraphService,
     ImportService,
     LLMConfigService,
+    OutlookService,
     QnAService,
     ReminderService,
     ReportService,
@@ -95,6 +97,7 @@ export type {
     LLMEndpointPreset,
     LLMProbeResult,
     LinkCandidate,
+    OutlookMeeting,
     PropertyMeta,
     QnACitation,
     QnAResponse,

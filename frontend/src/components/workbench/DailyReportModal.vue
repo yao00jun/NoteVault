@@ -5,7 +5,7 @@ import { Check, Copy, FileText, RefreshCw, Save, Sparkles, Undo2, X } from '@luc
 import { WorkbenchService } from '@/api'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { buildDailyReport, plainReportText } from '@/utils/workbench'
+import { addCalendarDays, buildDailyReport, fetchMeetingsSafe, plainReportText, type OutlookMeeting } from '@/utils/workbench'
 import { requestCopilot } from '@/composables/useCopilotRequest'
 import { isImeComposing } from '@/utils/ime'
 
@@ -25,6 +25,7 @@ const error = ref('')
 const copied = ref(false)
 const savedText = ref('')
 const day = ref(workbench.today)
+const meetings = ref<OutlookMeeting[]>([])
 const dialog = ref<HTMLElement | null>(null)
 const textarea = ref<HTMLTextAreaElement | null>(null)
 let sessionPath = ''
@@ -55,6 +56,7 @@ function generate() {
     team: team.value,
     tasks: workbench.tasks,
     milestones: workbench.projects.flatMap(project => project.milestones ?? []),
+    meetings: meetings.value,
   })
 }
 
@@ -114,6 +116,8 @@ async function loadReport() {
     if (request !== generation || path !== workspace.currentWorkspace?.path || !props.visible) return
     if (!stored && workbench.error) throw new Error(workbench.error)
     revision.text = stored
+    // 会议摄取与主链路并行且失败静默（空列表），绝不阻断日报生成
+    meetings.value = await fetchMeetingsSafe(`${day.value} 00:00`, `${addCalendarDays(day.value, 1)} 00:00`)
     draft.value = stored || generate()
     savedText.value = stored
     loaded.value = true

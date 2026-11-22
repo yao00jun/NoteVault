@@ -11,3 +11,5 @@ export type { RerankProvider, WeeklyReportAIConfig } from '@bindings/github.com/
 export * from './workbench'
 export * as TaskService from '@bindings/github.com/notevault/notevault/internal/service/taskservice.js'
 export type { TaskInfo } from '@bindings/github.com/notevault/notevault/internal/service/models.js'
+export * as OutlookService from '@bindings/github.com/notevault/notevault/internal/service/outlookservice.js'
+export type { OutlookMeeting } from '@bindings/github.com/notevault/notevault/internal/service/models.js'

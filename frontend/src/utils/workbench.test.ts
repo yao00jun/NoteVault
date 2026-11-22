@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { InterviewCard, WorkbenchTask } from '@/api/workbench'
-import { addCalendarDays, buildDailyReport, buildWeeklyReport, isCarryoverTask, isoWeekWindow, localDateKey, selectReviewSession, selectTodayTasks } from './workbench'
+import { addCalendarDays, buildDailyReport, buildMeetingMinutes, buildWeeklyReport, isCarryoverTask, isoWeekWindow, localDateKey, meetingLine, meetingMinutesPath, selectReviewSession, selectTodayTasks, type OutlookMeeting } from './workbench'
 
 function task(id: string, fields: Partial<WorkbenchTask> = {}): WorkbenchTask {
   return { id, filePath: 'Projects/商城/Tasks.md', fileName: 'Tasks.md', lineIndex: 0, sourceLine: '- [ ] 任务', content: id, title: id, type: 'US', project: '商城', projectPath: 'Projects/商城', completed: false, priority: 'medium', due: '', date: '', completedAt: '', status: 'pending', blocker: '', progress: [], ...fields }
@@ -116,5 +116,42 @@ describe('weekly work report', () => {
     expect(report).not.toContain('上周完成')
     expect(report).not.toContain('远期任务')
     expect(report).not.toContain('远期里程碑')
+  })
+
+  it('appends meeting sections when Outlook provides meetings', () => {
+    const meeting = (subject: string, start: string, end: string, location = ''): OutlookMeeting =>
+      ({ subject, start, end, location, organizer: '张三', allDay: false })
+    const report = buildWeeklyReport({
+      tasks: [],
+      window,
+      meetings: [
+        meeting('周会', '2026-11-23 09:00', '2026-11-23 09:30', '会议室A'),
+        meeting('评审', '2026-11-25 14:00', '2026-11-25 15:00'),
+      ],
+    })
+    expect(report).toContain('本周会议：\n1. 11/23 09:00-09:30 周会（会议室A）\n2. 11/25 14:00-15:00 评审')
+    // 无会议时不加段
+    const quiet = buildWeeklyReport({ tasks: [], window })
+    expect(quiet).not.toContain('本周会议')
+    // 日报：当天会议不带日期前缀
+    const daily = buildDailyReport({ date: '2026-11-23', tasks: [], meetings: [meeting('周会', '2026-11-23 09:00', '2026-11-23 09:30', '会议室A')] })
+    expect(daily).toContain('今日会议：\n1. 09:00-09:30 周会（会议室A）')
+  })
+
+  it('folds long meeting lists with a tail note', () => {
+    const many = Array.from({ length: 20 }, (_, i) =>
+      ({ subject: `会议${i}`, start: `2026-11-23 0${i % 10}:00`, end: `2026-11-23 0${i % 10}:30`, location: '', organizer: '', allDay: false }))
+    const report = buildWeeklyReport({ tasks: [], window, meetings: many })
+    expect(report).toContain('…另有 5 个会议')
+    expect(meetingLine(many[0])).toBe('00:00-00:30 会议0')
+  })
+
+  it('builds meeting minutes paths and templates', () => {
+    expect(meetingMinutesPath('2026-11-23', ' 周会:迭代/规划 ')).toBe('Daily/Meetings/2026-11-23-周会-迭代-规划.md')
+    expect(meetingMinutesPath('2026-11-23', '')).toBe('Daily/Meetings/2026-11-23-会议.md')
+    const minutes = buildMeetingMinutes({ subject: '周会', start: '2026-11-23 09:00', end: '2026-11-23 09:30', location: '会议室A', organizer: '李四', allDay: false })
+    expect(minutes).toContain('type: meeting')
+    expect(minutes).toContain('# 周会 会议纪要')
+    expect(minutes).toContain('location: 会议室A')
   })
 })

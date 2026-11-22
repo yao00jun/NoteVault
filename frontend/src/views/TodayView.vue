@@ -2,13 +2,15 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowRight, FileCheck2, CheckCircle2, CircleAlert, Clock3, FileText, Plus, RefreshCw, Sparkles, X, BookOpen, MessageSquarePlus, Bot, Loader2 } from '@lucide/vue'
+import { ArrowRight, CalendarDays, FileCheck2, CheckCircle2, CircleAlert, Clock3, FileText, Plus, RefreshCw, Sparkles, X, BookOpen, MessageSquarePlus, Bot, Loader2 } from '@lucide/vue'
+import { FileService } from '@/api'
+import { useToast } from '@/composables/useToast'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useWorkLog } from '@/composables/useWorkLog'
 import { renderBriefingHtml, useBriefing } from '@/composables/useBriefing'
 import { isImeComposing } from '@/utils/ime'
-import { isCarryoverTask } from '@/utils/workbench'
+import { addCalendarDays, buildMeetingMinutes, fetchMeetingsSafe, isCarryoverTask, meetingMinutesPath, type OutlookMeeting } from '@/utils/workbench'
 import { defaultTaskProject, GENERAL_PROJECT_FOLDER } from '@/utils/defaultTaskProject'
 import TaskCard from '@/components/workbench/TaskCard.vue'
 import InterviewReview from '@/components/workbench/InterviewReview.vue'
@@ -21,6 +23,7 @@ const router = useRouter()
 const route = useRoute()
 const { t, locale } = useI18n()
 const { openTodayWorkLog } = useWorkLog()
+const toast = useToast()
 const { briefingText, briefingLoading, briefingError, briefingProgress, isCancelling, restoreBriefing, generateBriefing, cancelBriefing } = useBriefing()
 const briefingHtml = computed(() => briefingText.value ? renderBriefingHtml(briefingText.value) : '')
 const filter = ref('all')
@@ -83,6 +86,37 @@ const taskFilters = computed(() => [
 
 function openReport() { window.dispatchEvent(new CustomEvent('notevault:daily-report')) }
 function openFile(path: string) { workspace.openFile(path); void router.push({ path: '/editor', query: { file: path } }) }
+
+// --- 今日会议（Outlook 摄取一期）---
+// null = 数据源不可用（非 Windows / 未装 Outlook / 超时）→ 条带整体隐藏
+const meetings = ref<OutlookMeeting[] | null>(null)
+const minutesBusy = ref('')
+
+async function fetchMeetings() {
+  const day = store.today
+  if (!workspace.currentWorkspace?.path) {
+    meetings.value = null
+    return
+  }
+  meetings.value = await fetchMeetingsSafe(`${day} 00:00`, `${addCalendarDays(day, 1)} 00:00`)
+}
+watch(() => [workspace.currentWorkspace?.path, store.today], () => { void fetchMeetings() })
+void fetchMeetings()
+
+async function createMinutes(meeting: OutlookMeeting) {
+  const ws = workspace.currentWorkspace
+  if (!ws?.path || minutesBusy.value) return
+  const path = meetingMinutesPath(meeting.start.slice(0, 10), meeting.subject)
+  minutesBusy.value = meeting.start
+  try {
+    await FileService.CreateFile(ws.path, path, buildMeetingMinutes(meeting))
+  } catch {
+    // 已存在同名纪要 → 直接打开继续写
+  }
+  openFile(path)
+  toast.success(t('today.meetings.minutesCreated'))
+  minutesBusy.value = ''
+}
 function openAgentLog() { openFile(`Daily/Agent/${store.today}.md`) }
 async function addTask() {
   if (!newTitle.value.trim() || store.busy) return
@@ -395,6 +429,40 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
               {{ t('today.previewReport') }}<ArrowRight :size="15" />
             </button><small><Sparkles :size="11" />{{ t('today.reportFootnote') }}</small>
           </section>
+          <!-- 今日会议条带（Outlook 摄取）：一键创建纪要 -->
+          <section
+            v-if="meetings && meetings.length"
+            class="meetings-card"
+            data-testid="today-meetings"
+          >
+            <header>
+              <h3><CalendarDays :size="15" />{{ t('today.meetings.title') }}</h3>
+            </header>
+            <div
+              v-for="meeting in meetings"
+              :key="meeting.start + meeting.subject"
+              class="meeting-row"
+            >
+              <Clock3
+                :size="13"
+                class="meeting-clock"
+              />
+              <span class="meeting-time">{{ meeting.start.slice(11, 16) }}–{{ meeting.end.slice(11, 16) }}</span>
+              <span class="meeting-subject">{{ meeting.subject }}</span>
+              <span
+                v-if="meeting.location"
+                class="meeting-where"
+              >{{ meeting.location }}</span>
+              <button
+                type="button"
+                class="meeting-minutes"
+                :disabled="minutesBusy === meeting.start"
+                @click="createMinutes(meeting)"
+              >
+                {{ t('today.meetings.minutes') }}
+              </button>
+            </div>
+          </section>
           <section
             class="briefing-card"
             data-testid="today-briefing"
@@ -601,6 +669,16 @@ h1 { font-size: 22px; font-weight: 600; letter-spacing: -.03em; margin: 0 0 8px;
 .report-card>small { display: flex; justify-content: center; gap: 5px; align-items: center; font-size: 10px; color: var(--text-muted); margin-top: 8px; }
 .agent-card { padding: 14px 16px; border: 1px solid color-mix(in srgb, #78a2c8 30%, var(--border)); border-radius: 12px; background: linear-gradient(145deg, color-mix(in srgb, #8bb4ca 8%, var(--bg-card)), var(--bg-card)); }
 .briefing-card { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--accent) 5%, var(--bg-card)); }
+.meetings-card { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid color-mix(in srgb, #78a2c8 30%, var(--border)); border-radius: 12px; background: color-mix(in srgb, #8bb4ca 6%, var(--bg-card)); }
+.meetings-card header h3 { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text-primary); }
+.meeting-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+.meeting-clock { color: var(--text-muted); flex-shrink: 0; }
+.meeting-time { font-variant-numeric: tabular-nums; color: var(--text-muted); flex-shrink: 0; }
+.meeting-subject { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.meeting-where { flex-shrink: 0; font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 30%; }
+.meeting-minutes { flex-shrink: 0; margin-left: auto; padding: 2px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-window); color: var(--accent); font-size: 10px; cursor: pointer; }
+.meeting-minutes:hover:not(:disabled) { border-color: var(--accent); }
+.meeting-minutes:disabled { opacity: .6; cursor: default; }
 .briefing-card header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .briefing-card h3 { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text-primary); }
 .briefing-action { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); font-size: 11px; white-space: nowrap; }

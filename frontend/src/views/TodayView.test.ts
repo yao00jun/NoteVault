@@ -18,6 +18,8 @@ const harness = vi.hoisted(() => ({
   startBriefing: vi.fn(),
   briefingResult: vi.fn(),
   cancel: vi.fn(),
+  listMeetings: vi.fn(),
+  createFile: vi.fn(),
   handlers: {} as Record<string, (ev?: unknown) => void>,
 }))
 vi.mock('@/stores/workbench', () => ({ useWorkbenchStore: () => harness.state }))
@@ -29,6 +31,8 @@ vi.mock('@/api', () => ({
     DailyBriefingTaskResult: harness.briefingResult,
   },
   TaskService: { Cancel: harness.cancel },
+  OutlookService: { ListMeetings: harness.listMeetings },
+  FileService: { CreateFile: harness.createFile },
   CredentialService: { GetCredential: vi.fn(async () => ''), SaveCredential: vi.fn(async () => undefined) },
   ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
 }))
@@ -69,6 +73,9 @@ beforeEach(() => {
   harness.startBriefing.mockReset().mockResolvedValue('')
   harness.briefingResult.mockReset()
   harness.cancel.mockReset().mockResolvedValue(true)
+  // 会议默认空列表：条带隐藏，不影响既有用例
+  harness.listMeetings.mockReset().mockResolvedValue([])
+  harness.createFile.mockReset().mockResolvedValue('Daily/Meetings/x.md')
   harness.handlers = {}
   harness.state = reactive({
     today: '2026-09-08', tasks: [], todayTasks: [], blockers: [], reviewQueue: [], reviewedToday: 0,
@@ -322,6 +329,38 @@ describe('Today workspace boundaries', () => {
     expect(wrapper.find('[data-testid="briefing-progress"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="today-briefing"]').text()).toContain('先做支付回调联调')
     expect(localStorage.getItem('notevault.briefing.%2Fa.2026-09-08')).toContain('先做支付回调联调')
+  })
+
+  it('shows today meetings from Outlook and creates minutes on demand', async () => {
+    harness.listMeetings.mockResolvedValue([
+        { subject: '周会', start: '2026-09-08 09:00', end: '2026-09-08 09:30', location: '会议室A', organizer: '李四', allDay: false },
+        { subject: '评审', start: '2026-09-08 14:00', end: '2026-09-08 15:00', location: '', organizer: '', allDay: false },
+      ])
+    const { wrapper, router } = await renderToday()
+    await flushPromises()
+
+    expect(harness.listMeetings).toHaveBeenCalledWith('2026-09-08 00:00', '2026-09-09 00:00')
+    const strip = wrapper.get('[data-testid="today-meetings"]')
+    expect(strip.text()).toContain('今日会议')
+    expect(strip.text()).toContain('周会')
+    expect(strip.text()).toContain('09:00–09:30')
+    expect(strip.text()).toContain('会议室A')
+
+    // 点击纪要：创建模板文件并打开
+    const rows = strip.findAll('.meeting-row')
+    await rows[0]!.get('.meeting-minutes').trigger('click')
+    await flushPromises()
+    expect(harness.createFile).toHaveBeenCalledWith('/a', 'Daily/Meetings/2026-09-08-周会.md', expect.stringContaining('# 周会 会议纪要'))
+    expect(router.currentRoute.value.query.file).toBe('Daily/Meetings/2026-09-08-周会.md')
+  })
+
+  it('hides the meetings strip when Outlook is unavailable', async () => {
+    harness.listMeetings.mockRejectedValue(new Error('COM down'))
+    const { wrapper } = await renderToday()
+    await flushPromises()
+    // 数据源失败静默降级：条带不渲染、页面其余部分不受影响
+    expect(wrapper.find('[data-testid="today-meetings"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="today-briefing"]').exists()).toBe(true)
   })
 
   it('cancelling the briefing task shows the cancelled notice and keeps no result', async () => {

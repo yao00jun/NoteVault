@@ -1,5 +1,9 @@
 import type { InterviewCard, WorkbenchTask } from '@/api/workbench'
+import { OutlookService, type OutlookMeeting } from '@/api'
 import { i18n } from '@/i18n'
+
+// 报告构建器的会议入参类型从这里统一出口（组件不直接 import '@/api' 的绑定模型）
+export type { OutlookMeeting }
 
 /** Use the user's calendar day, never UTC's date (which changes at 08:00 in China). */
 export function localDateKey(now = new Date()): string {
@@ -60,6 +64,8 @@ interface ReportOptions {
   tasks: WorkbenchTask[]
   /** 项目里程碑（全项目扁平列表）：配置后日报带「近期里程碑」提醒段 */
   milestones?: MilestoneLite[]
+  /** 今日会议（Outlook 摄取，失败时为空列表）：非空才追加「今日会议」段 */
+  meetings?: OutlookMeeting[]
 }
 
 /** 报告里的任务行：[项目][类型] 标题（Markdown 噪声已剥除）。 */
@@ -89,7 +95,7 @@ function milestoneReminderLines(milestones: MilestoneLite[], date: string): stri
   return [...overdue, ...soon].filter(line => !line.includes('undefined'))
 }
 
-export function buildDailyReport({ date, author = '', team = '', tasks, milestones = [] }: ReportOptions): string {
+export function buildDailyReport({ date, author = '', team = '', tasks, milestones = [], meetings = [] }: ReportOptions): string {
   const today = selectTodayTasks(tasks, date)
   const tomorrow = addCalendarDays(date, 1)
   const done = today.filter(task => task.completed)
@@ -111,6 +117,9 @@ export function buildDailyReport({ date, author = '', team = '', tasks, mileston
   ]
   if (reminderLines.length) {
     sections.push(reportSection(i18n.global.t('workbench.report.sectionMilestoneReminders'), reminderLines))
+  }
+  if (meetings.length) {
+    sections.push(reportSection(i18n.global.t('workbench.report.sectionDayMeetings'), meetings.map(m => meetingLine(m))))
   }
   return sections.join('\n\n')
 }
@@ -157,10 +166,12 @@ export interface WeeklyReportOptions {
   team?: string
   tasks: WorkbenchTask[]
   milestones?: MilestoneLite[]
+  /** 本周会议（Outlook 摄取，失败时为空列表）：非空才追加「本周会议」段 */
+  meetings?: OutlookMeeting[]
   window: WeekWindow
 }
 
-export function buildWeeklyReport({ author = '', team = '', tasks, milestones = [], window: w }: WeeklyReportOptions): string {
+export function buildWeeklyReport({ author = '', team = '', tasks, milestones = [], meetings = [], window: w }: WeeklyReportOptions): string {
   const inRange = (day: string | undefined, start: string, end: string) => !!day && day >= start && day <= end
   const inWeek = (day?: string) => inRange(day, w.weekStart, w.weekEnd)
   // 本周完成：完成时间落在周内；旧数据无 completedAt 时回退到 due/date 在周内
@@ -180,12 +191,70 @@ export function buildWeeklyReport({ author = '', team = '', tasks, milestones = 
   const milestoneLines = weekMilestones.map(m =>
     `${m.done ? '✅' : '⏳'} ${i18n.global.t('workbench.report.milestoneLine', { name: plainReportText(m.name), date: m.date, state: m.done ? i18n.global.t('workbench.report.milestoneDone') : '' })}`
   )
-  return [
+  const sections = [
     i18n.global.t('workbench.report.weekSubjectLine', { subject }),
     reportSection(i18n.global.t('workbench.report.sectionWeekDone'), done.map(task => withProgressNotes(task, inWeek))),
     reportSection(i18n.global.t('workbench.report.sectionWeekActive'), active.map(task => withProgressNotes(task, inWeek))),
     reportSection(i18n.global.t('workbench.report.sectionWeekRisk'), riskLines),
     reportSection(i18n.global.t('workbench.report.sectionWeekMilestones'), milestoneLines),
-    reportSection(i18n.global.t('workbench.report.sectionWeekPlan'), plan.map(reportTaskLabel)),
-  ].join('\n\n')
+  ]
+  if (meetings.length) {
+    sections.push(reportSection(i18n.global.t('workbench.report.sectionWeekMeetings'), weekMeetingLines(meetings)))
+  }
+  sections.push(reportSection(i18n.global.t('workbench.report.sectionWeekPlan'), plan.map(reportTaskLabel)))
+  return sections.join('\n\n')
+}
+
+// meetingLine 单条会议行：日报用「HH:mm-HH:mm 主题（地点）」，
+// 周报带日期前缀（MM/DD）；主题 Markdown 噪声已剥除。
+export function meetingLine(meeting: OutlookMeeting, withDate = false): string {
+  const start = meeting.start.slice(11, 16)
+  const end = meeting.end.slice(11, 16)
+  const datePrefix = withDate ? `${meeting.start.slice(5, 10).replace('-', '/')} ` : ''
+  const where = meeting.location ? i18n.global.t('workbench.report.meetingAt', { where: meeting.location }) : ''
+  return `${datePrefix}${start}-${end} ${plainReportText(meeting.subject)}${where}`
+}
+
+// weekMeetingLines 周报会议行，超过 15 条折叠为尾注（周报篇幅可控）。
+const weekMeetingsCap = 15
+function weekMeetingLines(meetings: OutlookMeeting[]): string[] {
+  const lines = meetings.slice(0, weekMeetingsCap).map(m => meetingLine(m, true))
+  if (meetings.length > weekMeetingsCap) {
+    lines.push(i18n.global.t('workbench.report.meetingMore', { n: meetings.length - weekMeetingsCap }))
+  }
+  return lines
+}
+
+// fetchMeetingsSafe 会议数据源的安全封装：COM 不可用（未装 Outlook / 平台不支持 /
+// 超时）一律降级为空列表并 warn——会议是日报周报的增强段，绝不阻断生成主链路。
+export async function fetchMeetingsSafe(start: string, end: string): Promise<OutlookMeeting[]> {
+  try {
+    const meetings = (await OutlookService.ListMeetings(start, end)) as OutlookMeeting[] | null
+    return meetings ?? []
+  } catch (cause) {
+    console.warn('Outlook 会议不可用，报告将不含会议段：', cause)
+    return []
+  }
+}
+
+// meetingMinutesPath 会议纪要落盘路径（与后端 meetingFileName 同一套清洗规则：
+// 文件系统非法字符替换为连字符，空主题回落「会议」）。
+export function meetingMinutesPath(date: string, subject: string): string {
+  const clean = subject.trim().replace(/[\\/:*?"<>|]/g, '-') || '会议'
+  return `Daily/Meetings/${date}-${clean}.md`
+}
+
+// buildMeetingMinutes 生成会议纪要模板正文。
+export function buildMeetingMinutes(meeting: OutlookMeeting): string {
+  const time = `${meeting.start.slice(11, 16)}-${meeting.end.slice(11, 16)}`
+  const lines = [
+    '---',
+    'type: meeting',
+    `date: ${meeting.start.slice(0, 10)}`,
+    `time: "${time}"`,
+  ]
+  if (meeting.location) lines.push(`location: ${meeting.location}`)
+  if (meeting.organizer) lines.push(`organizer: ${meeting.organizer}`)
+  lines.push('---', '', `# ${meeting.subject} 会议纪要`, '')
+  return lines.join('\n')
 }
