@@ -148,6 +148,7 @@ func readMeeting(item *ole.IDispatch) (*OutlookMeeting, error) {
 	location := outlookString(item, "Location")
 	organizer := outlookString(item, "Organizer")
 	allDay := outlookBool(item, "AllDayEvent")
+	attendees := append(readAttendeeNames(item, "RequiredAttendees"), readAttendeeNames(item, "OptionalAttendees")...)
 
 	startRaw, err := oleutil.GetProperty(item, "Start")
 	if err != nil {
@@ -171,6 +172,7 @@ func readMeeting(item *ole.IDispatch) (*OutlookMeeting, error) {
 		End:       end.Format("2006-01-02 15:04"),
 		Location:  strings.TrimSpace(location),
 		Organizer: strings.TrimSpace(organizer),
+		Attendees: attendees,
 		AllDay:    allDay,
 	}, nil
 }
@@ -303,4 +305,35 @@ func readEmail(item *ole.IDispatch) (*OutlookEmail, error) {
 		EntryID:      entryID,
 		Excerpt:      truncateRunes(body, emailExcerptLimit),
 	}, nil
+}
+
+// readAttendeeNames 读取会议的参会人集合（RequiredAttendees / OptionalAttendees），
+// 返回名字列表；集合读取失败降级为空列表（个别字段异常不影响整条会议）。
+func readAttendeeNames(item *ole.IDispatch, property string) []string {
+	recipientsRaw, err := oleutil.GetProperty(item, property)
+	if err != nil {
+		return nil
+	}
+	recipients := recipientsRaw.ToIDispatch()
+	defer recipients.Release()
+
+	countRaw, err := oleutil.GetProperty(recipients, "Count")
+	if err != nil {
+		return nil
+	}
+	count := int(countRaw.Val)
+	names := make([]string, 0, count)
+	for i := 1; i <= count; i++ {
+		recRaw, err := oleutil.GetProperty(recipients, "Item", i)
+		if err != nil {
+			continue
+		}
+		rec := recRaw.ToIDispatch()
+		name := outlookString(rec, "Name")
+		rec.Release()
+		if trimmed := strings.TrimSpace(name); trimmed != "" {
+			names = append(names, trimmed)
+		}
+	}
+	return names
 }

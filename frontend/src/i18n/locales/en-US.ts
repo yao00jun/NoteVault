@@ -352,6 +352,7 @@ export default {
     },
     milestones: {
       title: 'Upcoming milestones',
+      openProject: 'Open the owning project',
     },
     emails: {
       title: 'Flagged emails',

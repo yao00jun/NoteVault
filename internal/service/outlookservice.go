@@ -21,12 +21,13 @@ import (
 
 // OutlookMeeting 是一次日历会议的只读投影。
 type OutlookMeeting struct {
-	Subject   string `json:"subject"`
-	Start     string `json:"start"` // 本地时间 YYYY-MM-DD HH:mm
-	End       string `json:"end"`
-	Location  string `json:"location"`
-	Organizer string `json:"organizer"`
-	AllDay    bool   `json:"allDay"`
+	Subject   string   `json:"subject"`
+	Start     string   `json:"start"` // 本地时间 YYYY-MM-DD HH:mm
+	End       string   `json:"end"`
+	Location  string   `json:"location"`
+	Organizer string   `json:"organizer"`
+	Attendees []string `json:"attendees,omitempty"` // 必填 + 可选参会人（名字列表）
+	AllDay    bool     `json:"allDay"`
 }
 
 // OutlookEmail 是一封旗标邮件的只读投影。

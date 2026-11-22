@@ -352,6 +352,7 @@ export default {
     },
     milestones: {
       title: '近期里程碑',
+      openProject: '打开所属项目',
     },
     emails: {
       title: '待处理邮件',

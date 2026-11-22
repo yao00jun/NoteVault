@@ -384,7 +384,7 @@ describe('Today workspace boundaries', () => {
         }),
       ],
     })
-    const { wrapper } = await renderToday()
+    const { wrapper, router } = await renderToday()
     await flushPromises()
 
     // 7 天窗口（09-08 ~ 09-15）：逾期 + 本周到期待办可见；已完成/无日期/远期不进
@@ -399,6 +399,12 @@ describe('Today workspace boundaries', () => {
     expect(rows[0]!.classes()).toContain('overdue')
     expect(rows[1]!.classes()).not.toContain('overdue')
     expect(rows[0]!.text()).toContain('AI 转型')
+
+    // 点击里程碑行 → 打开所属项目页
+    await rows[0]!.trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/projects')
+    expect(router!.currentRoute.value.query.project).toBe('Projects/AI 转型/project.md')
   })
 
   it('lists flagged emails and collects one into Inbox on demand', async () => {

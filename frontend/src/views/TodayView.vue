@@ -86,17 +86,18 @@ const taskFilters = computed(() => [
 
 function openReport() { window.dispatchEvent(new CustomEvent('notevault:daily-report')) }
 function openFile(path: string) { workspace.openFile(path); void router.push({ path: '/editor', query: { file: path } }) }
+function openProject(folder: string) { void router.push({ path: '/projects', query: { project: `${folder}/project.md` } }) }
 
 // --- 近期里程碑（7 天内到期或已逾期，来自各项目 frontmatter）---
 const milestoneItems = computed(() => {
   const today = store.today
   const horizon = addCalendarDays(today, 7)
-  const out: Array<{ name: string; date: string; overdue: boolean; project: string }> = []
+  const out: Array<{ name: string; date: string; overdue: boolean; project: string; folder: string }> = []
   for (const project of store.projects) {
     for (const milestone of project.milestones ?? []) {
       if (milestone.done || !milestone.date) continue
       if (milestone.date > horizon) continue
-      out.push({ name: milestone.name, date: milestone.date, overdue: milestone.date < today, project: project.name })
+      out.push({ name: milestone.name, date: milestone.date, overdue: milestone.date < today, project: project.name, folder: project.folder })
     }
   }
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.project.localeCompare(b.project))
@@ -488,11 +489,14 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
             <header>
               <h3><Flag :size="15" />{{ t('today.milestones.title') }}</h3>
             </header>
-            <div
+            <button
               v-for="item in milestoneItems"
               :key="item.project + item.name"
+              type="button"
               class="milestone-row"
               :class="{ overdue: item.overdue }"
+              :title="t('today.milestones.openProject')"
+              @click="openProject(item.folder)"
             >
               <Flag
                 :size="13"
@@ -501,7 +505,7 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
               <span class="milestone-date">{{ item.date }}</span>
               <span class="milestone-name">{{ item.name }}</span>
               <span class="milestone-project">{{ item.project }}</span>
-            </div>
+            </button>
           </section>
           <!-- 旗标邮件条带（Outlook 摄取二期）：一键收录到 Inbox 蒸馏流 -->
           <section
@@ -782,7 +786,8 @@ h1 { font-size: 22px; font-weight: 600; letter-spacing: -.03em; margin: 0 0 8px;
 .email-collect:disabled { opacity: .6; cursor: default; }
 .milestones-card { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--warning) 5%, var(--bg-card)); }
 .milestones-card header h3 { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text-primary); }
-.milestone-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+.milestone-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); border: none; background: transparent; text-align: left; cursor: pointer; padding: 0; }
+.milestone-row:hover .milestone-name { color: var(--accent); }
 .milestone-flag { color: var(--warning); flex-shrink: 0; }
 .milestone-row.overdue .milestone-flag { color: var(--danger, #ef4444); }
 .milestone-date { font-variant-numeric: tabular-nums; color: var(--text-muted); flex-shrink: 0; }

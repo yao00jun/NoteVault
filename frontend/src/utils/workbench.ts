@@ -255,6 +255,7 @@ export function buildMeetingMinutes(meeting: OutlookMeeting): string {
   ]
   if (meeting.location) lines.push(`location: ${meeting.location}`)
   if (meeting.organizer) lines.push(`organizer: ${meeting.organizer}`)
+  if (meeting.attendees?.length) lines.push(`attendees: [${meeting.attendees.join(', ')}]`)
   lines.push('---', '', `# ${meeting.subject} 会议纪要`, '')
   return lines.join('\n')
 }

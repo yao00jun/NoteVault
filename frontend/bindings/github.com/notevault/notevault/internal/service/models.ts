@@ -627,6 +627,11 @@ export interface OutlookMeeting {
     "end": string;
     "location": string;
     "organizer": string;
+
+    /**
+     * 必填 + 可选参会人（名字列表）
+     */
+    "attendees"?: string[] | null;
     "allDay": boolean;
 }
 

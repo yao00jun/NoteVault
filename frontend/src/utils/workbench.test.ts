@@ -149,9 +149,12 @@ describe('weekly work report', () => {
   it('builds meeting minutes paths and templates', () => {
     expect(meetingMinutesPath('2026-11-23', ' 周会:迭代/规划 ')).toBe('Daily/Meetings/2026-11-23-周会-迭代-规划.md')
     expect(meetingMinutesPath('2026-11-23', '')).toBe('Daily/Meetings/2026-11-23-会议.md')
-    const minutes = buildMeetingMinutes({ subject: '周会', start: '2026-11-23 09:00', end: '2026-11-23 09:30', location: '会议室A', organizer: '李四', allDay: false })
+    const minutes = buildMeetingMinutes({ subject: '周会', start: '2026-11-23 09:00', end: '2026-11-23 09:30', location: '会议室A', organizer: '李四', attendees: ['王五', '赵六'], allDay: false })
     expect(minutes).toContain('type: meeting')
     expect(minutes).toContain('# 周会 会议纪要')
     expect(minutes).toContain('location: 会议室A')
+    expect(minutes).toContain('attendees: [王五, 赵六]')
+    const noAttendees = buildMeetingMinutes({ subject: '站会', start: '2026-11-24 10:00', end: '2026-11-24 10:15', location: '', organizer: '', attendees: [], allDay: false })
+    expect(noAttendees).not.toContain('attendees:')
   })
 })
