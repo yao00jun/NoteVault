@@ -15,7 +15,16 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * DailyBriefingTaskResult 取回某个异步简报任务的结构化结果。
+ * 失败的任务不暂存（错误随 task:finished 事件的 error 字段带给前端）。
+ */
+export function DailyBriefingTaskResult(taskID: string): $CancellablePromise<$models.DailyBriefingResult | null> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.ReportService.DailyBriefingTaskResult", taskID);
+}
+
+/**
  * GenerateDailyBriefing 生成今日 AI 简报。
+ * 保留同步语义给测试、MCP 与未注入任务队列的装配；前端走 StartDailyBriefing。
  */
 export function GenerateDailyBriefing(workspacePath: string, date: string, ai: $models.WeeklyReportAIConfig): $CancellablePromise<$models.DailyBriefingResult | null> {
     return $Call.ByName("github.com/notevault/notevault/internal/service.ReportService.GenerateDailyBriefing", workspacePath, date, ai);
@@ -28,6 +37,16 @@ export function GenerateDailyBriefing(workspacePath: string, date: string, ai: $
  */
 export function GenerateWeeklyReport(workspacePath: string, ai: $models.WeeklyReportAIConfig): $CancellablePromise<$models.WeeklyReportResult | null> {
     return $Call.ByName("github.com/notevault/notevault/internal/service.ReportService.GenerateWeeklyReport", workspacePath, ai);
+}
+
+/**
+ * StartDailyBriefing 把「生成今日 AI 简报」提交到异步任务队列，返回任务 ID。
+ * 简报不落盘：结果按任务 ID 暂存，前端在 task:finished 后用 DailyBriefingTaskResult
+ * 取回；AI 未配置/失败不暂存（错误随 task:finished 事件的 error 字段提示）。
+ * 未注入 TaskService 时返回空字符串，调用方应退回同步 GenerateDailyBriefing。
+ */
+export function StartDailyBriefing(workspacePath: string, date: string, ai: $models.WeeklyReportAIConfig): $CancellablePromise<string> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.ReportService.StartDailyBriefing", workspacePath, date, ai);
 }
 
 /**

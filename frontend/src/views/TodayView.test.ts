@@ -10,13 +10,37 @@ import { useSettingsStore } from '@/stores/settings'
 import type { WorkbenchProject, WorkbenchTask } from '@/api/workbench'
 import TodayView from './TodayView.vue'
 
-const harness = vi.hoisted(() => ({ state: {} as Record<string, unknown>, addTask: vi.fn(), readReport: vi.fn(), briefing: vi.fn() }))
+const harness = vi.hoisted(() => ({
+  state: {} as Record<string, unknown>,
+  addTask: vi.fn(),
+  readReport: vi.fn(),
+  briefing: vi.fn(),
+  startBriefing: vi.fn(),
+  briefingResult: vi.fn(),
+  cancel: vi.fn(),
+  handlers: {} as Record<string, (ev?: unknown) => void>,
+}))
 vi.mock('@/stores/workbench', () => ({ useWorkbenchStore: () => harness.state }))
 vi.mock('@/api/workbench', () => ({ WorkbenchService: { ReadDailyReport: harness.readReport } }))
 vi.mock('@/api', () => ({
-  ReportService: { GenerateDailyBriefing: harness.briefing },
+  ReportService: {
+    GenerateDailyBriefing: harness.briefing,
+    StartDailyBriefing: harness.startBriefing,
+    DailyBriefingTaskResult: harness.briefingResult,
+  },
+  TaskService: { Cancel: harness.cancel },
   CredentialService: { GetCredential: vi.fn(async () => ''), SaveCredential: vi.fn(async () => undefined) },
   ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
+}))
+// 动态 import 的 runtime 被静态 mock 接管：Events.On 把回调登记到 harness，
+// 用例里手动投递 task:progress / task:finished 事件。
+vi.mock('@wailsio/runtime', () => ({
+  Events: {
+    On: (name: string, cb: (ev?: unknown) => void) => {
+      harness.handlers[name] = cb
+      return () => {}
+    },
+  },
 }))
 vi.mock('@/components/workbench/TaskCard.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/components/workbench/InterviewReview.vue', () => ({ default: { template: '<div />' } }))
@@ -41,6 +65,11 @@ beforeEach(() => {
   harness.addTask.mockReset().mockResolvedValue(undefined)
   harness.readReport.mockReset().mockResolvedValue('# 今日工作汇报')
   harness.briefing.mockReset()
+  // 默认空任务 ID → 走同步兜底路径（与改造前行为一致）
+  harness.startBriefing.mockReset().mockResolvedValue('')
+  harness.briefingResult.mockReset()
+  harness.cancel.mockReset().mockResolvedValue(true)
+  harness.handlers = {}
   harness.state = reactive({
     today: '2026-09-08', tasks: [], todayTasks: [], blockers: [], reviewQueue: [], reviewedToday: 0,
     dueReminders: [], progress: [], warnings: [], loading: false, busy: false,
@@ -261,6 +290,60 @@ describe('Today workspace boundaries', () => {
     await wrapper.get('[data-testid="briefing-generate"]').trigger('click')
     await flushPromises()
     expect(wrapper.get('[data-testid="today-briefing"] [role="alert"]').text()).toContain('boom')
+    expect(wrapper.get('[data-testid="briefing-generate"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('briefing goes through the async task: progress shown, result fetched by task ID and cached', async () => {
+    useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
+    useSettingsStore().settings.ai.model = 'test-model'
+    harness.startBriefing.mockResolvedValue('task-5')
+    harness.briefingResult.mockResolvedValue({ date: '2026-09-08', briefing: '- 先做支付回调联调', aiUsed: true })
+    const { wrapper } = await renderToday()
+
+    await wrapper.get('[data-testid="briefing-generate"]').trigger('click')
+    await flushPromises()
+
+    expect(harness.startBriefing).toHaveBeenCalledTimes(1)
+    expect(harness.startBriefing.mock.calls[0]?.slice(0, 2)).toEqual(['/a', '2026-09-08'])
+    expect(harness.briefing).not.toHaveBeenCalled()
+    // 进度行出现（默认提示语），取消按钮可用
+    const progress = wrapper.get('[data-testid="briefing-progress"]')
+    expect(progress.text()).toContain('正在准备')
+
+    harness.handlers['task:progress']?.({ data: { id: 'task-5', message: '正在生成简报' } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="briefing-progress"]').text()).toContain('正在生成简报')
+
+    harness.handlers['task:finished']?.({ data: { id: 'task-5', status: 'succeeded' } })
+    await flushPromises()
+
+    expect(harness.briefingResult).toHaveBeenCalledWith('task-5')
+    // 完成后收尾：进度行消失、要点渲染、写入当天缓存
+    expect(wrapper.find('[data-testid="briefing-progress"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="today-briefing"]').text()).toContain('先做支付回调联调')
+    expect(localStorage.getItem('notevault.briefing.%2Fa.2026-09-08')).toContain('先做支付回调联调')
+  })
+
+  it('cancelling the briefing task shows the cancelled notice and keeps no result', async () => {
+    useSettingsStore().settings.ai.baseURL = 'http://localhost:11434/v1'
+    useSettingsStore().settings.ai.model = 'test-model'
+    harness.startBriefing.mockResolvedValue('task-6')
+    const { wrapper } = await renderToday()
+
+    await wrapper.get('[data-testid="briefing-generate"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-testid="briefing-cancel"]').trigger('click')
+    await flushPromises()
+    expect(harness.cancel).toHaveBeenCalledWith('task-6')
+
+    harness.handlers['task:finished']?.({ data: { id: 'task-6', status: 'cancelled' } })
+    await flushPromises()
+
+    // 取消：进度行消失、提示已取消、不取结果、按钮恢复可用
+    expect(wrapper.find('[data-testid="briefing-progress"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="today-briefing"]').text()).toContain('已取消简报生成')
+    expect(harness.briefingResult).not.toHaveBeenCalled()
     expect(wrapper.get('[data-testid="briefing-generate"]').attributes('disabled')).toBeUndefined()
   })
 })

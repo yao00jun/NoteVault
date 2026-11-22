@@ -21,7 +21,7 @@ const router = useRouter()
 const route = useRoute()
 const { t, locale } = useI18n()
 const { openTodayWorkLog } = useWorkLog()
-const { briefingText, briefingLoading, briefingError, restoreBriefing, generateBriefing } = useBriefing()
+const { briefingText, briefingLoading, briefingError, briefingProgress, isCancelling, restoreBriefing, generateBriefing, cancelBriefing } = useBriefing()
 const briefingHtml = computed(() => briefingText.value ? renderBriefingHtml(briefingText.value) : '')
 const filter = ref('all')
 const creating = ref(false)
@@ -418,6 +418,23 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
                 />{{ briefingText ? t('today.briefing.regenerate') : t('today.briefing.generate') }}
               </button>
             </header>
+            <!-- 简报异步任务进度行：生成中可取消 -->
+            <div
+              v-if="briefingLoading"
+              class="briefing-progress"
+              data-testid="briefing-progress"
+            >
+              <span class="briefing-progress-msg">{{ briefingProgress || t('today.briefing.preparing') }}</span>
+              <button
+                type="button"
+                class="briefing-cancel"
+                :disabled="isCancelling"
+                data-testid="briefing-cancel"
+                @click="cancelBriefing"
+              >
+                {{ isCancelling ? t('today.briefing.cancelling') : t('today.briefing.cancel') }}
+              </button>
+            </div>
             <div
               v-if="briefingText"
               class="briefing-body"
@@ -431,7 +448,7 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
               {{ briefingError }}
             </p>
             <p
-              v-else
+              v-else-if="!briefingLoading"
               class="briefing-hint"
             >
               {{ t('today.briefing.hint') }}
@@ -588,6 +605,11 @@ h1 { font-size: 22px; font-weight: 600; letter-spacing: -.03em; margin: 0 0 8px;
 .briefing-card h3 { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text-primary); }
 .briefing-action { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); font-size: 11px; white-space: nowrap; }
 .briefing-action:disabled { opacity: .5; cursor: default; }
+.briefing-progress { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--text-muted); }
+.briefing-progress-msg { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.briefing-cancel { flex-shrink: 0; padding: 2px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-window); color: var(--text-secondary); font-size: 10px; cursor: pointer; }
+.briefing-cancel:hover:not(:disabled) { color: var(--danger, #ef4444); border-color: var(--danger, #ef4444); }
+.briefing-cancel:disabled { opacity: .6; cursor: default; }
 .briefing-body { font-size: 12px; line-height: 1.8; color: var(--text-secondary); overflow-wrap: anywhere; }
 .briefing-body :deep(ul), .briefing-body :deep(ol) { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .briefing-body :deep(p) { margin: 0; }

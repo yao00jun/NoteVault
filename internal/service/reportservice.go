@@ -62,11 +62,13 @@ type ReportService struct {
 	// 生产由容器注入，使周报走异步任务队列并可取消。
 	tasks taskSubmitter
 
-	// resultMu 保护 results：异步任务的结构化产出按任务 ID 暂存，
-	// 前端在 task:finished 后按 ID 取回（事件只带进度，不带业务结果）。
-	resultMu  sync.Mutex
-	results   map[string]*WeeklyReportResult
-	resultSeq []string
+	// resultMu 保护 results / briefingResults：异步任务的结构化产出按任务 ID
+	// 暂存，前端在 task:finished 后按 ID 取回（事件只带进度，不带业务结果）。
+	resultMu        sync.Mutex
+	results         map[string]*WeeklyReportResult
+	resultSeq       []string
+	briefingResults map[string]*DailyBriefingResult
+	briefingSeq     []string
 }
 
 // NewReportService 构造周报服务（不接任务队列，StartWeeklyReport 返回空 ID）。
@@ -79,10 +81,11 @@ func NewReportService(fileService *FileService, todos *TodoService) *ReportServi
 // 让 Wails 绑定生成器把 TaskService 同时登记成服务与模型，撞出重复标识符。
 func NewReportServiceWithTasks(fileService *FileService, todos *TodoService, tasks *TaskService) *ReportService {
 	svc := &ReportService{
-		fileService: fileService,
-		todos:       todos,
-		client:      &http.Client{Timeout: 120 * time.Second},
-		results:     make(map[string]*WeeklyReportResult),
+		fileService:     fileService,
+		todos:           todos,
+		client:          &http.Client{Timeout: 120 * time.Second},
+		results:         make(map[string]*WeeklyReportResult),
+		briefingResults: make(map[string]*DailyBriefingResult),
 	}
 	if tasks != nil {
 		svc.tasks = tasks
@@ -98,7 +101,15 @@ func (s *ReportService) WeeklyReportTaskResult(taskID string) *WeeklyReportResul
 	return s.results[taskID]
 }
 
-// saveTaskResult 暂存结果并按 FIFO 裁剪，避免长会话无限累积。
+// DailyBriefingTaskResult 取回某个异步简报任务的结构化结果。
+// 失败的任务不暂存（错误随 task:finished 事件的 error 字段带给前端）。
+func (s *ReportService) DailyBriefingTaskResult(taskID string) *DailyBriefingResult {
+	s.resultMu.Lock()
+	defer s.resultMu.Unlock()
+	return s.briefingResults[taskID]
+}
+
+// saveTaskResult 暂存周报结果并按 FIFO 裁剪，避免长会话无限累积。
 func (s *ReportService) saveTaskResult(taskID string, res *WeeklyReportResult) {
 	if taskID == "" || res == nil {
 		return
@@ -111,6 +122,22 @@ func (s *ReportService) saveTaskResult(taskID string, res *WeeklyReportResult) {
 		oldest := s.resultSeq[0]
 		s.resultSeq = s.resultSeq[1:]
 		delete(s.results, oldest)
+	}
+}
+
+// saveBriefingResult 同上，服务于简报任务的独立结果表。
+func (s *ReportService) saveBriefingResult(taskID string, res *DailyBriefingResult) {
+	if taskID == "" || res == nil {
+		return
+	}
+	s.resultMu.Lock()
+	defer s.resultMu.Unlock()
+	s.briefingResults[taskID] = res
+	s.briefingSeq = append(s.briefingSeq, taskID)
+	for len(s.briefingSeq) > maxStoredReportResults {
+		oldest := s.briefingSeq[0]
+		s.briefingSeq = s.briefingSeq[1:]
+		delete(s.briefingResults, oldest)
 	}
 }
 
@@ -299,7 +326,36 @@ const (
 )
 
 // GenerateDailyBriefing 生成今日 AI 简报。
+// 保留同步语义给测试、MCP 与未注入任务队列的装配；前端走 StartDailyBriefing。
 func (s *ReportService) GenerateDailyBriefing(workspacePath, date string, ai WeeklyReportAIConfig) (*DailyBriefingResult, error) {
+	return s.generateDailyBriefingCtx(context.Background(), TaskReporter{}, workspacePath, date, ai)
+}
+
+// StartDailyBriefing 把「生成今日 AI 简报」提交到异步任务队列，返回任务 ID。
+// 简报不落盘：结果按任务 ID 暂存，前端在 task:finished 后用 DailyBriefingTaskResult
+// 取回；AI 未配置/失败不暂存（错误随 task:finished 事件的 error 字段提示）。
+// 未注入 TaskService 时返回空字符串，调用方应退回同步 GenerateDailyBriefing。
+func (s *ReportService) StartDailyBriefing(workspacePath, date string, ai WeeklyReportAIConfig) string {
+	if s.tasks == nil {
+		return ""
+	}
+	handle := s.tasks.submit(context.Background(), "生成今日简报", func(ctx context.Context, rep TaskReporter) error {
+		res, err := s.generateDailyBriefingCtx(ctx, rep, workspacePath, date, ai)
+		if err != nil {
+			// 取消导致的失败由 TaskService 依据 ctx.Err() 归类为 cancelled，
+			// 这里照原样回传即可区分「用户取消」与「真的出错」。
+			return err
+		}
+		s.saveBriefingResult(rep.TaskID(), res)
+		rep.Report(1, 1)
+		return nil
+	})
+	return handle.ID()
+}
+
+// generateDailyBriefingCtx 是 GenerateDailyBriefing 的 ctx 版：取消时中断在途
+// 的 LLM 请求。rep 可为零值（同步路径不回报进度）。
+func (s *ReportService) generateDailyBriefingCtx(ctx context.Context, rep TaskReporter, workspacePath, date string, ai WeeklyReportAIConfig) (*DailyBriefingResult, error) {
 	if s.todos == nil {
 		return nil, fmt.Errorf("缺少工作台服务，无法生成简报")
 	}
@@ -369,7 +425,8 @@ func (s *ReportService) GenerateDailyBriefing(workspacePath, date string, ai Wee
 		"1. 直接输出 3-5 条要点，每条一行以 \"- \" 开头，不要标题；\n" +
 		"2. 覆盖今日应优先处理的任务、风险或阻塞、值得趁热做的复习、Agent 已完成的工作；\n" +
 		"3. 只依据给出的数据，不编造；每条不超过 60 字。"
-	answer, aerr := llmChatComplete(context.Background(), s.client,
+	rep.Message("正在生成简报")
+	answer, aerr := llmChatComplete(ctx, s.client,
 		ai.APIKey, baseURL, model, ai.Protocol, systemPrompt, sb.String())
 	if aerr != nil {
 		return nil, fmt.Errorf("AI 简报生成失败：%w", aerr)

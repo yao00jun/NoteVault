@@ -207,6 +207,86 @@ func TestReport_GenerateDailyBriefing_AIFailureReturnsError(t *testing.T) {
 	}
 }
 
+// TestReportService_StartDailyBriefing_AsyncResult 验证异步简报：
+// 任务成功结束 → 结果（要点文本）可按任务 ID 取回。
+func TestReportService_StartDailyBriefing_AsyncResult(t *testing.T) {
+	dir := t.TempDir()
+	today := time.Now().Format("2006-01-02")
+	workbenchWrite(t, dir, "Projects/商城/Tasks.md", "- [ ] [US] 支付回调联调 #due/"+today+"\n")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"- 先做支付回调联调"}}]}`))
+	}))
+	defer server.Close()
+
+	tasks := NewTaskService(nil)
+	svc := NewReportServiceWithTasks(NewFileServiceWithHistory(NewSnapshotService()), NewTodoService(), tasks)
+	ai := WeeklyReportAIConfig{BaseURL: server.URL, Model: "test-model", APIKey: "k", Protocol: "openai-chat"}
+
+	id := svc.StartDailyBriefing(dir, today, ai)
+	if id == "" {
+		t.Fatal("StartDailyBriefing 应返回任务 ID")
+	}
+	tasks.Wait()
+
+	info := tasks.GetTask(id)
+	if info == nil || info.Status != TaskSucceeded {
+		t.Fatalf("任务应成功结束，实际：%+v", info)
+	}
+	res := svc.DailyBriefingTaskResult(id)
+	if res == nil || !res.AIUsed || res.Briefing == "" || res.Date != today {
+		t.Fatalf("结果应为 AIUsed=true 且带要点文本，实际：%+v", res)
+	}
+}
+
+// TestReportService_StartDailyBriefing_Cancel 验证取消：
+// AI 在途时取消 → 终态是 cancelled（不是 failed）；失败任务不暂存结果。
+func TestReportService_StartDailyBriefing_Cancel(t *testing.T) {
+	dir := t.TempDir()
+	started := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 必须先排干请求 body：连接层的「客户端断开检测」只在 body 读完
+		// （EOF）后才会启动，否则 r.Context() 永远不会取消（同周报取消测试）。
+		_, _ = io.Copy(io.Discard, r.Body)
+		close(started)
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	tasks := NewTaskService(nil)
+	svc := NewReportServiceWithTasks(NewFileServiceWithHistory(NewSnapshotService()), NewTodoService(), tasks)
+	ai := WeeklyReportAIConfig{BaseURL: server.URL, Model: "test-model", Protocol: "openai-chat"}
+
+	id := svc.StartDailyBriefing(dir, time.Now().Format("2006-01-02"), ai)
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("AI 请求未在 5 秒内开始")
+	}
+	if !tasks.Cancel(id) {
+		t.Fatal("取消应被接受")
+	}
+	tasks.Wait()
+
+	info := tasks.GetTask(id)
+	if info == nil || info.Status != TaskCancelled {
+		t.Fatalf("终态应为 cancelled，实际：%+v", info)
+	}
+	if res := svc.DailyBriefingTaskResult(id); res != nil {
+		t.Fatalf("取消的任务不应暂存结果，实际：%+v", res)
+	}
+}
+
+// TestReportService_StartDailyBriefing_NoQueueReturnsEmpty 验证未注入任务队列时
+// 返回空 ID，调用方据此退回同步路径。
+func TestReportService_StartDailyBriefing_NoQueueReturnsEmpty(t *testing.T) {
+	svc := NewReportService(NewFileServiceWithHistory(NewSnapshotService()), NewTodoService())
+	if id := svc.StartDailyBriefing(t.TempDir(), "2026-11-23", WeeklyReportAIConfig{}); id != "" {
+		t.Fatalf("未注入队列应返回空 ID，实际：%q", id)
+	}
+}
+
 func TestStats_GetOnThisDay(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now()
