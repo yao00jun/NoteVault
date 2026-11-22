@@ -230,3 +230,94 @@ func TestStats_GetOnThisDay(t *testing.T) {
 		t.Fatalf("expected newest first (old1.md), got %v", hits)
 	}
 }
+
+// TestReportService_StartWeeklyReport_AsyncResult 验证异步周报：
+// 任务成功结束 → 结果可按任务 ID 取回 → 周报文件确实落盘。
+func TestReportService_StartWeeklyReport_AsyncResult(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteStats(t, filepath.Join(dir, "a.md"), "# 笔记 A\n\n本周主要在研究并发编程。", time.Now().Add(-1*time.Hour))
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"本周围绕并发编程展开。"}}]}`))
+	}))
+	defer server.Close()
+
+	tasks := NewTaskService(nil)
+	svc := NewReportServiceWithTasks(NewFileServiceWithHistory(NewSnapshotService()), nil, tasks)
+	ai := WeeklyReportAIConfig{BaseURL: server.URL, Model: "test-model", APIKey: "k", Protocol: "openai-chat"}
+
+	id := svc.StartWeeklyReport(dir, ai)
+	if id == "" {
+		t.Fatal("StartWeeklyReport 应返回任务 ID")
+	}
+	tasks.Wait()
+
+	info := tasks.GetTask(id)
+	if info == nil || info.Status != TaskSucceeded {
+		t.Fatalf("任务应成功结束，实际：%+v", info)
+	}
+	res := svc.WeeklyReportTaskResult(id)
+	if res == nil || !res.AIUsed {
+		t.Fatalf("结果应为 AIUsed=true，实际：%+v", res)
+	}
+	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(res.Path))); err != nil {
+		t.Fatalf("周报文件应已落盘：%v", err)
+	}
+}
+
+// TestReportService_StartWeeklyReport_Cancel 验证取消：
+// AI 在途时取消 → 终态是 cancelled（不是 failed），纯统计版仍优雅落盘，
+// 结果可取回且 AIUsed=false。
+func TestReportService_StartWeeklyReport_Cancel(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteStats(t, filepath.Join(dir, "a.md"), "# a", time.Now())
+
+	started := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 必须先排干请求 body：连接层的「客户端断开检测」（后台读）只在
+		// body 读完（EOF）后才会启动，不读的话客户端取消后 r.Context()
+		// 永远不会取消，handler 挂死会连带 server.Close() 挂死。
+		_, _ = io.Copy(io.Discard, r.Body)
+		close(started)
+		<-r.Context().Done() // 挂住，直到客户端取消请求
+	}))
+	defer server.Close()
+
+	tasks := NewTaskService(nil)
+	svc := NewReportServiceWithTasks(NewFileServiceWithHistory(NewSnapshotService()), nil, tasks)
+	ai := WeeklyReportAIConfig{BaseURL: server.URL, Model: "test-model", Protocol: "openai-chat"}
+
+	id := svc.StartWeeklyReport(dir, ai)
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("AI 请求未在 5 秒内开始")
+	}
+	if !tasks.Cancel(id) {
+		t.Fatal("取消应被接受")
+	}
+	tasks.Wait()
+
+	info := tasks.GetTask(id)
+	if info == nil || info.Status != TaskCancelled {
+		t.Fatalf("终态应为 cancelled，实际：%+v", info)
+	}
+	res := svc.WeeklyReportTaskResult(id)
+	if res == nil || res.AIUsed {
+		t.Fatalf("取消后应为降级结果 AIUsed=false，实际：%+v", res)
+	}
+	// 纯统计骨架仍落盘（与同步降级语义一致）
+	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(res.Path))); err != nil {
+		t.Fatalf("取消后纯统计版应仍落盘：%v", err)
+	}
+}
+
+// TestReportService_StartWeeklyReport_NoQueueReturnsEmpty 验证未注入任务队列时
+// 返回空 ID，调用方据此退回同步路径。
+func TestReportService_StartWeeklyReport_NoQueueReturnsEmpty(t *testing.T) {
+	svc := NewReportService(NewFileServiceWithHistory(NewSnapshotService()), nil)
+	if id := svc.StartWeeklyReport(t.TempDir(), WeeklyReportAIConfig{}); id != "" {
+		t.Fatalf("未注入队列应返回空 ID，实际：%q", id)
+	}
+}

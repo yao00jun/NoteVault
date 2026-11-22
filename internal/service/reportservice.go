@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/notevault/notevault/internal/core"
@@ -47,28 +48,121 @@ const (
 	weeklyReportNoteMaxRunes = 1200
 )
 
+// maxStoredReportResults 保留多少个周报任务的结果。与编译服务同一口径：
+// 前端只在任务结束后取一次，留余量是防事件与取结果之间的时序抖动。
+const maxStoredReportResults = 20
+
 // ReportService 提供知识周报生成
 type ReportService struct {
 	fileService *FileService
 	todos       *TodoService
 	client      *http.Client
+
+	// tasks 为 nil 时退化为同步生成（测试与未接装配场景），
+	// 生产由容器注入，使周报走异步任务队列并可取消。
+	tasks taskSubmitter
+
+	// resultMu 保护 results：异步任务的结构化产出按任务 ID 暂存，
+	// 前端在 task:finished 后按 ID 取回（事件只带进度，不带业务结果）。
+	resultMu  sync.Mutex
+	results   map[string]*WeeklyReportResult
+	resultSeq []string
 }
 
-// NewReportService 构造周报服务
+// NewReportService 构造周报服务（不接任务队列，StartWeeklyReport 返回空 ID）。
 func NewReportService(fileService *FileService, todos *TodoService) *ReportService {
-	return &ReportService{
+	return NewReportServiceWithTasks(fileService, todos, nil)
+}
+
+// NewReportServiceWithTasks 构造周报服务并注入异步任务队列。
+// 注入走构造函数而不是 Setter，理由与 CompileService 相同：Setter 的形参会
+// 让 Wails 绑定生成器把 TaskService 同时登记成服务与模型，撞出重复标识符。
+func NewReportServiceWithTasks(fileService *FileService, todos *TodoService, tasks *TaskService) *ReportService {
+	svc := &ReportService{
 		fileService: fileService,
 		todos:       todos,
 		client:      &http.Client{Timeout: 120 * time.Second},
+		results:     make(map[string]*WeeklyReportResult),
+	}
+	if tasks != nil {
+		svc.tasks = tasks
+	}
+	return svc
+}
+
+// WeeklyReportTaskResult 取回某个异步周报任务的结构化结果。
+// 任务未结束或 ID 未知时返回 nil——调用方应据此提示「仍在进行/结果已过期」。
+func (s *ReportService) WeeklyReportTaskResult(taskID string) *WeeklyReportResult {
+	s.resultMu.Lock()
+	defer s.resultMu.Unlock()
+	return s.results[taskID]
+}
+
+// saveTaskResult 暂存结果并按 FIFO 裁剪，避免长会话无限累积。
+func (s *ReportService) saveTaskResult(taskID string, res *WeeklyReportResult) {
+	if taskID == "" || res == nil {
+		return
+	}
+	s.resultMu.Lock()
+	defer s.resultMu.Unlock()
+	s.results[taskID] = res
+	s.resultSeq = append(s.resultSeq, taskID)
+	for len(s.resultSeq) > maxStoredReportResults {
+		oldest := s.resultSeq[0]
+		s.resultSeq = s.resultSeq[1:]
+		delete(s.results, oldest)
 	}
 }
 
 // GenerateWeeklyReport 生成本周（ISO 周）知识周报并写入 Reports/ 目录。
 // 周报已存在时覆盖重写（重复点击生成是正常操作，不是冲突）。
+// 保留同步语义给测试、MCP 与未注入任务队列的装配；前端走 StartWeeklyReport。
 func (s *ReportService) GenerateWeeklyReport(workspacePath string, ai WeeklyReportAIConfig) (*WeeklyReportResult, error) {
+	return s.generateWeeklyReportCtx(context.Background(), TaskReporter{}, workspacePath, ai)
+}
+
+// StartWeeklyReport 把「生成本周知识周报」提交到异步任务队列，返回任务 ID。
+//
+// 与同步 GenerateWeeklyReport 的关系：同一套生成逻辑，区别只在
+//   - AI 回顾是唯一的长操作，进行中可通过 TaskService.Cancel(taskID) 取消，
+//     在途 LLM 请求随 ctx 一起中断；取消时纯统计骨架仍会落盘；
+//   - 结果按任务 ID 暂存，前端在 task:finished 后用 WeeklyReportTaskResult 取回。
+//
+// 未注入 TaskService 时返回空字符串，调用方应退回同步 GenerateWeeklyReport。
+func (s *ReportService) StartWeeklyReport(workspacePath string, ai WeeklyReportAIConfig) string {
+	if s.tasks == nil {
+		return ""
+	}
+	handle := s.tasks.submit(context.Background(), "生成知识周报", func(ctx context.Context, rep TaskReporter) error {
+		res, err := s.generateWeeklyReportCtx(ctx, rep, workspacePath, ai)
+		if res == nil {
+			// 失败也要给前端一个可展示的结果：错误原因放进 Message
+			res = &WeeklyReportResult{Message: err.Error()}
+		}
+		s.saveTaskResult(rep.TaskID(), res)
+		if err != nil {
+			// 取消必须回传 ctx 错误，TaskService 才会把终态记为 cancelled
+			//（而不是 failed），前端据此区分「用户取消」与「真的出错」。
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return err
+		}
+		rep.Report(1, 1)
+		// 成功路径也回传 ctx.Err()：AI 请求被取消时生成逻辑会优雅降级、
+		// 返回 (纯统计结果, nil)，但任务终态应记为 cancelled 而不是 succeeded。
+		return ctx.Err()
+	})
+	return handle.ID()
+}
+
+// generateWeeklyReportCtx 是 GenerateWeeklyReport 的 ctx 版：取消时中断在途的
+// LLM 请求。rep 可为零值（同步路径不回报进度）。
+func (s *ReportService) generateWeeklyReportCtx(ctx context.Context, rep TaskReporter, workspacePath string, ai WeeklyReportAIConfig) (*WeeklyReportResult, error) {
 	if s.fileService == nil {
 		return nil, fmt.Errorf("缺少文件服务，无法写入周报")
 	}
+	rep.Message("正在统计本周数据")
 	now := time.Now()
 	year, week := now.ISOWeek()
 	relPath := fmt.Sprintf("Reports/%d-W%02d.md", year, week)
@@ -150,7 +244,8 @@ func (s *ReportService) GenerateWeeklyReport(workspacePath string, ai WeeklyRepo
 			"2. 指出笔记之间可能的主题关联或值得展开的方向（1-2 条）；\n" +
 			"3. 只依据给出的笔记内容，不要编造；使用 Markdown，不超过 300 字。\n" +
 			"待办情况：未完成 " + fmt.Sprintf("%d", pending) + " 条（高优先级 " + fmt.Sprintf("%d", high) + "）。"
-		answer, aerr := llmChatComplete(context.Background(), s.client,
+		rep.Message("正在生成 AI 回顾")
+		answer, aerr := llmChatComplete(ctx, s.client,
 			ai.APIKey, ai.BaseURL, ai.Model, ai.Protocol, systemPrompt, prompt)
 		if aerr != nil {
 			result.Message = "AI 回顾生成失败，已降级为纯统计周报：" + aerr.Error()
@@ -171,6 +266,7 @@ func (s *ReportService) GenerateWeeklyReport(workspacePath string, ai WeeklyRepo
 
 	content := sb.String()
 	// 已存在则覆盖（SaveFile 走快照链路，旧版本可从时间机器找回）
+	rep.Message("正在写入周报")
 	if _, err := s.fileService.CreateFile(workspacePath, relPath, content); err != nil {
 		if serr := s.fileService.SaveFile(workspacePath, relPath, content); serr != nil {
 			return nil, core.WrapError(core.ErrPermission, "写入周报失败: "+relPath, serr)

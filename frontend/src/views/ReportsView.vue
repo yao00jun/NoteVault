@@ -8,18 +8,20 @@
  *  3. 知识资产 Top10：被 [[双向链接]] 最多的笔记（GraphService 边统计）
  * 不引入图表库，保持本地优先的轻量体积。
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { BarChart3, Flame, Link2, CalendarRange, Activity, FileText, History, Loader2 } from '@lucide/vue'
-import { StatsService, GraphService, ReportService, ReviewService, ReminderService } from '@/api'
+import { BarChart3, Flame, Link2, CalendarRange, Activity, FileText, History, Loader2, X } from '@lucide/vue'
+import { StatsService, GraphService, ReportService, ReviewService, ReminderService, TaskService } from '@/api'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
+import { useToast } from '@/composables/useToast'
 
 const { t, locale } = useI18n()
 const router = useRouter()
 const workspaceStore = useWorkspaceStore()
 const settingsStore = useSettingsStore()
+const toast = useToast()
 
 interface DayActivity {
   date: string
@@ -49,6 +51,23 @@ const errorMsg = ref('')
 const generating = ref(false)
 const generateMsg = ref('')
 const generateOk = ref(false)
+
+// --- 周报异步任务状态 ---
+// 生成走 TaskService 后，进度来自 task:progress 事件；只关注「当前这个任务」，
+// 其它任务（导入/编译等）的事件直接忽略。
+const activeTaskID = ref<string | null>(null)
+const taskPercent = ref(-1)
+const taskMessage = ref('')
+const isCancelling = ref(false)
+let stopTaskEvents: (() => void) | undefined
+
+interface TaskEventPayload {
+  id?: string
+  status?: string
+  percent?: number
+  message?: string
+  error?: string
+}
 
 const reviewing = ref(false)
 const reviewMsg = ref('')
@@ -92,7 +111,30 @@ async function load() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  // 非 Wails 环境（单测）没有 runtime，订阅失败不影响页面可用性
+  void import('@wailsio/runtime')
+    .then(({ Events }) => {
+      const offProgress = Events.On('task:progress', (ev?: { data?: TaskEventPayload }) =>
+        applyTaskEvent(ev?.data, false),
+      )
+      const offFinished = Events.On('task:finished', (ev?: { data?: TaskEventPayload }) =>
+        applyTaskEvent(ev?.data, true),
+      )
+      stopTaskEvents = () => {
+        offProgress?.()
+        offFinished?.()
+      }
+    })
+    .catch(() => {
+      /* 无 runtime：仅同步兜底路径可用 */
+    })
+})
+onUnmounted(() => {
+  stopTaskEvents?.()
+  stopTaskEvents = undefined
+})
 watch(() => workspaceStore.currentWorkspace?.id, load)
 watch(() => workspaceStore.fileTreeVersion, load)
 
@@ -177,16 +219,41 @@ async function scheduleReview() {
   }
 }
 
-// 生成本周知识周报：AI 配置了就走 LLM 回顾，没配置/失败自动降级纯统计版
+// 生成本周知识周报：优先走异步任务（AI 回顾可取消、有进度），
+// 后端未注入任务队列时返回空 ID → 退回同步调用（行为与改造前一致）。
 async function generateWeeklyReport() {
   if (generating.value) return
   const ws = workspaceStore.currentWorkspace
   if (!ws?.path) return
   generating.value = true
   generateMsg.value = ''
+  taskPercent.value = -1
+  taskMessage.value = ''
   try {
     const ai = settingsStore.settings.ai
-    const result = (await ReportService.GenerateWeeklyReport(ws.path, {
+    const taskID = (await ReportService.StartWeeklyReport(ws.path, {
+      baseURL: ai.baseURL,
+      model: ai.model,
+      apiKey: ai.apiKey,
+      protocol: ai.protocol,
+    })) as string | null
+    if (!taskID) {
+      await generateWeeklyReportSync(ws.path)
+      return
+    }
+    activeTaskID.value = taskID
+  } catch (e) {
+    generateOk.value = false
+    generateMsg.value = (e as Error).message
+    generating.value = false
+  }
+}
+
+// --- 同步路径（后端未接入任务队列时的兜底）---
+async function generateWeeklyReportSync(path: string) {
+  try {
+    const ai = settingsStore.settings.ai
+    const result = (await ReportService.GenerateWeeklyReport(path, {
       baseURL: ai.baseURL,
       model: ai.model,
       apiKey: ai.apiKey,
@@ -202,6 +269,59 @@ async function generateWeeklyReport() {
   } finally {
     generating.value = false
   }
+}
+
+// 取消当前生成：TaskService.Cancel 是幂等的，任务刚好结束时返回 false，
+// 此时不弹错——finished 事件马上会把 UI 收尾。
+async function cancelGenerate() {
+  const id = activeTaskID.value
+  if (!id || isCancelling.value) return
+  isCancelling.value = true
+  try {
+    const accepted = await TaskService.Cancel(id)
+    if (!accepted) isCancelling.value = false
+  } catch {
+    isCancelling.value = false
+  }
+}
+
+// applyTaskEvent 只处理「当前关注的任务」，避免被并发的编译/导入任务进度串扰。
+function applyTaskEvent(info: TaskEventPayload | undefined, finished: boolean) {
+  if (!info || !activeTaskID.value || info.id !== activeTaskID.value) return
+  if (typeof info.percent === 'number') taskPercent.value = info.percent
+  if (info.message) taskMessage.value = info.message
+  if (finished) void finishTask(info)
+}
+
+// finishTask 统一收尾：状态提示 → 取回结构化结果 → 刷新列表 → 成功时打开周报。
+async function finishTask(info: TaskEventPayload) {
+  const id = info.id as string
+  const taskStatus = info.status ?? ''
+  activeTaskID.value = null
+  isCancelling.value = false
+
+  if (taskStatus === 'cancelled') {
+    toast.info(t('reports.taskCancelled'))
+  } else if (taskStatus === 'failed') {
+    toast.error(t('reports.taskFailed', { msg: info.error || '' }))
+  }
+
+  let res: { path: string; aiUsed: boolean; notes: number; message: string } | null = null
+  try {
+    res = (await ReportService.WeeklyReportTaskResult(id)) as {
+      path: string; aiUsed: boolean; notes: number; message: string
+    } | null
+  } catch (e) {
+    console.error('Failed to read weekly report task result:', e)
+  }
+
+  await load()
+  generating.value = false
+
+  if (!res || taskStatus === 'cancelled') return
+  generateOk.value = res.aiUsed
+  generateMsg.value = res.message
+  if (taskStatus === 'succeeded') openFile(res.path)
 }
 </script>
 
@@ -244,6 +364,39 @@ async function generateWeeklyReport() {
       :class="{ ok: generateOk }"
     >
       {{ generateMsg }}
+    </div>
+
+    <!-- 周报异步任务进度条：AI 回顾进行中可取消 -->
+    <div
+      v-if="activeTaskID"
+      class="task-bar"
+      data-testid="report-progress"
+    >
+      <div class="task-bar-head">
+        <Loader2
+          :size="14"
+          class="spin task-bar-icon"
+        />
+        <span class="task-bar-message">{{ taskMessage || t('reports.taskPreparing') }}</span>
+        <span class="task-bar-pct">{{ taskPercent >= 0 ? `${taskPercent}%` : '…' }}</span>
+        <button
+          class="task-cancel-btn"
+          type="button"
+          :disabled="isCancelling"
+          data-testid="report-cancel"
+          @click="cancelGenerate"
+        >
+          <X :size="13" />
+          {{ isCancelling ? t('reports.taskCancelling') : t('reports.taskCancel') }}
+        </button>
+      </div>
+      <div class="task-track">
+        <div
+          class="task-fill"
+          :class="{ indeterminate: taskPercent < 0 }"
+          :style="{ width: taskPercent >= 0 ? `${taskPercent}%` : '32%' }"
+        />
+      </div>
     </div>
 
     <div
@@ -741,6 +894,84 @@ async function generateWeeklyReport() {
 .rp-generate-msg.ok {
   background: rgba(34, 197, 94, 0.12);
   color: var(--success);
+}
+/* 周报异步任务进度条（与 CompileView 的 task-bar 同规格） */
+.task-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+.task-bar-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.task-bar-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.task-bar-message {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-bar-pct {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.task-cancel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-window);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.task-cancel-btn:hover:not(:disabled) {
+  color: var(--danger, #ef4444);
+  border-color: var(--danger, #ef4444);
+}
+.task-cancel-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.task-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-input);
+  overflow: hidden;
+}
+.task-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+.task-fill.indeterminate {
+  animation: task-pulse 1.4s ease-in-out infinite;
+}
+@keyframes task-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 .rp-memory-list {
   display: flex;

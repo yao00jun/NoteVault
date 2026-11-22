@@ -1318,6 +1318,11 @@ export default {
     scheduleDone: 'Review reminder set for {date} {time} (adjustable on the Reminders page)',
     generateWeekly: 'Generate weekly report',
     generating: 'Generating…',
+    taskPreparing: 'Preparing…',
+    taskCancel: 'Cancel',
+    taskCancelling: 'Cancelling…',
+    taskCancelled: 'AI review cancelled; the stats-only report has been saved',
+    taskFailed: 'Failed to generate the weekly report: {msg}',
     onThisDay: 'On this day',
   },
   knowledge: {

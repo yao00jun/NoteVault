@@ -111,8 +111,8 @@ func NewContainer(cfg ContainerConfig) *Container {
 	// Summarize 同理：Summarize 服务与剪藏 AI 摘要共用一份无状态实例
 	summarizeService := service.NewSummarizeService()
 
-	// 编译服务与周报共用 summarizeService；编译再挂上任务队列，
-	// 使「编译全部 / 单篇」能异步执行、逐篇回报进度并可取消。
+	// 编译服务与周报共用 summarizeService；两者都挂上任务队列：
+	// 编译的「全部 / 单篇」与周报的 AI 回顾都能异步执行、回报进度并可取消。
 	compileService := service.NewCompileServiceWithTasks(fileService, snapshotService, service.NewSummarizeCompileAI(summarizeService), "Inbox", "Compiled", taskService)
 
 	return &Container{
@@ -139,7 +139,7 @@ func NewContainer(cfg ContainerConfig) *Container {
 		Git:          service.NewGitService(),
 		Templates:    service.NewTemplateService(fileService),
 		Compile:      compileService,
-		Report:       service.NewReportService(fileService, todoService),
+		Report:       service.NewReportServiceWithTasks(fileService, todoService, taskService),
 		Review:       service.NewReviewService(fileService, service.NewSummarizeService(), reminderService),
 		ErrorMonitor: errorMonitor,
 		Plugin:       plugin.NewPluginService(cfg.PluginsDir),

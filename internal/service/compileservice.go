@@ -110,13 +110,13 @@ func splitCompileCSV(s string) []string {
 	return out
 }
 
-// compileTaskQueue 是编译服务对任务队列的最小依赖。
+// taskSubmitter 是需要提交异步任务的服务（编译、周报等）对任务队列的最小依赖。
 //
 // 不直接持有 *TaskService 的原因不只是解耦：Wails 的绑定生成器会遍历服务结构体
 // 字段，把 *TaskService 登记成「模型」，与 services 列表里的 TaskService 导出撞名，
 // 生成出重复标识符（index.ts 里两处 export TaskService）。声明成包内接口后，
 // 生成器不再把它当作可导出的模型类型。
-type compileTaskQueue interface {
+type taskSubmitter interface {
 	submit(ctx context.Context, name string, fn TaskFunc) *TaskHandle
 }
 
@@ -131,7 +131,7 @@ type CompileService struct {
 
 	// tasks 为 nil 时退化为同步编译（测试与未接装配场景），
 	// 生产由容器注入，使编译走异步任务队列并可取消。
-	tasks compileTaskQueue
+	tasks taskSubmitter
 
 	// resultMu 保护 results：异步任务的结构化产出按任务 ID 暂存，
 	// 前端在 task:finished 后按 ID 取回（事件只带进度，不带业务结果）。

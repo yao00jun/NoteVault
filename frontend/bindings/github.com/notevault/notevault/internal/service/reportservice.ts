@@ -24,7 +24,30 @@ export function GenerateDailyBriefing(workspacePath: string, date: string, ai: $
 /**
  * GenerateWeeklyReport 生成本周（ISO 周）知识周报并写入 Reports/ 目录。
  * 周报已存在时覆盖重写（重复点击生成是正常操作，不是冲突）。
+ * 保留同步语义给测试、MCP 与未注入任务队列的装配；前端走 StartWeeklyReport。
  */
 export function GenerateWeeklyReport(workspacePath: string, ai: $models.WeeklyReportAIConfig): $CancellablePromise<$models.WeeklyReportResult | null> {
     return $Call.ByName("github.com/notevault/notevault/internal/service.ReportService.GenerateWeeklyReport", workspacePath, ai);
+}
+
+/**
+ * StartWeeklyReport 把「生成本周知识周报」提交到异步任务队列，返回任务 ID。
+ * 
+ * 与同步 GenerateWeeklyReport 的关系：同一套生成逻辑，区别只在
+ *   - AI 回顾是唯一的长操作，进行中可通过 TaskService.Cancel(taskID) 取消，
+ *     在途 LLM 请求随 ctx 一起中断；取消时纯统计骨架仍会落盘；
+ *   - 结果按任务 ID 暂存，前端在 task:finished 后用 WeeklyReportTaskResult 取回。
+ * 
+ * 未注入 TaskService 时返回空字符串，调用方应退回同步 GenerateWeeklyReport。
+ */
+export function StartWeeklyReport(workspacePath: string, ai: $models.WeeklyReportAIConfig): $CancellablePromise<string> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.ReportService.StartWeeklyReport", workspacePath, ai);
+}
+
+/**
+ * WeeklyReportTaskResult 取回某个异步周报任务的结构化结果。
+ * 任务未结束或 ID 未知时返回 nil——调用方应据此提示「仍在进行/结果已过期」。
+ */
+export function WeeklyReportTaskResult(taskID: string): $CancellablePromise<$models.WeeklyReportResult | null> {
+    return $Call.ByName("github.com/notevault/notevault/internal/service.ReportService.WeeklyReportTaskResult", taskID);
 }

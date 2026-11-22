@@ -6,17 +6,38 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { i18n } from '@/i18n'
 import { apiMock } from '@/test/apiMock'
 
+const harness = vi.hoisted(() => ({
+  handlers: {} as Record<string, (ev?: unknown) => void>,
+}))
+
+// 动态 import 的 runtime 被静态 mock 接管：Events.On 把回调登记到 harness，
+// 用例里手动投递 task:progress / task:finished 事件。
+vi.mock('@wailsio/runtime', () => ({
+  Events: {
+    On: (name: string, cb: (ev?: unknown) => void) => {
+      harness.handlers[name] = cb
+      return () => {}
+    },
+  },
+}))
+
 vi.mock('@/api', () => apiMock({
   ClipperService: { ConfigureAI: vi.fn(async () => undefined) },
   StatsService: { GetWritingActivity: vi.fn(), GetOnThisDay: vi.fn(async () => []) },
   GraphService: { GetGraph: vi.fn() },
-  ReportService: { GenerateWeeklyReport: vi.fn() },
+  ReportService: {
+    GenerateWeeklyReport: vi.fn(),
+    StartWeeklyReport: vi.fn(),
+    WeeklyReportTaskResult: vi.fn(),
+  },
+  TaskService: { Cancel: vi.fn() },
   ReviewService: { GenerateReview: vi.fn(), ScheduleWeeklyReview: vi.fn() },
   ReminderService: { GetAllReminders: vi.fn(async () => []) },
 }))
 
 import ReportsView from './ReportsView.vue'
-import { StatsService, GraphService, ReportService, ReviewService, ReminderService } from '@/api'
+import { StatsService, GraphService, ReportService, ReviewService, ReminderService, TaskService } from '@/api'
+import { useToast, resetToasts } from '@/composables/useToast'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 const mockedActivity = vi.mocked(StatsService.GetWritingActivity)
@@ -56,6 +77,11 @@ describe('ReportsView（写作报表中心）', () => {
   beforeEach(() => {
     mockedActivity.mockReset()
     mockedGraph.mockReset()
+    vi.mocked(ReportService.StartWeeklyReport).mockReset()
+    vi.mocked(ReportService.WeeklyReportTaskResult).mockReset()
+    vi.mocked(TaskService.Cancel).mockReset().mockResolvedValue(true)
+    resetToasts()
+    harness.handlers = {}
     localStorage.clear()
   })
 
@@ -225,5 +251,100 @@ describe('ReportsView（写作报表中心）', () => {
     expect(wrapper.find('.rp-generate-msg').exists()).toBe(true)
     expect(wrapper.find('.rp-generate-msg').text()).toContain('写入周报失败')
     expect(wrapper.find('.rp-generate-msg').classes()).not.toContain('ok')
+  })
+
+  it('周报生成走异步任务：进度条更新，完成后取回结果并打开周报', async () => {
+    mockedActivity.mockResolvedValue(makeActivity(91, {}) as any)
+    mockedGraph.mockResolvedValue({ nodes: [], edges: [] } as any)
+    const mockedSync = vi.mocked(ReportService.GenerateWeeklyReport)
+    const mockedResult = vi.mocked(ReportService.WeeklyReportTaskResult)
+    vi.mocked(ReportService.StartWeeklyReport).mockResolvedValue('task-9')
+    mockedResult.mockResolvedValue({
+      path: 'Reports/2026-W47.md',
+      aiUsed: true,
+      notes: 3,
+      todos: 1,
+      message: '',
+    } as any)
+
+    const { wrapper, router } = mountReports()
+    await flushPromises()
+
+    await wrapper.find('.rp-generate-btn').trigger('click')
+    await flushPromises()
+
+    expect(vi.mocked(ReportService.StartWeeklyReport)).toHaveBeenCalledTimes(1)
+    expect(mockedSync).not.toHaveBeenCalled()
+    // 进度条出现，总量未知时为 indeterminate
+    expect(wrapper.get('[data-testid="report-progress"]').text()).toContain('正在准备')
+
+    harness.handlers['task:progress']?.({ data: { id: 'task-9', percent: -1, message: '正在生成 AI 回顾' } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="report-progress"]').text()).toContain('正在生成 AI 回顾')
+
+    harness.handlers['task:finished']?.({ data: { id: 'task-9', status: 'succeeded' } })
+    await flushPromises()
+
+    // 完成后收尾：按任务 ID 取回结果、进度条消失、打开生成的周报
+    expect(mockedResult).toHaveBeenCalledWith('task-9')
+    expect(wrapper.find('[data-testid="report-progress"]').exists()).toBe(false)
+    expect(router.currentRoute.value.path).toBe('/editor')
+    expect(router.currentRoute.value.query.file).toBe('Reports/2026-W47.md')
+  })
+
+  it('取消生成：任务记为 cancelled，不打开文件并提示已降级', async () => {
+    mockedActivity.mockResolvedValue(makeActivity(91, {}) as any)
+    mockedGraph.mockResolvedValue({ nodes: [], edges: [] } as any)
+    vi.mocked(ReportService.StartWeeklyReport).mockResolvedValue('task-7')
+    vi.mocked(ReportService.WeeklyReportTaskResult).mockResolvedValue({
+      path: 'Reports/2026-W47.md',
+      aiUsed: false,
+      notes: 1,
+      todos: 0,
+      message: 'AI 回顾生成失败，已降级为纯统计周报：context canceled',
+    } as any)
+
+    const { wrapper, router } = mountReports()
+    await flushPromises()
+
+    await wrapper.find('.rp-generate-btn').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-testid="report-cancel"]').trigger('click')
+    await flushPromises()
+    expect(vi.mocked(TaskService.Cancel)).toHaveBeenCalledWith('task-7')
+
+    harness.handlers['task:finished']?.({ data: { id: 'task-7', status: 'cancelled' } })
+    await flushPromises()
+
+    // 取消：进度条收起、不打开文件、toast 提示纯统计版已生成
+    expect(wrapper.find('[data-testid="report-progress"]').exists()).toBe(false)
+    expect(router.currentRoute.value.path).not.toBe('/editor')
+    const info = useToast().toasts.value.find((t) => t.kind === 'info')
+    expect(info?.message).toContain('纯统计版')
+  })
+
+  it('后端返回空任务 ID 时退回同步生成路径', async () => {
+    mockedActivity.mockResolvedValue(makeActivity(91, {}) as any)
+    mockedGraph.mockResolvedValue({ nodes: [], edges: [] } as any)
+    const mockedSync = vi.mocked(ReportService.GenerateWeeklyReport)
+    mockedSync.mockReset()
+    mockedSync.mockResolvedValue({
+      path: 'Reports/2026-W47.md',
+      aiUsed: false,
+      notes: 0,
+      todos: 0,
+      message: '未配置 AI 端点，已生成纯统计周报（可在设置页配置后重新生成）',
+    } as any)
+    vi.mocked(ReportService.StartWeeklyReport).mockResolvedValue('')
+
+    const { wrapper } = mountReports()
+    await flushPromises()
+
+    await wrapper.find('.rp-generate-btn').trigger('click')
+    await flushPromises()
+
+    expect(mockedSync).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('.rp-generate-msg').text()).toContain('纯统计周报')
   })
 })

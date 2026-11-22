@@ -1318,6 +1318,11 @@ export default {
     scheduleDone: '已预约 {date} {time} 的回顾提醒（到点前可在「提醒」页调整）',
     generateWeekly: '生成本周周报',
     generating: '正在生成…',
+    taskPreparing: '正在准备…',
+    taskCancel: '取消',
+    taskCancelling: '取消中…',
+    taskCancelled: '已取消 AI 回顾，纯统计版周报已生成',
+    taskFailed: '周报生成失败：{msg}',
     onThisDay: '那年今日',
   },
   knowledge: {
