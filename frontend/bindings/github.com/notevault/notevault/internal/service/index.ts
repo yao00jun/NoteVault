@@ -128,6 +128,7 @@ export type {
     WorkbenchBook,
     WorkbenchDeliverable,
     WorkbenchDocument,
+    WorkbenchMilestone,
     WorkbenchProgress,
     WorkbenchProject,
     WorkbenchRadar,

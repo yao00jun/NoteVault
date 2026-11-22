@@ -54,9 +54,21 @@ type WorkbenchProject struct {
 	TaskIDs      []string               `json:"taskIds"`
 	Notes        []WorkbenchDocument    `json:"notes"`
 	Deliverables []WorkbenchDeliverable `json:"deliverables"`
+	// Milestones 是 project.md frontmatter 里的里程碑投影，按文档顺序返回。
+	Milestones []WorkbenchMilestone `json:"milestones"`
 	// Retrospective 是复盘文件路径；未生成复盘时为空串。
 	Retrospective string `json:"retrospective"`
 	ModifiedAt    string `json:"modifiedAt"`
+}
+
+// WorkbenchMilestone 是单个里程碑。frontmatter 列表项约定：
+//   - [ ] 里程碑名称 #due/2027-01-24
+//
+// 前缀 [x] 表示已完成；日期可省略（无日期的里程碑只按文档顺序展示）。
+type WorkbenchMilestone struct {
+	Name string `json:"name"`
+	Date string `json:"date"` // YYYY-MM-DD；未标注 #due/ 时为空串
+	Done bool   `json:"done"`
 }
 
 type WorkbenchBook struct {
@@ -162,6 +174,7 @@ func (s *TodoService) GetWorkbench(workspacePath, date string) (*WorkbenchSnapsh
 				Background:   workbenchText(file.props, "background", "背景", "背景信息"),
 				NextStep:     workbenchText(file.props, "nextStep", "next_step", "下一步", "下一步行动"),
 				TechStack:    workbenchList(file.props, "techStack", "tech_stack", "stack", "技术栈", "关联技术"),
+				Milestones:   workbenchMilestones(file.props),
 				TaskIDs:      []string{}, Notes: []WorkbenchDocument{}, Deliverables: []WorkbenchDeliverable{},
 				ModifiedAt: file.modifiedAt,
 			})
@@ -302,6 +315,38 @@ func workbenchTextDefault(props map[string]PropValue, fallback string, aliases .
 		return value
 	}
 	return fallback
+}
+
+// workbenchMilestones 解析 project.md frontmatter 的 milestones 列表为结构化里程碑。
+// 列表项格式：`- [ ] 名称 #due/2027-01-24`——前缀 [x] 表示已完成，
+// #due/ 日期可省略；解析不了任何信息的空项跳过。
+func workbenchMilestones(props map[string]PropValue) []WorkbenchMilestone {
+	items := workbenchList(props, "milestones", "里程碑")
+	out := make([]WorkbenchMilestone, 0, len(items))
+	for _, item := range items {
+		text := strings.TrimSpace(item)
+		done := false
+		switch {
+		case strings.HasPrefix(text, "[x]"), strings.HasPrefix(text, "[X]"):
+			done = true
+			text = strings.TrimSpace(text[3:])
+		case strings.HasPrefix(text, "[ ]"):
+			text = strings.TrimSpace(text[3:])
+		}
+		date := ""
+		if idx := strings.Index(text, "#due/"); idx >= 0 {
+			date = strings.TrimSpace(text[idx+len("#due/"):])
+			if space := strings.IndexAny(date, " \t"); space >= 0 {
+				date = date[:space]
+			}
+			text = strings.TrimSpace(text[:idx])
+		}
+		if text == "" && date == "" {
+			continue
+		}
+		out = append(out, WorkbenchMilestone{Name: text, Date: date, Done: done})
+	}
+	return out
 }
 
 func workbenchList(props map[string]PropValue, aliases ...string) []string {

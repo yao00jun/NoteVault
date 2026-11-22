@@ -63,6 +63,7 @@ function project(name: string, status: string, taskIds: string[]): WorkbenchProj
     techStack: ['Go', 'Redis'],
     taskIds,
     notes: [],
+    milestones: [],
     modifiedAt: '2026-09-08T09:20:00+08:00',
   }
 }
@@ -289,6 +290,86 @@ describe('ProjectsView', () => {
 
     await wrapper.get('[data-testid="deliverable-stage-reset"]').trigger('click')
     expect(panel()).toContain('方案二稿')
+  })
+
+  it('groups deliverables by type when the type view is selected', async () => {
+    harness.state.projects = [
+      {
+        ...project('商城', '进行中', ['US 登录接口']),
+        deliverables: [
+          {
+            path: 'Projects/商城/Deliverables/需求.md',
+            title: '订单需求说明书',
+            type: 'ba-requirement',
+            stage: 'final',
+            version: 'v1.1',
+            modifiedAt: '2026-09-08T09:00:00+08:00',
+          },
+          {
+            path: 'Projects/商城/Deliverables/设计.md',
+            title: '订单服务设计文档',
+            type: 'design-doc',
+            stage: 'review',
+            version: 'v0.9',
+            modifiedAt: '2026-09-08T09:10:00+08:00',
+          },
+          {
+            path: 'Projects/商城/Deliverables/报告.md',
+            title: '上线周报',
+            type: 'report',
+            stage: 'final',
+            version: 'v1',
+            modifiedAt: '2026-09-08T09:20:00+08:00',
+          },
+        ],
+      },
+    ]
+    const { wrapper } = await renderView(
+      ProjectsView,
+      '/projects?project=Projects/商城/project.md'
+    )
+    await wrapper.get('[data-testid="project-tab-deliverables"]').trigger('click')
+
+    // 默认按阶段；切到按类型后出现 BA 需求/设计文档两个分组标签
+    expect(wrapper.get('[data-testid="deliverable-view-stage"]').text()).toContain('按阶段')
+    await wrapper.get('[data-testid="deliverable-view-type"]').trigger('click')
+    const panel = wrapper.get('[data-testid="project-deliverables"]').text()
+    expect(panel).toContain('BA 需求文档')
+    expect(panel).toContain('开发设计文档')
+    expect(panel).toContain('订单需求说明书')
+    // 类型视图下阶段带隐藏，回到阶段视图恢复
+    expect(wrapper.find('.project-stage-band').exists()).toBe(false)
+    await wrapper.get('[data-testid="deliverable-view-stage"]').trigger('click')
+    expect(wrapper.find('.project-stage-band').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="deliverable-stage-review"]').text()).toContain('1 个')
+  })
+
+  it('shows project milestones with done and overdue states', async () => {
+    harness.state.projects = [
+      {
+        ...project('商城', '进行中', ['US 登录接口']),
+        milestones: [
+          { name: '环境搭建', date: '2020-01-01', done: true },
+          { name: '需求评审通过', date: '2020-02-01', done: false },
+          { name: '一期上线', date: '2099-01-01', done: false },
+          { name: '无日期里程碑', date: '', done: false },
+        ],
+      },
+    ]
+    const { wrapper } = await renderView(
+      ProjectsView,
+      '/projects?project=Projects/商城/project.md'
+    )
+    const strip = wrapper.get('[data-testid="project-milestones"]')
+    const items = strip.findAll('li')
+    expect(items).toHaveLength(4)
+    // 已完成标绿、已过期未完成标红、无日期只按顺序展示
+    expect(items[0]!.classes()).toContain('done')
+    expect(items[1]!.classes()).toContain('overdue')
+    expect(items[2]!.classes()).not.toContain('overdue')
+    expect(items[2]!.text()).toContain('2099-01-01')
+    expect(items[3]!.text()).not.toContain('20')
+    expect(strip.text()).toContain('一期上线')
   })
 })
 

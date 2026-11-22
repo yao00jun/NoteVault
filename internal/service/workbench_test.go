@@ -303,3 +303,44 @@ func TestWorkbenchBookReviewCountsDoNotMatchUnrelatedWordFragments(t *testing.T)
 		t.Fatalf("MongoDB is not a Go review merely because its name contains 'go': %#v", snapshot.Books[0])
 	}
 }
+
+func TestWorkbenchSnapshotProjectMilestones(t *testing.T) {
+	root := t.TempDir()
+	workbenchWrite(t, root, "Projects/转型/project.md", "---\nname: AI 转型\nmilestones:\n  - \"[ ] 第 4 周 demo #due/2026-12-20\"\n  - \"[x] 环境搭建 #due/2026-11-20\"\n  - \"[ ] 无日期里程碑\"\n  - \"普通文本项\"\n---\n# AI 转型\n")
+	workbenchWrite(t, root, "Projects/干净/project.md", "---\nname: 干净项目\n---\n")
+	snapshot := workbenchSnapshot(t, NewTodoService(), root, "2026-11-23")
+
+	var found *WorkbenchProject
+	var clean *WorkbenchProject
+	for i := range snapshot.Projects {
+		switch snapshot.Projects[i].Name {
+		case "AI 转型":
+			found = &snapshot.Projects[i]
+		case "干净项目":
+			clean = &snapshot.Projects[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("AI 转型 project should be projected")
+	}
+	if clean == nil || len(clean.Milestones) != 0 {
+		t.Fatalf("project without milestones should have an empty list, got %+v", clean)
+	}
+
+	ms := found.Milestones
+	if len(ms) != 4 {
+		t.Fatalf("expected 4 milestones, got %d: %+v", len(ms), ms)
+	}
+	if ms[0].Name != "第 4 周 demo" || ms[0].Date != "2026-12-20" || ms[0].Done {
+		t.Fatalf("unexpected first milestone: %+v", ms[0])
+	}
+	if !ms[1].Done || ms[1].Name != "环境搭建" || ms[1].Date != "2026-11-20" {
+		t.Fatalf("unexpected completed milestone: %+v", ms[1])
+	}
+	if ms[2].Done || ms[2].Date != "" || ms[2].Name != "无日期里程碑" {
+		t.Fatalf("unexpected undated milestone: %+v", ms[2])
+	}
+	if ms[3].Name != "普通文本项" || ms[3].Date != "" || ms[3].Done {
+		t.Fatalf("unexpected plain milestone: %+v", ms[3])
+	}
+}

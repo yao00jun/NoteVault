@@ -1273,6 +1273,22 @@ export interface WorkbenchDocument {
     "modifiedAt": string;
 }
 
+/**
+ * WorkbenchMilestone 是单个里程碑。frontmatter 列表项约定：
+ *   - [ ] 里程碑名称 #due/2027-01-24
+ * 
+ * 前缀 [x] 表示已完成；日期可省略（无日期的里程碑只按文档顺序展示）。
+ */
+export interface WorkbenchMilestone {
+    "name": string;
+
+    /**
+     * YYYY-MM-DD；未标注 #due/ 时为空串
+     */
+    "date": string;
+    "done": boolean;
+}
+
 export interface WorkbenchProgress {
     "id": string;
     "taskId": string;
@@ -1296,6 +1312,11 @@ export interface WorkbenchProject {
     "taskIds": string[] | null;
     "notes": WorkbenchDocument[] | null;
     "deliverables": WorkbenchDeliverable[] | null;
+
+    /**
+     * Milestones 是 project.md frontmatter 里的里程碑投影，按文档顺序返回。
+     */
+    "milestones": WorkbenchMilestone[] | null;
 
     /**
      * Retrospective 是复盘文件路径；未生成复盘时为空串。

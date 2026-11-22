@@ -58,6 +58,13 @@ export interface WorkbenchDeliverable {
   modifiedAt: string
 }
 
+/** project.md frontmatter milestones 列表项的投影（- [x] 名称 #due/日期） */
+export interface WorkbenchMilestone {
+  name: string
+  date: string
+  done: boolean
+}
+
 export interface WorkbenchProject {
   name: string
   path: string
@@ -71,6 +78,7 @@ export interface WorkbenchProject {
   taskIds: string[]
   notes: WorkbenchDocument[]
   deliverables?: WorkbenchDeliverable[]
+  milestones?: WorkbenchMilestone[]
   retrospective?: string
   modifiedAt: string
 }

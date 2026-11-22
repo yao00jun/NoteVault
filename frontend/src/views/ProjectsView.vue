@@ -18,6 +18,8 @@ import {
   PackageOpen,
   Pin,
   Plus,
+  Circle,
+  Flag,
   RefreshCw,
   Rocket,
   Search,
@@ -213,6 +215,8 @@ function openDocument(path: string) {
 
 const deliverableStages = ['draft', 'review', 'final', 'other'] as const
 const deliverableStageFilter = ref<'all' | (typeof deliverableStages)[number]>('all')
+// 交付物分组维度：默认按阶段（初稿→成稿→发布），可切换按类型（BA 需求/设计文档/…）
+const deliverableViewMode = ref<'stage' | 'type'>('stage')
 
 function normalizeDeliverableStage(stage: string): string {
   const value = stage.trim().toLowerCase()
@@ -229,12 +233,22 @@ function deliverableTypeLabel(type: string): string {
   return label === key ? value : label
 }
 
+// 里程碑逾期判定：本地时区的当天日期（YYYY-MM-DD 字典序即时间序）
+function isOverdue(date: string): boolean {
+  if (!date) return false
+  const now = new Date()
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const dd = String(now.getDate()).padStart(2, '0')
+  return date < `${now.getFullYear()}-${mm}-${dd}`
+}
+
 // 交付物按阶段归类展示，空阶段不渲染，保持面板紧凑。
 const deliverableGroups = computed(() => {
   const project = selectedProject.value
   if (!project) return []
   return deliverableStages
     .map((stage) => ({
+      key: 'stage-' + stage,
       stage,
       label: t(`projects.deliverableStage.${stage}`),
       items: (project.deliverables ?? []).filter(
@@ -242,6 +256,21 @@ const deliverableGroups = computed(() => {
       ),
     }))
     .filter((group) => group.items.length > 0)
+})
+// 按类型分组：BA 需求文档、开发设计文档等 frontmatter type 约定
+const deliverableTypeGroups = computed(() => {
+  const project = selectedProject.value
+  if (!project) return []
+  const byType = new Map<string, WorkbenchDeliverable[]>()
+  for (const item of project.deliverables ?? []) {
+    const type = (item.type || 'other').trim().toLowerCase() || 'other'
+    const list = byType.get(type)
+    if (list) list.push(item)
+    else byType.set(type, [item])
+  }
+  return [...byType.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([type, items]) => ({ key: 'type-' + type, label: deliverableTypeLabel(type), items }))
 })
 // 阶段带：草稿 → 成稿 → 发布，标出每个阶段已有多少产出，点击只看该阶段。
 const deliverableStageSteps = computed(() => {
@@ -259,11 +288,14 @@ const deliverableStageSteps = computed(() => {
       count: counts.get(stage) ?? 0,
     }))
 })
-const visibleDeliverableGroups = computed(() =>
-  deliverableStageFilter.value === 'all'
+const visibleDeliverableGroups = computed(() => {
+  if (deliverableViewMode.value === 'type') {
+    return deliverableTypeGroups.value
+  }
+  return deliverableStageFilter.value === 'all'
     ? deliverableGroups.value
     : deliverableGroups.value.filter((group) => group.stage === deliverableStageFilter.value)
-)
+})
 watch(
   () => selectedProject.value?.path,
   () => {
@@ -458,6 +490,32 @@ watch(
             <p class="project-context-line">
               <strong>{{ t('projects.nextStepLabel') }}</strong>{{ selectedProject.nextStep || t('projects.nextStepEmpty') }}
             </p>
+            <ul
+              v-if="selectedProject.milestones?.length"
+              class="project-milestones"
+              :aria-label="t('projects.milestonesLabel')"
+              data-testid="project-milestones"
+            >
+              <li
+                v-for="(milestone, index) in selectedProject.milestones"
+                :key="index"
+                :class="{ done: milestone.done, overdue: !milestone.done && isOverdue(milestone.date) }"
+              >
+                <CheckCircle2
+                  v-if="milestone.done"
+                  :size="13"
+                />
+                <Circle
+                  v-else
+                  :size="13"
+                />
+                <span class="pm-name">{{ milestone.name }}</span>
+                <span
+                  v-if="milestone.date"
+                  class="pm-date"
+                >{{ milestone.date }}</span>
+              </li>
+            </ul>
             <p
               v-if="selectedProject.coreQuestion"
               class="project-context-line"
@@ -895,7 +953,28 @@ watch(
                 {{ t('projects.openDeliverablesFolder') }} <ArrowUpRight :size="14" />
               </button>
             </div>
+            <div class="deliverable-view-toggle">
+              <button
+                class="collection-button subtle"
+                :class="{ active: deliverableViewMode === 'stage' }"
+                type="button"
+                data-testid="deliverable-view-stage"
+                @click="deliverableViewMode = 'stage'"
+              >
+                <Layers :size="14" /> {{ t('projects.groupbyStage') }}
+              </button>
+              <button
+                class="collection-button subtle"
+                :class="{ active: deliverableViewMode === 'type' }"
+                type="button"
+                data-testid="deliverable-view-type"
+                @click="deliverableViewMode = 'type'"
+              >
+                <FileText :size="14" /> {{ t('projects.groupbyType') }}
+              </button>
+            </div>
             <ol
+              v-if="deliverableViewMode === 'stage'"
               class="project-stage-band"
               :aria-label="t('projects.stageBandAria')"
             >
@@ -932,7 +1011,7 @@ watch(
               </li>
             </ol>
             <button
-              v-if="deliverableStageFilter !== 'all'"
+              v-if="deliverableViewMode === 'stage' && deliverableStageFilter !== 'all'"
               class="collection-button subtle project-stage-reset"
               type="button"
               data-testid="deliverable-stage-reset"
@@ -947,7 +1026,7 @@ watch(
             >
               <div
                 v-for="group in visibleDeliverableGroups"
-                :key="group.stage"
+                :key="group.key"
                 class="project-deliverable-group"
               >
                 <h3 class="project-deliverable-group-head">
@@ -1369,6 +1448,45 @@ watch(
   font-size: 13px;
   line-height: 1.6;
   overflow-wrap: anywhere;
+}
+.project-milestones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.project-milestones li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.project-milestones li.done {
+  color: var(--success, #22c55e);
+  border-color: color-mix(in srgb, var(--success, #22c55e) 40%, var(--border));
+}
+.project-milestones li.overdue {
+  color: var(--danger, #ef4444);
+  border-color: color-mix(in srgb, var(--danger, #ef4444) 40%, var(--border));
+}
+.project-milestones .pm-date {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.deliverable-view-toggle {
+  display: flex;
+  gap: 8px;
+}
+.deliverable-view-toggle .collection-button.active {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 .project-context-line strong {
   margin-right: 8px;
