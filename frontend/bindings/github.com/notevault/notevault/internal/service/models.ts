@@ -874,6 +874,35 @@ export interface ReviewResult {
 }
 
 /**
+ * RoadmapProgress 是一份路径文档的完整投影。
+ */
+export interface RoadmapProgress {
+    "path": string;
+    "title": string;
+    "goal": string;
+    "deadline": string;
+    "weeklyHours": string;
+    "tracks": RoadmapTrack[] | null;
+    "total": number;
+    "done": number;
+    "percent": number;
+    "totalHours": number;
+    "doneHours": number;
+}
+
+/**
+ * RoadmapTrack 是路径文档中一个分轨的进度投影。
+ */
+export interface RoadmapTrack {
+    "name": string;
+    "total": number;
+    "done": number;
+    "percent": number;
+    "totalHours": number;
+    "doneHours": number;
+}
+
+/**
  * SearchIndexStats 描述索引的覆盖情况，供状态栏提示（P0-5）
  */
 export interface SearchIndexStats {

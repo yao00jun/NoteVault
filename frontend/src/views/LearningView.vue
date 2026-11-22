@@ -18,13 +18,14 @@ import {
   Pin,
   Radar,
   RefreshCw,
+  Route,
   Search,
   Sparkles,
   Star,
   Terminal,
 } from '@lucide/vue'
 import type { InterviewCard, WorkbenchBook } from '@/api/workbench'
-import { AppService } from '@/api'
+import { AppService, RoadmapService, type RoadmapProgress } from '@/api'
 import InterviewReview from '@/components/workbench/InterviewReview.vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -49,6 +50,7 @@ const tabs = [
   { id: 'review', icon: Brain },
   { id: 'weak', icon: Star },
   { id: 'radar', icon: Radar },
+  { id: 'roadmap', icon: Route },
 ]
 const activeTab = computed(() =>
   tabs.some((tab) => tab.id === route.query.tab) ? String(route.query.tab) : 'books'
@@ -61,6 +63,35 @@ const selectedBook = computed(() =>
     : undefined
 )
 const weakCards = computed(() => workbench.cards.filter((card) => card.weak))
+
+// --- 路径进度投影（Learning 顶层 kind: roadmap 文档 → 完成度/分轨/节奏）---
+const roadmaps = ref<RoadmapProgress[]>([])
+const roadmapsLoading = ref(false)
+const roadmapsError = ref('')
+
+async function loadRoadmaps() {
+  const ws = workspace.currentWorkspace
+  if (!ws?.path) {
+    roadmaps.value = []
+    return
+  }
+  roadmapsLoading.value = true
+  roadmapsError.value = ''
+  try {
+    roadmaps.value = ((await RoadmapService.GetRoadmapProgress(ws.path)) as RoadmapProgress[] | null) ?? []
+  } catch (cause) {
+    roadmapsError.value = (cause as Error).message
+  } finally {
+    roadmapsLoading.value = false
+  }
+}
+watch(
+  () => [workspace.currentWorkspace?.path, activeTab.value],
+  () => {
+    if (activeTab.value === 'roadmap') void loadRoadmaps()
+  },
+  { immediate: true }, // 挂载时若已在路径页签也要加载
+)
 const noteCount = computed(() => workbench.books.reduce((sum, book) => sum + book.noteCount, 0))
 const reviewTarget = computed(() => Math.min(5, workbench.reviewTarget))
 const reviewedCount = computed(() => Math.min(reviewTarget.value, workbench.reviewedToday))
@@ -760,6 +791,85 @@ watch(
             </div>
           </section>
           <section
+            v-else-if="activeTab === 'roadmap'"
+            data-testid="roadmap-progress"
+          >
+            <div class="collection-section-title">
+              <h2><Route :size="17" /> {{ t('learning.roadmapTitle') }}</h2>
+              <button
+                class="collection-button"
+                type="button"
+                @click="loadRoadmaps"
+              >
+                <RefreshCw :size="14" /> {{ t('learning.roadmapRefresh') }}
+              </button>
+            </div>
+            <p class="learning-section-intro">
+              {{ t('learning.roadmapIntro') }}
+            </p>
+            <p
+              v-if="roadmapsError"
+              class="learning-error"
+              role="alert"
+            >
+              {{ roadmapsError }}
+            </p>
+            <p
+              v-else-if="roadmapsLoading"
+              class="learning-section-intro"
+              role="status"
+            >
+              {{ t('common.loading') }}
+            </p>
+            <div
+              v-else-if="!roadmaps.length"
+              class="collection-empty"
+            >
+              {{ t('learning.roadmapEmpty') }}
+            </div>
+            <div
+              v-for="rm in roadmaps"
+              v-else
+              :key="rm.path"
+              class="roadmap-card"
+              :data-testid="'roadmap-card-' + rm.path"
+            >
+              <header class="roadmap-head">
+                <h3>{{ rm.title }}</h3>
+                <span class="roadmap-percent">{{ rm.percent }}%</span>
+              </header>
+              <p
+                v-if="rm.goal"
+                class="roadmap-goal"
+              >
+                {{ rm.goal }}
+              </p>
+              <div class="roadmap-track">
+                <div class="roadmap-track-fill" :style="{ width: rm.percent + '%' }" />
+              </div>
+              <p class="roadmap-meta">
+                <span v-if="rm.deadline"> {{ t('learning.roadmapDeadline') }} {{ rm.deadline }} ·</span>
+                <span v-if="rm.weeklyHours"> {{ t('learning.roadmapWeeklyHours', { hours: rm.weeklyHours }) }} ·</span>
+                {{ t('learning.roadmapHours', { done: rm.doneHours, total: rm.totalHours }) }}
+              </p>
+              <div
+                v-for="track in rm.tracks"
+                :key="track.name"
+                class="roadmap-track-row"
+              >
+                <span class="roadmap-track-name">{{ track.name }}</span>
+                <span class="roadmap-track-count">{{ track.done }}/{{ track.total }}</span>
+                <div class="roadmap-track">
+                  <div class="roadmap-track-fill" :style="{ width: track.percent + '%' }" />
+                </div>
+                <span
+                  v-if="track.totalHours"
+                  class="roadmap-track-hours"
+                >{{ t('learning.roadmapHours', { done: track.doneHours, total: track.totalHours }) }}</span>
+              </div>
+            </div>
+          </section>
+          <section
             v-else
             data-testid="technology-radar"
           >
@@ -1316,4 +1426,20 @@ watch(
     padding-left: 26px;
   }
 }
+</style>
+<style scoped>
+/* 路径进度卡片 */
+.roadmap-card { display: grid; gap: 10px; max-width: 820px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); margin-bottom: 16px; }
+.roadmap-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.roadmap-head h3 { margin: 0; font-size: 15px; color: var(--text-primary); }
+.roadmap-percent { font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 600; color: var(--accent); }
+.roadmap-goal { margin: 0; font-size: 12px; color: var(--text-secondary); }
+.roadmap-meta { margin: 0; font-size: 11px; color: var(--text-muted); }
+.roadmap-track { height: 6px; border-radius: 3px; background: var(--bg-input); overflow: hidden; }
+.roadmap-track-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.2s ease; }
+.roadmap-track-row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-secondary); }
+.roadmap-track-name { flex-shrink: 0; width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.roadmap-track-count { font-variant-numeric: tabular-nums; color: var(--text-muted); flex-shrink: 0; }
+.roadmap-track-row .roadmap-track { flex: 1; }
+.roadmap-track-hours { font-variant-numeric: tabular-nums; font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
 </style>

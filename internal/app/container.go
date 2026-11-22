@@ -68,6 +68,7 @@ type Container struct {
 	Git          *service.GitService
 	Templates    *service.TemplateService
 	Outlook      *service.OutlookService
+	Roadmap      *service.RoadmapService
 	ErrorMonitor *monitor.ErrorMonitor
 	Plugin       *plugin.PluginService
 	Clipper      *service.ClipperService
@@ -140,6 +141,7 @@ func NewContainer(cfg ContainerConfig) *Container {
 		Git:          service.NewGitService(),
 		Templates:    service.NewTemplateService(fileService),
 		Outlook:      service.NewOutlookService(),
+		Roadmap:      service.NewRoadmapService(),
 		Compile:      compileService,
 		Report:       service.NewReportServiceWithTasks(fileService, todoService, taskService),
 		Review:       service.NewReviewService(fileService, service.NewSummarizeService(), reminderService),
@@ -200,6 +202,7 @@ func (c *Container) WailsServices() []application.Service {
 		application.NewService(c.Git),
 		application.NewService(c.Templates),
 		application.NewService(c.Outlook),
+		application.NewService(c.Roadmap),
 		application.NewService(c.ErrorMonitor),
 		application.NewService(c.Plugin),
 		application.NewService(c.Clipper),

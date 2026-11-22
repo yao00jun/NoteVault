@@ -17,6 +17,7 @@ import * as QnAService from "./qnaservice.js";
 import * as ReminderService from "./reminderservice.js";
 import * as ReportService from "./reportservice.js";
 import * as ReviewService from "./reviewservice.js";
+import * as RoadmapService from "./roadmapservice.js";
 import * as SearchService from "./searchservice.js";
 import * as SnapshotService from "./snapshotservice.js";
 import * as StatsService from "./statsservice.js";
@@ -44,6 +45,7 @@ export {
     ReminderService,
     ReportService,
     ReviewService,
+    RoadmapService,
     SearchService,
     SnapshotService,
     StatsService,
@@ -106,6 +108,8 @@ export type {
     RerankConfig,
     RerankProbeResult,
     ReviewResult,
+    RoadmapProgress,
+    RoadmapTrack,
     SearchIndexStats,
     SearchResult,
     Snapshot,
