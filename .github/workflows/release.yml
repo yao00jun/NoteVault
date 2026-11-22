@@ -173,9 +173,8 @@ jobs:
               tar -czf "release/notevault-${VERSION}-linux-amd64.tar.gz" -C bin notevault notevault-mcp
               cp bin/*.deb "release/notevault-${VERSION}-linux-amd64.deb"
               cp bin/*.rpm "release/notevault-${VERSION}-linux-amd64.rpm"
-              # AppImage 的落盘位置视 wails3 generate appimage 的实现而定，双路径兜底
-              cp "$(ls bin/notevault.AppImage build/linux/appimage/notevault.AppImage 2>/dev/null | head -1)" \
-                "release/notevault-${VERSION}-linux-amd64.AppImage"
+              # AppImage 名为 <name>-<arch>.AppImage（wails3 generate appimage 输出约定）
+              cp bin/notevault*.AppImage "release/notevault-${VERSION}-linux-amd64.AppImage"
               ;;
           esac
           ls -lh release
