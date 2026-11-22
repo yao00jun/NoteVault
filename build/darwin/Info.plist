@@ -6,13 +6,14 @@
         <key>CFBundleName</key>
             <string>NoteVault</string>
         <key>CFBundleExecutable</key>
-            <string>notevault.exe</string>
+            <string>notevault</string>
         <key>CFBundleIdentifier</key>
             <string>com.notevault.app</string>
+        <!-- 版本是本地兜底默认值；CI（release.yml）打包前按当前 tag 覆写 -->
         <key>CFBundleVersion</key>
             <string>0.1.0</string>
         <key>CFBundleGetInfoString</key>
-            <string>This is a comment</string>
+            <string>NoteVault</string>
         <key>CFBundleShortVersionString</key>
             <string>0.1.0</string>
         <key>CFBundleIconFile</key>
@@ -24,6 +25,6 @@
         <key>NSHighResolutionCapable</key>
             <string>true</string>
         <key>NSHumanReadableCopyright</key>
-            <string>© 2026, My Company</string>
+            <string>© 2026 NoteVault</string>
     </dict>
 </plist>

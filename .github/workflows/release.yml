@@ -1,7 +1,7 @@
 name: Release
 
 # 触发：推送 vX.Y.Z tag（或手动指定已有 tag 重跑）。
-# 产物：Windows 安装包 + 裸 exe、macOS dmg、Linux tar.gz/deb/rpm/AppImage，全部挂到 GitHub Release。
+# 产物：Windows 安装包 + 裸 exe、macOS dmg、Linux tar.gz/deb/rpm/aur/AppImage，全部挂到 GitHub Release。
 #
 # 与本地 `wails3 task release VERSION=vX.Y.Z` 的关系：
 #   本地脚本负责「构建 → 冒烟 → 推送 → 建 Release」；
@@ -123,6 +123,12 @@ jobs:
         # ARCH 经 CLI 全局变量透传到 build:native 的 GOARCH（与 VERSION 同机制）；
         # MCP 是零 CGO 纯 Go 二进制，直接交叉编译出对应架构
         run: |
+          # Info.plist 里的版本号（CFBundleVersion / CFBundleShortVersionString）
+          # 是本地兜底默认值，CI 按 tag 覆写，dmg 内应用版本与 Release 一致
+          plist_ver="${VERSION#v}"
+          sed -i -e "/CFBundleVersion/{n; s|<string>.*</string>|<string>$plist_ver</string>|;}" \
+                 -e "/CFBundleShortVersionString/{n; s|<string>.*</string>|<string>$plist_ver</string>|;}" \
+                 build/darwin/Info.plist
           wails3 task darwin:package:dmg VERSION="$VERSION" ARCH="${{ matrix.arch }}"
           GOARCH="${{ matrix.arch }}" wails3 task mcp:build
 
@@ -143,6 +149,7 @@ jobs:
           # 三个打包任务各自依赖 build：go build 有缓存，多跑几次只是重复 vite 构建
           wails3 task linux:create:deb
           wails3 task linux:create:rpm
+          wails3 task linux:create:aur
           wails3 task linux:create:appimage
 
       # 统一产物命名，并把 MCP 二进制一并打包（它不在安装包里）
@@ -173,6 +180,8 @@ jobs:
               tar -czf "release/notevault-${VERSION}-linux-amd64.tar.gz" -C bin notevault notevault-mcp
               cp bin/*.deb "release/notevault-${VERSION}-linux-amd64.deb"
               cp bin/*.rpm "release/notevault-${VERSION}-linux-amd64.rpm"
+              # aur：pacman -U 可直接安装的二进制包（.pkg.tar.zst）
+              cp bin/*.pkg.tar.zst "release/notevault-${VERSION}-linux-amd64.pkg.tar.zst"
               # AppImage 名为 <name>-<arch>.AppImage（wails3 generate appimage 输出约定）
               cp bin/notevault*.AppImage "release/notevault-${VERSION}-linux-amd64.AppImage"
               ;;
