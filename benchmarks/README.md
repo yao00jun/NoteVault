@@ -1,8 +1,20 @@
 # 性能基线与回归门禁
 
 这个目录放性能基准的基线数据。CI 的 `Performance Benchmarks` job 拿本次测量与
-`baseline.txt` 对比，超出容忍度才失败——目的是让「某次重构把 1ms 变 10ms」在合并前暴露，
+对应平台的基线对比，超出容忍度才失败——目的是让「某次重构把 1ms 变 10ms」在合并前暴露，
 而不是等用户反馈卡顿。
+
+**基线按平台分文件，不可混用**：
+
+| 文件 | 平台 | 谁在用 |
+| :--- | :--- | :--- |
+| `baseline.txt` | Windows 11 / Ryzen 5 7500F | 本地开发 |
+| `baseline-linux.txt` | ubuntu-latest / Xeon Platinum 8573C（4 核） | CI 门禁 |
+
+同一份代码在两平台上的比值落在 **0.02x ~ 2.16x** 之间（不是单向的「谁快」）：
+`BenchmarkHybridSearch/*` 在 Windows 基线上偏高（`b.N` 小、含首次惰性初始化），
+而 `BenchmarkSnapshotDiff/identical`、`BenchmarkSearch/bm25/5000/*` 在 Linux 上反而慢近 2 倍。
+跨平台硬比时 3 倍阈值永远打不到，门禁会亮绿灯却没在拦任何东西——所以各用各的。
 
 ## 一条命令
 
@@ -12,6 +24,7 @@ go test ./internal/service/ -run '^$' \
   -bench '^(BenchmarkTokenize|BenchmarkIndex|BenchmarkSearch|BenchmarkHybridSearch|BenchmarkSnapshot)' \
   -benchmem -count=3 | tee bench.txt
 
+# 本地用本平台基线；CI 用 baseline-linux.txt
 go run ./scripts/benchcheck -baseline benchmarks/baseline.txt -current bench.txt
 ```
 
@@ -44,24 +57,21 @@ go run ./scripts/benchcheck -baseline benchmarks/baseline.txt -current bench.txt
 
 - **跨平台只判耗时**。内存指标只在同一操作系统内可比：Windows 的系统调用包装层
   （UTF-16 路径转换等）比 Linux 多几次分配，文件类基准硬比必然误红。
-  基线是 Windows 产的、CI 跑 Linux 时，`benchcheck` 会打印提示并只对耗时判定。
-  用一次 CI 产物刷新基线后自动升级为全严格。
+  基线平台与当前平台不一致时，`benchcheck` 会打印提示并只对耗时判定；
+  但只要按上表用对应平台的基线，正常路径不会走到这条降级逻辑。
 - **基线里没有的基准**只报告为 `NEW`，不判失败（新增基准不必同步改阈值）。
 - **当前输出里缺失的基准**给出警告但不失败——但如果是有意改名，请同步更新基线。
 
 ## 更新基线
 
-推荐从 CI 刷新（保证与门禁同平台、同核数）：
+两个文件各自的来源，别串：
 
 ```bash
-gh run download <run-id> -n benchmark-results        # 下载 bench.txt
-cp bench.txt benchmarks/baseline.txt
-```
+# CI（Linux）基线：从 CI 产物刷新，保证与门禁同平台同核数
+gh run download <run-id> -n benchmark-results        # 得到 bench.txt
+cp bench.txt benchmarks/baseline-linux.txt
 
-本地刷新（跨平台时内存指标会退化为「只报告」）：
-
-```bash
-pnpm --version >/dev/null 2>&1 || true
+# 本机（Windows）基线：本地跑，产出直接落盘
 go test ./internal/service/ -run '^$' \
   -bench '^(BenchmarkTokenize|BenchmarkIndex|BenchmarkSearch|BenchmarkHybridSearch|BenchmarkSnapshot)' \
   -benchmem -count=3 > benchmarks/baseline.txt
@@ -71,12 +81,24 @@ go test ./internal/service/ -run '^$' \
 
 - 生成基线时**不要同时跑构建/测试**，否则 CPU 争抢会把基线抬高，门禁等于被放宽。
 - 测的是「取最小值」，所以单次抖动不会污染基线；但如果机器一直在降频（笔记本省电模式），
-  基线会整体偏高——换机器刷新时留意 `cpu:` 表头行。
+  基线会整体偏高——换机器刷新时留意 `cpu:` 表头行（CI runner 是 4 核，本机 6C12T，
+  `-4`/`-12` 后缀就是 GOMAXPROCS，跑并行基准时也会影响结果）。
 
 ## 基线数据
 
-测量环境：Windows 11 / AMD Ryzen 5 7500F（6C12T）/ Go 1.27.4，`-count=3` 取最小值。
-绝对数字换台机器会变，**可比的是基线与当前之间的比值**。
+以下各表是本机（Windows 11 / AMD Ryzen 5 7500F 6C12T / Go 1.27.4，`-count=3` 取最小值）。
+绝对数字换台机器会变，**可比的是同一平台内基线与当前之间的比值**。
+
+同一份代码在 CI 的 Linux runner（Xeon Platinum 8573C，4 核）上的量级，供对照——
+注意 `-4` 后缀是 GOMAXPROCS=4，且慢于 1s 的基准会退化成 `b.N=1`（见下文混合检索）：
+
+| 场景 | Windows（本机） | Linux（CI） | 备注 |
+| :--- | ---: | ---: | :--- |
+| 建索引 5000 篇 | 5.62 s（1.12 ms/篇） | 1.52 s（0.30 ms/篇） | 分配量完全一致（720MB / 8.49M allocs），差异全在 CPU |
+| 摘要重载 5000 篇 | 205 ms | 214 ms | 两平台接近，Gob 解码不吃 CPU 特性 |
+| `bm25/5000/common` | 2.1 ms | 3.83 ms | Linux 反而慢 1.9 倍 |
+| `bm25/5000/rare` | 0.5 µs | 1.08 µs | 同上 |
+| `hybrid/5000/common` | 1.05 s（`b.N=1`） | 56 ms（`b.N=20`） | 见下 |
 
 ### 检索内核（5000 篇，纯内存，无 walk）
 
@@ -109,7 +131,11 @@ go test ./internal/service/ -run '^$' \
 
 | 场景 | ns/op | 备注 |
 | :--- | ---: | :--- |
-| `hybrid/5000/*` | 约 1.03–1.08 s | 分配 12–14 MB/次；`b.N=1`，含首次调用的惰性成本，待专项复核 |
+| `hybrid/5000/*`（本机） | 约 1.03–1.08 s | **`b.N=1`**：单次调用就超过 `-benchtime` 默认的 1s，`testing.B` 无法再折算出稳态值；71.7K allocs 里含首次惰性成本 |
+| `hybrid/5000/*`（CI） | 45–57 ms | `b.N≈20`，51.2K allocs = 稳态。与上行的差额是「首次调用 vs 稳态」，不是平台差异 |
+
+结论：**「混合检索要 1 秒」是测量口径造成的假象**。想看稳态必须让 `b.N ≥ 3`，
+在慢机上就显式 `-benchtime=10x`（跑 10 次而不是按时间），否则永远只得一次冷调用。
 
 ### 快照
 
@@ -179,4 +205,4 @@ NV_STRESS_TEST=1 go test ./internal/service/ -run TestStressIndexLargeVault -v -
 | 降低建索引的分配量 | 722MB / 5000 篇 = 144KB/篇，8.5M 次分配；预分配 token 切片与复用缓冲区可直接砍掉大头 |
 | 摘要加载提速 | 5000 篇 205ms / 136MB，20000 篇 944ms；Gob 是同步阻塞的，可考虑并行解码或分片加载 |
 | 全链路 Search 避免重复 walk | 冷路径 P50 400ms，其中 walk 占绝大多数；可对「无 watcher 的只读查询」加短 TTL 的扫描结果缓存 |
-| 混合检索 1s/次复核 | `b.N=1` 的数字可能含首次惰性成本（向量库加载），先用 `b.N>=3` 的基准把稳态与首次拆开 |
+| 混合检索 1s/次复核 | ✅ 已复核：不是真实延迟。本机 1.05s 是 `b.N=1` 的单次冷调用（含向量库惰性初始化，71.7K allocs）；CI 上 `b.N≈20` 的稳态是 56ms / 51.2K allocs。要复现稳态，在慢机上用 `-benchtime=10x` |

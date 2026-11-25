@@ -154,11 +154,17 @@ jobs:
           path: frontend/test-results/
           retention-days: 7
 
-  # 性能回归门禁：基准与 benchmarks/baseline.txt 对比，超容忍度才失败。
+  # 性能回归门禁：基准与对应平台的基线对比，超容忍度才失败。
   #
   # 托管 runner 的计时抖动很大，窄阈值必然误红，而误红的门禁很快就会被关掉。
   # 所以只拦「算法级」退化：耗时取 3 次测量的最小值、阈值 3 倍；内存指标更紧。
   # 阈值、平台差异的处理与基线更新方法见 scripts/benchcheck/main.go 与 benchmarks/README.md。
+  #
+  # 基线按平台分开：本机（windows）用 baseline.txt，CI（linux）用 baseline-linux.txt。
+  # 两者不可混用：同一份代码跨平台比出来的比值不是「谁快谁慢」而是噪声——
+  # 实测最大 0.02x（windows 基线里 BenchmarkHybridSearch 的 b.N 小、含惰性初始化），
+  # 反向也有 2.16x（BenchmarkSnapshotDiff/identical 在 linux 上反而更慢）。
+  # 拿 windows 基线卡 linux，阈值永远打不到，等于门禁亮绿灯却没在拦东西。
   bench:
     name: Performance Benchmarks
     runs-on: ubuntu-latest
@@ -178,7 +184,7 @@ jobs:
             -bench '^(BenchmarkTokenize|BenchmarkIndex|BenchmarkSearch|BenchmarkHybridSearch|BenchmarkSnapshot)' \
             -benchmem -count=3 -timeout 15m | tee bench.txt
       - name: Compare against baseline
-        run: go run ./scripts/benchcheck -baseline benchmarks/baseline.txt -current bench.txt -markdown "$GITHUB_STEP_SUMMARY"
+        run: go run ./scripts/benchcheck -baseline benchmarks/baseline-linux.txt -current bench.txt -markdown "$GITHUB_STEP_SUMMARY"
       # 原始输出留档：对比表在 job summary 里；想刷新基线时下载这个文件即可
       - name: Upload benchmark output
         if: ${{ always() }}
