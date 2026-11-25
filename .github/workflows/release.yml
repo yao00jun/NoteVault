@@ -170,8 +170,10 @@ jobs:
           if [ -f "$app.exe" ]; then app="$app.exe"; fi
           if [ -f "$mcp.exe" ]; then mcp="$mcp.exe"; fi
 
-          if ! grep -qaF "$VERSION" "$app"; then
-            echo "::error file=$app::客户端二进制未嵌入 $VERSION（deps 重跑覆盖了注入？）"
+          # 变量一律用 ${} 界定：macOS 自带 bash 3.2 在 C locale 下会把紧跟的
+          # UTF-8 字节（如「（」）并进变量名，set -u 下直接报 unbound variable。
+          if ! grep -qaF "${VERSION}" "$app"; then
+            echo "::error file=${app}::客户端二进制未嵌入 ${VERSION}（deps 重跑覆盖了注入？）"
             exit 1
           fi
 
@@ -179,12 +181,12 @@ jobs:
           mkdir -p "$ws"
           printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"ci","version":"1"}}}' \
             | "$mcp" --workspace "$ws" > "$RUNNER_TEMP/init.json"
-          if ! grep -qF "\"version\":\"$VERSION\"" "$RUNNER_TEMP/init.json"; then
-            echo "::error file=$mcp::MCP 自报版本与 $VERSION 不一致"
+          if ! grep -qF "\"version\":\"${VERSION}\"" "$RUNNER_TEMP/init.json"; then
+            echo "::error file=${mcp}::MCP 自报版本与 ${VERSION} 不一致"
             cat "$RUNNER_TEMP/init.json"
             exit 1
           fi
-          echo "version ok: $VERSION（客户端 + MCP）"
+          echo "version ok: ${VERSION}（客户端 + MCP）"
 
       # 统一产物命名，并把 MCP 二进制一并打包（它不在安装包里）
       - name: Collect release assets
