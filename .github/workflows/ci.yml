@@ -153,3 +153,37 @@ jobs:
           name: playwright-test-results
           path: frontend/test-results/
           retention-days: 7
+
+  # 性能回归门禁：基准与 benchmarks/baseline.txt 对比，超容忍度才失败。
+  #
+  # 托管 runner 的计时抖动很大，窄阈值必然误红，而误红的门禁很快就会被关掉。
+  # 所以只拦「算法级」退化：耗时取 3 次测量的最小值、阈值 3 倍；内存指标更紧。
+  # 阈值、平台差异的处理与基线更新方法见 scripts/benchcheck/main.go 与 benchmarks/README.md。
+  bench:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: true
+      # internal/service 零 Wails 依赖，不需要 frontend/dist 占位，也不需要 GTK4。
+      # -count=3：benchcheck 取多次测量的最小值，比单次更抗噪。
+      # 管道开了 pipefail：基准没跑起来（编译失败等）时这一步直接失败，不会静默放过。
+      - name: Run benchmarks (3 measurements each)
+        run: |
+          go test ./internal/service/ -run '^$' \
+            -bench '^(BenchmarkTokenize|BenchmarkIndex|BenchmarkSearch|BenchmarkHybridSearch|BenchmarkSnapshot)' \
+            -benchmem -count=3 -timeout 15m | tee bench.txt
+      - name: Compare against baseline
+        run: go run ./scripts/benchcheck -baseline benchmarks/baseline.txt -current bench.txt -markdown "$GITHUB_STEP_SUMMARY"
+      # 原始输出留档：对比表在 job summary 里；想刷新基线时下载这个文件即可
+      - name: Upload benchmark output
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: bench.txt
+          retention-days: 14
