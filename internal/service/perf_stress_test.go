@@ -259,12 +259,7 @@ func stressPopulateUncapped(t *testing.T, idx *searchIndex, ws string, docs []pe
 			lastUsed:  time.Now().UnixNano(),
 		}
 		idx.mu.Lock()
-		for token := range doc.tokenFreq {
-			if idx.inverted[token] == nil {
-				idx.inverted[token] = make(map[string]bool)
-			}
-			idx.inverted[token][d.rel] = true
-		}
+		idx.addPostingsLocked(d.rel, doc.tokenFreq)
 		idx.docs[d.rel] = doc
 		idx.totalDocLen += int64(doc.docLen)
 		idx.mu.Unlock()

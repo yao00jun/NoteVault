@@ -35,7 +35,7 @@ func (s *SearchService) GetIndexStats(workspacePath string) (*SearchIndexStats, 
 	defer idx.mu.RUnlock()
 	return &SearchIndexStats{
 		DocCount:     len(idx.docs),
-		TokenCount:   len(idx.inverted),
+		TokenCount:   idx.tokenCount(),
 		ScanComplete: idx.scanComplete,
 		SkippedCount: idx.skippedOversize,
 	}, nil

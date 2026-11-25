@@ -68,7 +68,9 @@ type textRun struct {
 }
 
 func segmentRuns(s string) []textRun {
-	var runs []textRun
+	// 一段文本通常 6~10 字节一个 run（英文单词含空格、中文连续段更长），
+	// 先按 len/8 预分配，避免逐次 append 扩容。
+	runs := make([]textRun, 0, len(s)/8+4)
 	var latin strings.Builder
 	var han strings.Builder
 

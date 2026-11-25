@@ -170,7 +170,7 @@ func scoreChunks(chunks []chunk, queryTokens []string, idx *searchIndex) []score
 			if tf == 0 {
 				continue
 			}
-			df := float64(len(idx.inverted[qt]))
+			df := float64(idx.docFreq(qt))
 			idf := math.Log(1 + (n-df+0.5)/(df+0.5))
 			score += idf * (tf * (bm25K1 + 1)) / (tf + bm25K1*(1-bm25B+bm25B*dl/avgdl))
 		}
