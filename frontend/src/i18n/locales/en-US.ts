@@ -66,6 +66,17 @@ export default {
       learning: 'Tech learning and spaced repetition',
       vault: 'Documents, backlinks and graph',
     },
+    // Vault sub-navigation tree (expands while Vault is active)
+    sub: {
+      documents: 'All Documents',
+      search: 'Search',
+      qna: 'AI Q&A',
+      tags: 'Tags',
+      graph: 'Knowledge Graph',
+      bases: 'Bases',
+      canvas: 'Canvas',
+      review: 'Review',
+    },
     extended: {
       title: 'Extensions',
       discover: 'Discover (Search / Q&A / Views)',

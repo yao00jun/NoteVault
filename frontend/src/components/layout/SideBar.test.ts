@@ -104,7 +104,7 @@ describe('SideBar', () => {
     const { wrapper } = mountSideBar()
     await flushPromises()
     expect(wrapper.findAll('.nav-item').map(item => item.attributes('data-testid'))).toEqual([
-      'nav-today', 'nav-projects', 'nav-learning', 'nav-vault', 'nav-more',
+      'nav-today', 'nav-projects', 'nav-learning', 'nav-vault',
     ])
     expect(wrapper.find('[data-testid="action-new"]').text()).toContain('新建')
     expect(wrapper.find('[data-testid="action-daily"]').text()).toContain('每日工作日志')
@@ -120,17 +120,21 @@ describe('SideBar', () => {
     expect(wrapper.findAll('.sidebar-scroll .sidebar-zone')).toHaveLength(1)
   })
 
-  it('keeps long-tail pages reachable through the More menu', async () => {
+  it('expands the vault subtree on the vault section and navigates via flat routes', async () => {
     const { wrapper, router } = mountSideBar()
     await flushPromises()
-    // 扩展区不再常驻：默认不渲染任何长尾入口
-    expect(wrapper.find('[data-testid="nav-more-canvas"]').exists()).toBe(false)
+    // 非库区不渲染子树
+    expect(wrapper.find('[data-testid="sidebar-vault-subtree"]').exists()).toBe(false)
 
-    await wrapper.get('[data-testid="nav-more"]').trigger('click')
-    await nextTick()
-    expect(wrapper.findAll('[data-testid^="nav-more-"]')).toHaveLength(7)
+    await router.push('/vault')
+    await flushPromises()
+    const subtree = wrapper.get('[data-testid="sidebar-vault-subtree"]')
+    const subItems = subtree.findAll('.vault-sub-item')
+    expect(subItems).toHaveLength(8)
+    // 键缺失时 i18n 会 fallback 到键名本身，表现为整排 sidebar.sub.xxx
+    expect(subItems.map(item => item.text()).filter(t => !t || t.includes('sidebar.sub.'))).toEqual([])
 
-    await wrapper.get('[data-testid="nav-more-canvas"]').trigger('click')
+    await wrapper.get('[data-testid="nav-vault-sub-canvas"]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/canvas')
   })
@@ -237,7 +241,7 @@ describe('SideBar', () => {
     settingsStore.toggleSidebar()
     await nextTick()
     expect(wrapper.findAll('.nav-label')).toHaveLength(0)
-    expect(wrapper.findAll('.nav-item.collapsed')).toHaveLength(5)
+    expect(wrapper.findAll('.nav-item.collapsed')).toHaveLength(4)
     expect(wrapper.get('[data-testid="action-daily"]').attributes('aria-label')).toContain('每日工作日志')
     expect(wrapper.get('[data-testid="action-report"]').attributes('aria-label')).toContain('生成日报')
   })

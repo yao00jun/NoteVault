@@ -66,6 +66,17 @@ export default {
       learning: '技术学习与间隔复习',
       vault: '文档、双链与知识图谱',
     },
+    // 知识库子导航树（随「知识库」激活展开）
+    sub: {
+      documents: '所有文档',
+      search: '搜索',
+      qna: 'AI 问答',
+      tags: '标签',
+      graph: '知识图谱',
+      bases: '结构化视图',
+      canvas: '自由白板',
+      review: '回顾',
+    },
     extended: {
       title: '扩展',
       discover: '发现（搜索 / 问答 / 视图）',

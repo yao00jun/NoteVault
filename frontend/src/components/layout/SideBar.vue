@@ -15,14 +15,15 @@ import {
   BookOpen,
   FileCheck2,
   Rocket,
-  MoreHorizontal,
-  Compass,
   History,
-  Lightbulb,
   Presentation,
-  Download,
-  Puzzle,
-  Archive,
+  GitGraph,
+  Table2,
+  Search,
+  Brain,
+  Tags,
+  LayoutDashboard,
+  ListTodo,
 } from '@lucide/vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -133,7 +134,6 @@ function openSettings() {
 // 点击外部关闭工作区菜单
 function handleClickOutside(e: MouseEvent) {
   if (!(e.target as HTMLElement).closest('.new-action-menu')) newMenuOpen.value = false
-  if (!(e.target as HTMLElement).closest('.more-wrap')) moreOpen.value = false
   if (!workspaceMenuRef.value?.contains(e.target as Node)) {
     workspaceMenuOpen.value = false
     newMenuOpen.value = false
@@ -143,7 +143,6 @@ function handleClickOutside(e: MouseEvent) {
 function handleEscape(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     workspaceMenuOpen.value = false
-    moreOpen.value = false
   }
 }
 
@@ -214,22 +213,30 @@ interface NavItem {
 
 const completedToday = computed(() => workbenchStore.todayTasks.filter(task => task.completed).length)
 
-// 「更多」：长尾页面收进一个菜单，替代原先常驻的 7 行扩展区。
-// 内容与 Ctrl+K 命令面板完全一致，保证不用快捷键也能找到入口。
-const moreOpen = ref(false)
-const moreItems = computed(() => [
-  { id: 'discover', label: t('sidebar.extended.discover'), icon: Compass, route: '/discover' },
-  { id: 'review', label: t('sidebar.extended.review'), icon: History, route: '/review' },
-  { id: 'insights', label: t('sidebar.extended.insights'), icon: Lightbulb, route: '/insights' },
-  { id: 'canvas', label: t('sidebar.extended.canvas'), icon: Presentation, route: '/canvas' },
-  { id: 'import', label: t('sidebar.extended.import'), icon: Download, route: '/import' },
-  { id: 'plugins', label: t('sidebar.extended.plugins'), icon: Puzzle, route: '/plugins' },
-  { id: 'archive', label: t('sidebar.extended.archive'), icon: Archive, route: '/archive' },
+// 知识库子导航：文档浏览之外的库内工具，平铺短路由直达（随「知识库」激活展开）。
+// 长尾兜底仍由 Ctrl+K 命令面板承接，与子树内容保持一致。
+interface VaultSubItem {
+  id: string
+  label: string
+  icon: Component
+  route: string
+}
+
+const vaultSubItems = computed<VaultSubItem[]>(() => [
+  { id: 'documents', label: t('sidebar.sub.documents'), icon: FileText, route: '/vault' },
+  { id: 'search', label: t('sidebar.sub.search'), icon: Search, route: '/search' },
+  { id: 'qna', label: t('sidebar.sub.qna'), icon: Brain, route: '/qna' },
+  { id: 'tags', label: t('sidebar.sub.tags'), icon: Tags, route: '/tags' },
+  { id: 'graph', label: t('sidebar.sub.graph'), icon: GitGraph, route: '/graph' },
+  { id: 'bases', label: t('sidebar.sub.bases'), icon: Table2, route: '/bases' },
+  { id: 'canvas', label: t('sidebar.sub.canvas'), icon: Presentation, route: '/canvas' },
+  { id: 'review', label: t('sidebar.sub.review'), icon: ListTodo, route: '/review' },
 ])
 
-function openMore(path: string) {
-  moreOpen.value = false
-  void router.push(path)
+const vaultSubExpanded = computed(() => context.value.section === 'vault')
+
+function isActiveSub(item: VaultSubItem) {
+  return router.currentRoute.value.path === item.route
 }
 
 const navItems = computed<NavItem[]>(() => [
@@ -523,51 +530,29 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
               :aria-label="t('sidebar.hasBlockersAria')"
             />
           </button>
-          <div class="more-wrap">
-            <button
-              class="nav-item"
-              data-testid="nav-more"
-              :class="{ collapsed, active: moreOpen }"
-              :aria-expanded="moreOpen"
-              aria-haspopup="menu"
-              :aria-label="t('sidebar.more')"
-              :title="t('sidebar.moreTip')"
-              @click.stop="moreOpen = !moreOpen"
-            >
-              <MoreHorizontal
-                :size="16"
-                class="nav-icon"
-              />
-              <span
-                v-if="!collapsed"
-                class="nav-label"
-              >
-                <span>{{ t('sidebar.more') }}</span>
-              </span>
-            </button>
-            <div
-              v-if="moreOpen"
-              class="more-menu"
-              role="menu"
-              :aria-label="t('sidebar.more')"
-            >
-              <button
-                v-for="entry in moreItems"
-                :key="entry.id"
-                type="button"
-                role="menuitem"
-                class="more-menu-item"
-                :data-testid="`nav-more-${entry.id}`"
-                @click="openMore(entry.route)"
-              >
-                <component
-                  :is="entry.icon"
-                  :size="15"
-                />
-                <span>{{ entry.label }}</span>
-              </button>
-            </div>
-          </div>
+        </div>
+        <div
+          v-if="vaultSubExpanded && !collapsed"
+          class="vault-subtree"
+          data-testid="sidebar-vault-subtree"
+        >
+          <button
+            v-for="sub in vaultSubItems"
+            :key="sub.id"
+            type="button"
+            class="vault-sub-item"
+            :data-testid="`nav-vault-sub-${sub.id}`"
+            :class="{ active: isActiveSub(sub) }"
+            :aria-current="isActiveSub(sub) ? 'page' : undefined"
+            @click="router.push(sub.route)"
+          >
+            <component
+              :is="sub.icon"
+              :size="14"
+              class="nav-icon"
+            />
+            <span>{{ sub.label }}</span>
+          </button>
         </div>
       </nav>
     </div>
@@ -844,27 +829,17 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
   color: var(--text-muted); padding: 2px 5px; border-radius: 5px; background: var(--bg-card);
 }
 .nav-badge.has-blockers { color: var(--error, #d54c4c); background: rgba(213, 76, 76, 0.1); }
-.more-wrap { position: relative; }
-.more-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  z-index: var(--z-dropdown, 1000);
-  min-width: 158px;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
-}
-.sidebar.collapsed .more-menu { top: 0; left: calc(100% + 6px); }
-.more-menu-item {
+/* 知识库子导航树：随「知识库」激活展开，缩进层次体现从属关系 */
+.vault-subtree { display: flex; flex-direction: column; gap: 1px; padding: 2px 0 4px 22px; }
+.vault-sub-item {
   display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 7px 9px; border-radius: 4px;
-  color: var(--text-primary); font-size: 12px; text-align: left;
+  padding: 5px 8px; border-radius: 6px; border: 0; background: transparent;
+  color: var(--text-secondary); font-size: 12px; text-align: left; cursor: pointer;
 }
-.more-menu-item:hover { background: var(--bg-hover); }
-.more-menu-item svg { flex-shrink: 0; color: var(--text-muted); }
+.vault-sub-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.vault-sub-item.active { background: var(--accent-alpha, rgba(0, 122, 255, 0.1)); color: var(--accent); font-weight: 600; }
+.vault-sub-item .nav-icon { color: var(--text-muted); }
+.vault-sub-item.active .nav-icon { color: var(--accent); }
 .blocker-dot { position: absolute; top: 5px; right: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--error, #d54c4c); }
 .sidebar-footer { padding: 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
 .index-status { display: flex; align-items: center; gap: 6px; min-height: 20px; padding: 0 5px; color: var(--text-muted); font-size: 11px; }
