@@ -156,6 +156,36 @@ jobs:
           wails3 task linux:create:aur VERSION="$VERSION"
           wails3 task linux:create:appimage VERSION="$VERSION"
 
+      # 版本自检：tag → ldflags → 产物三者必须一致，且此时已跑完全部打包任务。
+      # 兜住两类「构建成功但版本错」的坑：
+      #   1) linux 的 create:* 会 deps build，漏传 VERSION 就把注入过的二进制覆盖回默认版本；
+      #   2) MCP 曾硬编码 serverInfo.version，与 tag 无关。
+      - name: Verify embedded version
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=bin/notevault
+          mcp=bin/notevault-mcp
+          # 不能用 `[ -f x ] && var=...`：在 set -e 下条件为假会整行返回 1 直接退出
+          if [ -f "$app.exe" ]; then app="$app.exe"; fi
+          if [ -f "$mcp.exe" ]; then mcp="$mcp.exe"; fi
+
+          if ! grep -qaF "$VERSION" "$app"; then
+            echo "::error file=$app::客户端二进制未嵌入 $VERSION（deps 重跑覆盖了注入？）"
+            exit 1
+          fi
+
+          ws="$RUNNER_TEMP/nv-version-check"
+          mkdir -p "$ws"
+          printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"ci","version":"1"}}}' \
+            | "$mcp" --workspace "$ws" > "$RUNNER_TEMP/init.json"
+          if ! grep -qF "\"version\":\"$VERSION\"" "$RUNNER_TEMP/init.json"; then
+            echo "::error file=$mcp::MCP 自报版本与 $VERSION 不一致"
+            cat "$RUNNER_TEMP/init.json"
+            exit 1
+          fi
+          echo "version ok: $VERSION（客户端 + MCP）"
+
       # 统一产物命名，并把 MCP 二进制一并打包（它不在安装包里）
       - name: Collect release assets
         shell: bash
