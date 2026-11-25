@@ -1,255 +1,255 @@
 goos: linux
 goarch: amd64
 pkg: github.com/notevault/notevault/internal/service
-cpu: INTEL(R) XEON(R) PLATINUM 8573C
-BenchmarkTokenizeIndex/short-zh-4         	   83662	     14585 ns/op	   7.47 MB/s	    6912 B/op	     107 allocs/op
-BenchmarkTokenizeIndex/short-zh-4         	   82288	     14563 ns/op	   7.48 MB/s	    6912 B/op	     107 allocs/op
-BenchmarkTokenizeIndex/short-zh-4         	   88402	     14405 ns/op	   7.57 MB/s	    6912 B/op	     107 allocs/op
-BenchmarkTokenizeIndex/long-zh-4          	    4774	    262672 ns/op	   8.03 MB/s	  117464 B/op	    1988 allocs/op
-BenchmarkTokenizeIndex/long-zh-4          	    4570	    265749 ns/op	   7.94 MB/s	  117464 B/op	    1988 allocs/op
-BenchmarkTokenizeIndex/long-zh-4          	    4848	    262243 ns/op	   8.04 MB/s	  117464 B/op	    1988 allocs/op
-BenchmarkTokenizeIndex/mixed-4            	    6867	    180010 ns/op	  11.39 MB/s	   86592 B/op	    1295 allocs/op
-BenchmarkTokenizeIndex/mixed-4            	    6919	    178392 ns/op	  11.50 MB/s	   86592 B/op	    1295 allocs/op
-BenchmarkTokenizeIndex/mixed-4            	    7004	    178702 ns/op	  11.48 MB/s	   86592 B/op	    1295 allocs/op
-BenchmarkTokenizeIndex/en-4               	    9682	    129239 ns/op	  16.31 MB/s	   68336 B/op	     969 allocs/op
-BenchmarkTokenizeIndex/en-4               	    9600	    134241 ns/op	  15.70 MB/s	   68336 B/op	     969 allocs/op
-BenchmarkTokenizeIndex/en-4               	    9765	    130551 ns/op	  16.15 MB/s	   68336 B/op	     969 allocs/op
-BenchmarkTokenizeBigram/short-zh-4        	  451468	      2904 ns/op	  37.53 MB/s	    2008 B/op	      34 allocs/op
-BenchmarkTokenizeBigram/short-zh-4        	  436645	      2976 ns/op	  36.62 MB/s	    2008 B/op	      34 allocs/op
-BenchmarkTokenizeBigram/short-zh-4        	  456009	      2945 ns/op	  37.01 MB/s	    2008 B/op	      34 allocs/op
-BenchmarkTokenizeBigram/long-zh-4         	   23599	     51297 ns/op	  41.11 MB/s	   34920 B/op	     557 allocs/op
-BenchmarkTokenizeBigram/long-zh-4         	   23175	     49881 ns/op	  42.28 MB/s	   34920 B/op	     557 allocs/op
-BenchmarkTokenizeBigram/long-zh-4         	   23144	     49563 ns/op	  42.55 MB/s	   34920 B/op	     557 allocs/op
-BenchmarkTokenizeBigram/mixed-4           	   26972	     43207 ns/op	  47.47 MB/s	   17744 B/op	     441 allocs/op
-BenchmarkTokenizeBigram/mixed-4           	   27422	     43081 ns/op	  47.61 MB/s	   17744 B/op	     441 allocs/op
-BenchmarkTokenizeBigram/mixed-4           	   26456	     43337 ns/op	  47.33 MB/s	   17744 B/op	     441 allocs/op
-BenchmarkTokenizeBigram/en-4              	   27951	     44180 ns/op	  47.71 MB/s	   17064 B/op	     434 allocs/op
-BenchmarkTokenizeBigram/en-4              	   25731	     44054 ns/op	  47.85 MB/s	   17064 B/op	     434 allocs/op
-BenchmarkTokenizeBigram/en-4              	   26872	     44208 ns/op	  47.68 MB/s	   17064 B/op	     434 allocs/op
-BenchmarkIndexBuild/100-4                 	      36	  31034121 ns/op	    310341 ns/doc	14552460 B/op	  175827 allocs/op
-BenchmarkIndexBuild/100-4                 	      39	  30411554 ns/op	    304115 ns/doc	14551495 B/op	  175827 allocs/op
-BenchmarkIndexBuild/100-4                 	      39	  30537357 ns/op	    305373 ns/doc	14551922 B/op	  175827 allocs/op
-BenchmarkIndexBuild/1000-4                	       4	 302510292 ns/op	    302510 ns/doc	146776894 B/op	 1713094 allocs/op
-BenchmarkIndexBuild/1000-4                	       4	 302199129 ns/op	    302199 ns/doc	146774824 B/op	 1713094 allocs/op
-BenchmarkIndexBuild/1000-4                	       4	 304254606 ns/op	    304254 ns/doc	146778976 B/op	 1713095 allocs/op
-BenchmarkIndexBuild/5000-4                	       1	1567238087 ns/op	    313447 ns/doc	720531224 B/op	 8487670 allocs/op
-BenchmarkIndexBuild/5000-4                	       1	1518597658 ns/op	    303719 ns/doc	720531064 B/op	 8487670 allocs/op
-BenchmarkIndexBuild/5000-4                	       1	1562857762 ns/op	    312571 ns/doc	720539232 B/op	 8487672 allocs/op
-BenchmarkIndexSummary/save/100-4          	     885	   1470346 ns/op	  992791 B/op	     473 allocs/op
-BenchmarkIndexSummary/save/100-4          	    1015	   1418501 ns/op	  992791 B/op	     473 allocs/op
-BenchmarkIndexSummary/save/100-4          	     973	   1353779 ns/op	  992791 B/op	     473 allocs/op
-BenchmarkIndexSummary/load/100-4          	     430	   2684957 ns/op	    106819 summary-B	 2556992 B/op	   19059 allocs/op
-BenchmarkIndexSummary/load/100-4          	     446	   2696459 ns/op	    106819 summary-B	 2556992 B/op	   19059 allocs/op
-BenchmarkIndexSummary/load/100-4          	     442	   2669279 ns/op	    106819 summary-B	 2556992 B/op	   19059 allocs/op
-BenchmarkIndexSummary/save/1000-4         	     100	  11102534 ns/op	 9901496 B/op	    4082 allocs/op
-BenchmarkIndexSummary/save/1000-4         	     100	  11363949 ns/op	 9901496 B/op	    4082 allocs/op
-BenchmarkIndexSummary/save/1000-4         	     100	  11934235 ns/op	 9901496 B/op	    4082 allocs/op
-BenchmarkIndexSummary/load/1000-4         	      37	  35082563 ns/op	   1068204 summary-B	29058138 B/op	  173837 allocs/op
-BenchmarkIndexSummary/load/1000-4         	      38	  35014475 ns/op	   1068204 summary-B	29058137 B/op	  173837 allocs/op
-BenchmarkIndexSummary/load/1000-4         	      37	  35130634 ns/op	   1068204 summary-B	29058139 B/op	  173837 allocs/op
-BenchmarkIndexSummary/save/5000-4         	      21	  59336414 ns/op	49529784 B/op	   20089 allocs/op
-BenchmarkIndexSummary/save/5000-4         	      24	  57571731 ns/op	49529784 B/op	   20089 allocs/op
-BenchmarkIndexSummary/save/5000-4         	      24	  56639014 ns/op	49529788 B/op	   20089 allocs/op
-BenchmarkIndexSummary/load/5000-4         	       6	 215088664 ns/op	   5306695 summary-B	136040144 B/op	  840207 allocs/op
-BenchmarkIndexSummary/load/5000-4         	       6	 214223054 ns/op	   5306695 summary-B	136040146 B/op	  840207 allocs/op
-BenchmarkIndexSummary/load/5000-4         	       6	 213648832 ns/op	   5306695 summary-B	136040144 B/op	  840207 allocs/op
-BenchmarkSearch/bm25/100/rare-4           	 1000000	      1075 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
-BenchmarkSearch/bm25/100/rare-4           	 1000000	      1080 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
-BenchmarkSearch/bm25/100/rare-4           	 1000000	      1069 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
-BenchmarkSearch/search/100/rare-4         	    3884	    315154 ns/op	         1.000 hits	   74136 B/op	     675 allocs/op
-BenchmarkSearch/search/100/rare-4         	    3898	    315757 ns/op	         1.000 hits	   74134 B/op	     675 allocs/op
-BenchmarkSearch/search/100/rare-4         	    3894	    318494 ns/op	         1.000 hits	   74136 B/op	     675 allocs/op
-BenchmarkSearch/bm25/100/topic-4          	  456985	      2968 ns/op	         8.000 hits	    2592 B/op	      14 allocs/op
-BenchmarkSearch/bm25/100/topic-4          	  463266	      2908 ns/op	         8.000 hits	    2592 B/op	      14 allocs/op
-BenchmarkSearch/bm25/100/topic-4          	  462087	      2903 ns/op	         8.000 hits	    2592 B/op	      14 allocs/op
-BenchmarkSearch/search/100/topic-4        	    2612	    457865 ns/op	         8.000 hits	   97257 B/op	     727 allocs/op
-BenchmarkSearch/search/100/topic-4        	    2725	    444265 ns/op	         8.000 hits	   97254 B/op	     727 allocs/op
-BenchmarkSearch/search/100/topic-4        	    2400	    461170 ns/op	         8.000 hits	   97255 B/op	     727 allocs/op
-BenchmarkSearch/bm25/100/multi-4          	  257541	      4702 ns/op	        13.00 hits	    2720 B/op	      19 allocs/op
-BenchmarkSearch/bm25/100/multi-4          	  279199	      4621 ns/op	        13.00 hits	    2720 B/op	      19 allocs/op
-BenchmarkSearch/bm25/100/multi-4          	  274543	      4660 ns/op	        13.00 hits	    2720 B/op	      19 allocs/op
-BenchmarkSearch/search/100/multi-4        	    2292	    542794 ns/op	        13.00 hits	  112131 B/op	     757 allocs/op
-BenchmarkSearch/search/100/multi-4        	    2275	    544735 ns/op	        13.00 hits	  112131 B/op	     757 allocs/op
-BenchmarkSearch/search/100/multi-4        	    2295	    543452 ns/op	        13.00 hits	  112134 B/op	     757 allocs/op
-BenchmarkSearch/bm25/100/english-4        	  788502	      1752 ns/op	         5.000 hits	    2528 B/op	      11 allocs/op
-BenchmarkSearch/bm25/100/english-4        	  816690	      1779 ns/op	         5.000 hits	    2528 B/op	      11 allocs/op
-BenchmarkSearch/bm25/100/english-4        	  820598	      1772 ns/op	         5.000 hits	    2528 B/op	      11 allocs/op
-BenchmarkSearch/search/100/english-4      	    3072	    386669 ns/op	         5.000 hits	   87264 B/op	     702 allocs/op
-BenchmarkSearch/search/100/english-4      	    2947	    388780 ns/op	         5.000 hits	   87259 B/op	     702 allocs/op
-BenchmarkSearch/search/100/english-4      	    2917	    390138 ns/op	         5.000 hits	   87264 B/op	     702 allocs/op
-BenchmarkSearch/bm25/100/common-4         	   41785	     29420 ns/op	       100.0 hits	    4896 B/op	     106 allocs/op
-BenchmarkSearch/bm25/100/common-4         	   41857	     29403 ns/op	       100.0 hits	    4896 B/op	     106 allocs/op
-BenchmarkSearch/bm25/100/common-4         	   42037	     28923 ns/op	       100.0 hits	    4896 B/op	     106 allocs/op
-BenchmarkSearch/search/100/common-4       	    1004	   1240524 ns/op	       100.0 hits	  229281 B/op	    1083 allocs/op
-BenchmarkSearch/search/100/common-4       	    1017	   1239255 ns/op	       100.0 hits	  229297 B/op	    1083 allocs/op
-BenchmarkSearch/search/100/common-4       	     997	   1237415 ns/op	       100.0 hits	  229281 B/op	    1083 allocs/op
-BenchmarkSearch/bm25/1000/rare-4          	 1000000	      1081 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
-BenchmarkSearch/bm25/1000/rare-4          	 1000000	      1074 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
-BenchmarkSearch/bm25/1000/rare-4          	 1000000	      1079 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
-BenchmarkSearch/search/1000/rare-4        	     579	   2150174 ns/op	         1.000 hits	  687548 B/op	    4346 allocs/op
-BenchmarkSearch/search/1000/rare-4        	     582	   2146168 ns/op	         1.000 hits	  687534 B/op	    4346 allocs/op
-BenchmarkSearch/search/1000/rare-4        	     572	   2127788 ns/op	         1.000 hits	  687548 B/op	    4346 allocs/op
-BenchmarkSearch/bm25/1000/topic-4         	   55771	     22442 ns/op	        72.00 hits	    4192 B/op	      78 allocs/op
-BenchmarkSearch/bm25/1000/topic-4         	   55749	     22427 ns/op	        72.00 hits	    4192 B/op	      78 allocs/op
-BenchmarkSearch/bm25/1000/topic-4         	   55694	     22518 ns/op	        72.00 hits	    4192 B/op	      78 allocs/op
-BenchmarkSearch/search/1000/topic-4       	     405	   3018992 ns/op	        72.00 hits	  826618 B/op	    4649 allocs/op
-BenchmarkSearch/search/1000/topic-4       	     414	   2997121 ns/op	        72.00 hits	  826658 B/op	    4649 allocs/op
-BenchmarkSearch/search/1000/topic-4       	     399	   3041451 ns/op	        72.00 hits	  826640 B/op	    4649 allocs/op
-BenchmarkSearch/bm25/1000/multi-4         	   29540	     43006 ns/op	       120.0 hits	   10240 B/op	     128 allocs/op
-BenchmarkSearch/bm25/1000/multi-4         	   27544	     43195 ns/op	       120.0 hits	   10240 B/op	     128 allocs/op
-BenchmarkSearch/bm25/1000/multi-4         	   29392	     42740 ns/op	       120.0 hits	   10240 B/op	     128 allocs/op
-BenchmarkSearch/search/1000/multi-4       	     374	   3076286 ns/op	       120.0 hits	  837512 B/op	    4757 allocs/op
-BenchmarkSearch/search/1000/multi-4       	     403	   3052953 ns/op	       120.0 hits	  837442 B/op	    4757 allocs/op
-BenchmarkSearch/search/1000/multi-4       	     388	   3056395 ns/op	       120.0 hits	  837487 B/op	    4757 allocs/op
-BenchmarkSearch/bm25/1000/english-4       	  117758	     10881 ns/op	        50.00 hits	    3616 B/op	      56 allocs/op
-BenchmarkSearch/bm25/1000/english-4       	  112807	     10848 ns/op	        50.00 hits	    3616 B/op	      56 allocs/op
-BenchmarkSearch/bm25/1000/english-4       	  118258	     10805 ns/op	        50.00 hits	    3616 B/op	      56 allocs/op
-BenchmarkSearch/search/1000/english-4     	     412	   2968886 ns/op	        50.00 hits	  832329 B/op	    4642 allocs/op
-BenchmarkSearch/search/1000/english-4     	     412	   2979787 ns/op	        50.00 hits	  832309 B/op	    4642 allocs/op
-BenchmarkSearch/search/1000/english-4     	     415	   2989906 ns/op	        50.00 hits	  832309 B/op	    4642 allocs/op
-BenchmarkSearch/bm25/1000/common-4        	    2571	    483320 ns/op	       200.0 hits	   96336 B/op	    1013 allocs/op
-BenchmarkSearch/bm25/1000/common-4        	    2724	    474147 ns/op	       200.0 hits	   96336 B/op	    1013 allocs/op
-BenchmarkSearch/bm25/1000/common-4        	    2544	    477093 ns/op	       200.0 hits	   96336 B/op	    1013 allocs/op
-BenchmarkSearch/search/1000/common-4      	     321	   3812076 ns/op	       200.0 hits	  939853 B/op	    5762 allocs/op
-BenchmarkSearch/search/1000/common-4      	     321	   3932106 ns/op	       200.0 hits	  939877 B/op	    5762 allocs/op
-BenchmarkSearch/search/1000/common-4      	     314	   3839481 ns/op	       200.0 hits	  939931 B/op	    5762 allocs/op
-BenchmarkSearch/bm25/5000/rare-4          	 1000000	      1075 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
-BenchmarkSearch/bm25/5000/rare-4          	 1000000	      1092 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
-BenchmarkSearch/bm25/5000/rare-4          	 1000000	      1102 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
-BenchmarkSearch/search/5000/rare-4        	      90	  12754734 ns/op	         1.000 hits	 3080642 B/op	   20412 allocs/op
-BenchmarkSearch/search/5000/rare-4        	      92	  12220728 ns/op	         1.000 hits	 3080452 B/op	   20412 allocs/op
-BenchmarkSearch/search/5000/rare-4        	      92	  12300467 ns/op	         1.000 hits	 3080364 B/op	   20412 allocs/op
-BenchmarkSearch/bm25/5000/topic-4         	    8451	    147697 ns/op	       200.0 hits	   25840 B/op	     383 allocs/op
-BenchmarkSearch/bm25/5000/topic-4         	    8510	    147123 ns/op	       200.0 hits	   25840 B/op	     383 allocs/op
-BenchmarkSearch/bm25/5000/topic-4         	    8442	    146990 ns/op	       200.0 hits	   25840 B/op	     383 allocs/op
-BenchmarkSearch/search/5000/topic-4       	      82	  14798718 ns/op	       200.0 hits	 3249909 B/op	   21148 allocs/op
-BenchmarkSearch/search/5000/topic-4       	      81	  14562966 ns/op	       200.0 hits	 3249912 B/op	   21148 allocs/op
-BenchmarkSearch/search/5000/topic-4       	      82	  14244984 ns/op	       200.0 hits	 3249802 B/op	   21148 allocs/op
-BenchmarkSearch/bm25/5000/multi-4         	    4561	    272678 ns/op	       200.0 hits	   50416 B/op	     623 allocs/op
-BenchmarkSearch/bm25/5000/multi-4         	    4558	    275114 ns/op	       200.0 hits	   50416 B/op	     623 allocs/op
-BenchmarkSearch/bm25/5000/multi-4         	    4482	    271713 ns/op	       200.0 hits	   50416 B/op	     623 allocs/op
-BenchmarkSearch/search/5000/multi-4       	      80	  14980073 ns/op	       200.0 hits	 3272606 B/op	   21398 allocs/op
-BenchmarkSearch/search/5000/multi-4       	      81	  14506422 ns/op	       200.0 hits	 3272600 B/op	   21398 allocs/op
-BenchmarkSearch/search/5000/multi-4       	      82	  14535386 ns/op	       200.0 hits	 3272596 B/op	   21398 allocs/op
-BenchmarkSearch/bm25/5000/english-4       	   16962	     70881 ns/op	       200.0 hits	   22800 B/op	     257 allocs/op
-BenchmarkSearch/bm25/5000/english-4       	   17006	     70200 ns/op	       200.0 hits	   22800 B/op	     257 allocs/op
-BenchmarkSearch/bm25/5000/english-4       	   16851	     71374 ns/op	       200.0 hits	   22800 B/op	     257 allocs/op
-BenchmarkSearch/search/5000/english-4     	      79	  13494206 ns/op	       200.0 hits	 3258320 B/op	   21060 allocs/op
-BenchmarkSearch/search/5000/english-4     	      84	  13287008 ns/op	       200.0 hits	 3258301 B/op	   21060 allocs/op
-BenchmarkSearch/search/5000/english-4     	      86	  13218409 ns/op	       200.0 hits	 3258296 B/op	   21060 allocs/op
-BenchmarkSearch/bm25/5000/common-4        	     297	   3898493 ns/op	       200.0 hits	  414352 B/op	    5013 allocs/op
-BenchmarkSearch/bm25/5000/common-4        	     297	   3827481 ns/op	       200.0 hits	  414352 B/op	    5013 allocs/op
-BenchmarkSearch/bm25/5000/common-4        	     308	   3952582 ns/op	       200.0 hits	  414352 B/op	    5013 allocs/op
-BenchmarkSearch/search/5000/common-4      	      52	  21976289 ns/op	       200.0 hits	 3647372 B/op	   25828 allocs/op
-BenchmarkSearch/search/5000/common-4      	      54	  21830983 ns/op	       200.0 hits	 3647360 B/op	   25828 allocs/op
-BenchmarkSearch/search/5000/common-4      	      54	  21874884 ns/op	       200.0 hits	 3647516 B/op	   25828 allocs/op
-BenchmarkHybridSearch/bm25-only/100/rare-4         	    3646	    331587 ns/op	         1.000 hits	   84028 B/op	     680 allocs/op
-BenchmarkHybridSearch/bm25-only/100/rare-4         	    3688	    336075 ns/op	         1.000 hits	   84033 B/op	     680 allocs/op
-BenchmarkHybridSearch/bm25-only/100/rare-4         	    3684	    336851 ns/op	         1.000 hits	   84030 B/op	     680 allocs/op
-BenchmarkHybridSearch/bm25-only/100/topic-4        	    2107	    595058 ns/op	         8.000 hits	  169004 B/op	     737 allocs/op
-BenchmarkHybridSearch/bm25-only/100/topic-4        	    2082	    593403 ns/op	         8.000 hits	  169004 B/op	     737 allocs/op
-BenchmarkHybridSearch/bm25-only/100/topic-4        	    2079	    592301 ns/op	         8.000 hits	  169004 B/op	     737 allocs/op
-BenchmarkHybridSearch/bm25-only/100/multi-4        	    1614	    761352 ns/op	        13.00 hits	  226842 B/op	     774 allocs/op
-BenchmarkHybridSearch/bm25-only/100/multi-4        	    1476	    822939 ns/op	        13.00 hits	  226854 B/op	     774 allocs/op
-BenchmarkHybridSearch/bm25-only/100/multi-4        	    1604	    769733 ns/op	        13.00 hits	  226847 B/op	     774 allocs/op
-BenchmarkHybridSearch/bm25-only/100/english-4      	    2470	    481122 ns/op	         5.000 hits	  132215 B/op	     717 allocs/op
-BenchmarkHybridSearch/bm25-only/100/english-4      	    2564	    474435 ns/op	         5.000 hits	  132214 B/op	     717 allocs/op
-BenchmarkHybridSearch/bm25-only/100/english-4      	    2538	    476074 ns/op	         5.000 hits	  132224 B/op	     717 allocs/op
-BenchmarkHybridSearch/bm25-only/100/common-4       	     439	   2866479 ns/op	       100.0 hits	 1052442 B/op	    1283 allocs/op
-BenchmarkHybridSearch/bm25-only/100/common-4       	     450	   2841069 ns/op	       100.0 hits	 1052459 B/op	    1283 allocs/op
-BenchmarkHybridSearch/bm25-only/100/common-4       	     438	   2919857 ns/op	       100.0 hits	 1052480 B/op	    1283 allocs/op
-BenchmarkHybridSearch/hybrid/100/rare-4            	     338	   3601930 ns/op	       100.0 hits	 1212770 B/op	    2326 allocs/op
-BenchmarkHybridSearch/hybrid/100/rare-4            	     348	   3599853 ns/op	       100.0 hits	 1212769 B/op	    2326 allocs/op
-BenchmarkHybridSearch/hybrid/100/rare-4            	     348	   3555561 ns/op	       100.0 hits	 1212751 B/op	    2326 allocs/op
-BenchmarkHybridSearch/hybrid/100/topic-4           	     339	   3575634 ns/op	       100.0 hits	 1214020 B/op	    2346 allocs/op
-BenchmarkHybridSearch/hybrid/100/topic-4           	     343	   3587605 ns/op	       100.0 hits	 1214017 B/op	    2345 allocs/op
-BenchmarkHybridSearch/hybrid/100/topic-4           	     345	   3556170 ns/op	       100.0 hits	 1214007 B/op	    2345 allocs/op
-BenchmarkHybridSearch/hybrid/100/multi-4           	     327	   3620863 ns/op	       100.0 hits	 1219885 B/op	    2355 allocs/op
-BenchmarkHybridSearch/hybrid/100/multi-4           	     336	   3645208 ns/op	       100.0 hits	 1219876 B/op	    2355 allocs/op
-BenchmarkHybridSearch/hybrid/100/multi-4           	     336	   3588013 ns/op	       100.0 hits	 1219873 B/op	    2355 allocs/op
-BenchmarkHybridSearch/hybrid/100/english-4         	     336	   3573245 ns/op	       100.0 hits	 1209871 B/op	    2322 allocs/op
-BenchmarkHybridSearch/hybrid/100/english-4         	     344	   3572022 ns/op	       100.0 hits	 1209900 B/op	    2323 allocs/op
-BenchmarkHybridSearch/hybrid/100/english-4         	     343	   3570240 ns/op	       100.0 hits	 1209889 B/op	    2323 allocs/op
-BenchmarkHybridSearch/hybrid/100/common-4          	     339	   3625904 ns/op	       100.0 hits	 1230136 B/op	    2509 allocs/op
-BenchmarkHybridSearch/hybrid/100/common-4          	     336	   3640001 ns/op	       100.0 hits	 1230129 B/op	    2509 allocs/op
-BenchmarkHybridSearch/hybrid/100/common-4          	     338	   3607080 ns/op	       100.0 hits	 1230119 B/op	    2509 allocs/op
-BenchmarkHybridSearch/bm25-only/1000/rare-4        	     574	   2199133 ns/op	         1.000 hits	  714004 B/op	    4351 allocs/op
-BenchmarkHybridSearch/bm25-only/1000/rare-4        	     566	   2188249 ns/op	         1.000 hits	  714005 B/op	    4351 allocs/op
-BenchmarkHybridSearch/bm25-only/1000/rare-4        	     564	   2192748 ns/op	         1.000 hits	  713990 B/op	    4351 allocs/op
-BenchmarkHybridSearch/bm25-only/1000/topic-4       	     291	   4206518 ns/op	        72.00 hits	 1446340 B/op	    4793 allocs/op
-BenchmarkHybridSearch/bm25-only/1000/topic-4       	     288	   4231581 ns/op	        72.00 hits	 1446312 B/op	    4793 allocs/op
-BenchmarkHybridSearch/bm25-only/1000/topic-4       	     274	   4245080 ns/op	        72.00 hits	 1446316 B/op	    4793 allocs/op
-BenchmarkHybridSearch/bm25-only/1000/multi-4       	     236	   4995235 ns/op	       120.0 hits	 1836564 B/op	    4988 allocs/op
-BenchmarkHybridSearch/bm25-only/1000/multi-4       	     237	   4969256 ns/op	       120.0 hits	 1836598 B/op	    4988 allocs/op
-BenchmarkHybridSearch/bm25-only/1000/multi-4       	     240	   5000985 ns/op	       120.0 hits	 1836630 B/op	    4988 allocs/op
-BenchmarkHybridSearch/bm25-only/1000/english-4     	     330	   3813184 ns/op	        50.00 hits	 1256820 B/op	    4753 allocs/op
-BenchmarkHybridSearch/bm25-only/1000/english-4     	     310	   3786168 ns/op	        50.00 hits	 1256876 B/op	    4753 allocs/op
-BenchmarkHybridSearch/bm25-only/1000/english-4     	     324	   3827433 ns/op	        50.00 hits	 1256846 B/op	    4753 allocs/op
-BenchmarkHybridSearch/bm25-only/1000/common-4      	     160	   7278582 ns/op	       200.0 hits	 2581684 B/op	    6162 allocs/op
-BenchmarkHybridSearch/bm25-only/1000/common-4      	     150	   7212856 ns/op	       200.0 hits	 2581847 B/op	    6162 allocs/op
-BenchmarkHybridSearch/bm25-only/1000/common-4      	     157	   7146671 ns/op	       200.0 hits	 2581840 B/op	    6162 allocs/op
-BenchmarkHybridSearch/hybrid/1000/rare-4           	      80	  14198951 ns/op	       365.0 hits	 4575127 B/op	   12277 allocs/op
-BenchmarkHybridSearch/hybrid/1000/rare-4           	      88	  14231517 ns/op	       365.0 hits	 4575090 B/op	   12278 allocs/op
-BenchmarkHybridSearch/hybrid/1000/rare-4           	      86	  14046362 ns/op	       365.0 hits	 4575141 B/op	   12277 allocs/op
-BenchmarkHybridSearch/hybrid/1000/topic-4          	      94	  12708312 ns/op	       274.0 hits	 3987954 B/op	   12135 allocs/op
-BenchmarkHybridSearch/hybrid/1000/topic-4          	      96	  12780402 ns/op	       278.0 hits	 3985645 B/op	   12143 allocs/op
-BenchmarkHybridSearch/hybrid/1000/topic-4          	      93	  12950718 ns/op	       277.0 hits	 3988074 B/op	   12151 allocs/op
-BenchmarkHybridSearch/hybrid/1000/multi-4          	      85	  14142923 ns/op	       340.0 hits	 4452473 B/op	   12392 allocs/op
-BenchmarkHybridSearch/hybrid/1000/multi-4          	      86	  14396964 ns/op	       340.0 hits	 4452070 B/op	   12376 allocs/op
-BenchmarkHybridSearch/hybrid/1000/multi-4          	      85	  13819331 ns/op	       340.0 hits	 4452186 B/op	   12380 allocs/op
-BenchmarkHybridSearch/hybrid/1000/english-4        	      87	  13617430 ns/op	       323.0 hits	 4297624 B/op	   12261 allocs/op
-BenchmarkHybridSearch/hybrid/1000/english-4        	      85	  13614356 ns/op	       323.0 hits	 4297682 B/op	   12265 allocs/op
-BenchmarkHybridSearch/hybrid/1000/english-4        	      88	  13808154 ns/op	       323.0 hits	 4297387 B/op	   12251 allocs/op
-BenchmarkHybridSearch/hybrid/1000/common-4         	      78	  16052641 ns/op	       396.0 hits	 5011149 B/op	   13477 allocs/op
-BenchmarkHybridSearch/hybrid/1000/common-4         	      74	  16271222 ns/op	       396.0 hits	 5011003 B/op	   13472 allocs/op
-BenchmarkHybridSearch/hybrid/1000/common-4         	      73	  16580383 ns/op	       396.0 hits	 5011089 B/op	   13475 allocs/op
-BenchmarkHybridSearch/bm25-only/5000/rare-4        	      90	  11948392 ns/op	         1.000 hits	 3180507 B/op	   20417 allocs/op
-BenchmarkHybridSearch/bm25-only/5000/rare-4        	      93	  12283212 ns/op	         1.000 hits	 3180499 B/op	   20417 allocs/op
-BenchmarkHybridSearch/bm25-only/5000/rare-4        	      94	  12327290 ns/op	         1.000 hits	 3180498 B/op	   20417 allocs/op
-BenchmarkHybridSearch/bm25-only/5000/topic-4       	      67	  17642059 ns/op	       200.0 hits	 4961333 B/op	   21548 allocs/op
-BenchmarkHybridSearch/bm25-only/5000/topic-4       	      67	  17373500 ns/op	       200.0 hits	 4961458 B/op	   21548 allocs/op
-BenchmarkHybridSearch/bm25-only/5000/topic-4       	      64	  17776570 ns/op	       200.0 hits	 4961473 B/op	   21548 allocs/op
-BenchmarkHybridSearch/bm25-only/5000/multi-4       	      64	  17815277 ns/op	       200.0 hits	 4985185 B/op	   21789 allocs/op
-BenchmarkHybridSearch/bm25-only/5000/multi-4       	      67	  18041538 ns/op	       200.0 hits	 4985047 B/op	   21789 allocs/op
-BenchmarkHybridSearch/bm25-only/5000/multi-4       	      66	  18326838 ns/op	       200.0 hits	 4985051 B/op	   21789 allocs/op
-BenchmarkHybridSearch/bm25-only/5000/english-4     	      68	  16831168 ns/op	       200.0 hits	 4975311 B/op	   21471 allocs/op
-BenchmarkHybridSearch/bm25-only/5000/english-4     	      72	  16063486 ns/op	       200.0 hits	 4975288 B/op	   21471 allocs/op
-BenchmarkHybridSearch/bm25-only/5000/english-4     	      72	  16818097 ns/op	       200.0 hits	 4975172 B/op	   21471 allocs/op
-BenchmarkHybridSearch/bm25-only/5000/common-4      	      49	  23040734 ns/op	       200.0 hits	 5294498 B/op	   26228 allocs/op
-BenchmarkHybridSearch/bm25-only/5000/common-4      	      50	  24140072 ns/op	       200.0 hits	 5294652 B/op	   26228 allocs/op
-BenchmarkHybridSearch/bm25-only/5000/common-4      	      46	  23403844 ns/op	       200.0 hits	 5294517 B/op	   26228 allocs/op
-BenchmarkHybridSearch/hybrid/5000/rare-4           	      26	  43565343 ns/op	       396.0 hits	 9969668 B/op	   45669 allocs/op
-BenchmarkHybridSearch/hybrid/5000/rare-4           	      26	  45043501 ns/op	       396.0 hits	 9971040 B/op	   45686 allocs/op
-BenchmarkHybridSearch/hybrid/5000/rare-4           	      27	  43044433 ns/op	       396.0 hits	 9970731 B/op	   45700 allocs/op
-BenchmarkHybridSearch/hybrid/5000/topic-4          	      27	  43620923 ns/op	       321.0 hits	 9450309 B/op	   45970 allocs/op
-BenchmarkHybridSearch/hybrid/5000/topic-4          	      27	  44486343 ns/op	       321.0 hits	 9451154 B/op	   45974 allocs/op
-BenchmarkHybridSearch/hybrid/5000/topic-4          	      27	  44988306 ns/op	       321.0 hits	 9451148 B/op	   45962 allocs/op
-BenchmarkHybridSearch/hybrid/5000/multi-4          	      24	  48093530 ns/op	       466.0 hits	10615856 B/op	   46648 allocs/op
-BenchmarkHybridSearch/hybrid/5000/multi-4          	      26	  49449761 ns/op	       466.0 hits	10616613 B/op	   46668 allocs/op
-BenchmarkHybridSearch/hybrid/5000/multi-4          	      25	  46086341 ns/op	       466.0 hits	10616079 B/op	   46657 allocs/op
-BenchmarkHybridSearch/hybrid/5000/english-4        	      27	  44968551 ns/op	       467.0 hits	10631869 B/op	   46310 allocs/op
-BenchmarkHybridSearch/hybrid/5000/english-4        	      27	  46852475 ns/op	       467.0 hits	10631053 B/op	   46275 allocs/op
-BenchmarkHybridSearch/hybrid/5000/english-4        	      26	  47953443 ns/op	       467.0 hits	10631799 B/op	   46305 allocs/op
-BenchmarkHybridSearch/hybrid/5000/common-4         	      19	  56107512 ns/op	       518.0 hits	11424561 B/op	   51228 allocs/op
-BenchmarkHybridSearch/hybrid/5000/common-4         	      20	  56769665 ns/op	       518.0 hits	11425093 B/op	   51237 allocs/op
-BenchmarkHybridSearch/hybrid/5000/common-4         	      21	  56715324 ns/op	       518.0 hits	11424991 B/op	   51235 allocs/op
-BenchmarkSnapshotDiff/replace-5pct-4               	     100	  13478672 ns/op	         0 truncated	15518000 B/op	      10 allocs/op
-BenchmarkSnapshotDiff/replace-5pct-4               	     100	  11193304 ns/op	         0 truncated	15518000 B/op	      10 allocs/op
-BenchmarkSnapshotDiff/replace-5pct-4               	     100	  11203300 ns/op	         0 truncated	15518000 B/op	      10 allocs/op
-BenchmarkSnapshotDiff/insert-5pct-4                	     100	  11904778 ns/op	         0 truncated	16296240 B/op	      10 allocs/op
-BenchmarkSnapshotDiff/insert-5pct-4                	     100	  12079041 ns/op	         0 truncated	16296240 B/op	      10 allocs/op
-BenchmarkSnapshotDiff/insert-5pct-4                	     100	  12079475 ns/op	         0 truncated	16296240 B/op	      10 allocs/op
-BenchmarkSnapshotDiff/identical-4                  	    7186	    167390 ns/op	  362608 B/op	       8 allocs/op
-BenchmarkSnapshotDiff/identical-4                  	    8568	    166840 ns/op	  362608 B/op	       8 allocs/op
-BenchmarkSnapshotDiff/identical-4                  	    9211	    171573 ns/op	  362608 B/op	       8 allocs/op
-BenchmarkSnapshotService/DiffSnapshots-4           	     100	  12395648 ns/op	16640403 B/op	     151 allocs/op
-BenchmarkSnapshotService/DiffSnapshots-4           	     100	  12304729 ns/op	16640403 B/op	     151 allocs/op
-BenchmarkSnapshotService/DiffSnapshots-4           	     100	  12173087 ns/op	16640459 B/op	     152 allocs/op
-BenchmarkSnapshotService/DiffWithCurrent-4         	     100	  12198759 ns/op	16416003 B/op	      90 allocs/op
-BenchmarkSnapshotService/DiffWithCurrent-4         	     100	  12066140 ns/op	16416002 B/op	      90 allocs/op
-BenchmarkSnapshotService/DiffWithCurrent-4         	     100	  12116319 ns/op	16416058 B/op	      91 allocs/op
-BenchmarkSnapshotService/RestoreSnapshot-4         	    1060	   1191819 ns/op	 1237586 B/op	     125 allocs/op
-BenchmarkSnapshotService/RestoreSnapshot-4         	    1143	   1215350 ns/op	 1237599 B/op	     125 allocs/op
-BenchmarkSnapshotService/RestoreSnapshot-4         	    1153	   1196904 ns/op	 1237589 B/op	     125 allocs/op
+cpu: AMD EPYC 9V45 96-Core Processor                
+BenchmarkTokenizeIndex/short-zh-4         	  122952	     10373 ns/op	  10.51 MB/s	    7160 B/op	     105 allocs/op
+BenchmarkTokenizeIndex/short-zh-4         	  121239	     10829 ns/op	  10.07 MB/s	    7160 B/op	     105 allocs/op
+BenchmarkTokenizeIndex/short-zh-4         	  110912	     11033 ns/op	   9.88 MB/s	    7160 B/op	     105 allocs/op
+BenchmarkTokenizeIndex/long-zh-4          	    5799	    205213 ns/op	  10.28 MB/s	  116464 B/op	    1981 allocs/op
+BenchmarkTokenizeIndex/long-zh-4          	    7297	    190875 ns/op	  11.05 MB/s	  116464 B/op	    1981 allocs/op
+BenchmarkTokenizeIndex/long-zh-4          	    6964	    187428 ns/op	  11.25 MB/s	  116464 B/op	    1981 allocs/op
+BenchmarkTokenizeIndex/mixed-4            	    9771	    123326 ns/op	  16.63 MB/s	   77400 B/op	    1287 allocs/op
+BenchmarkTokenizeIndex/mixed-4            	   10000	    124853 ns/op	  16.43 MB/s	   77400 B/op	    1287 allocs/op
+BenchmarkTokenizeIndex/mixed-4            	   10000	    123591 ns/op	  16.60 MB/s	   77399 B/op	    1287 allocs/op
+BenchmarkTokenizeIndex/en-4               	   13429	     87025 ns/op	  24.22 MB/s	   59144 B/op	     961 allocs/op
+BenchmarkTokenizeIndex/en-4               	   13129	     85855 ns/op	  24.55 MB/s	   59144 B/op	     961 allocs/op
+BenchmarkTokenizeIndex/en-4               	   13413	     92096 ns/op	  22.89 MB/s	   59144 B/op	     961 allocs/op
+BenchmarkTokenizeBigram/short-zh-4        	  610714	      1918 ns/op	  56.82 MB/s	    2008 B/op	      34 allocs/op
+BenchmarkTokenizeBigram/short-zh-4        	  673476	      1968 ns/op	  55.37 MB/s	    2008 B/op	      34 allocs/op
+BenchmarkTokenizeBigram/short-zh-4        	  649770	      1895 ns/op	  57.53 MB/s	    2008 B/op	      34 allocs/op
+BenchmarkTokenizeBigram/long-zh-4         	   34066	     31778 ns/op	  66.37 MB/s	   34920 B/op	     557 allocs/op
+BenchmarkTokenizeBigram/long-zh-4         	   38224	     32225 ns/op	  65.45 MB/s	   34920 B/op	     557 allocs/op
+BenchmarkTokenizeBigram/long-zh-4         	   38926	     32661 ns/op	  64.57 MB/s	   34920 B/op	     557 allocs/op
+BenchmarkTokenizeBigram/mixed-4           	   41918	     28448 ns/op	  72.10 MB/s	   17744 B/op	     441 allocs/op
+BenchmarkTokenizeBigram/mixed-4           	   39537	     28138 ns/op	  72.89 MB/s	   17744 B/op	     441 allocs/op
+BenchmarkTokenizeBigram/mixed-4           	   43352	     28555 ns/op	  71.83 MB/s	   17743 B/op	     441 allocs/op
+BenchmarkTokenizeBigram/en-4              	   41484	     30110 ns/op	  70.01 MB/s	   17064 B/op	     434 allocs/op
+BenchmarkTokenizeBigram/en-4              	   40989	     30012 ns/op	  70.24 MB/s	   17064 B/op	     434 allocs/op
+BenchmarkTokenizeBigram/en-4              	   37416	     29033 ns/op	  72.61 MB/s	   17064 B/op	     434 allocs/op
+BenchmarkIndexBuild/100-4                 	      58	  21446733 ns/op	    214467 ns/doc	13908070 B/op	  178163 allocs/op
+BenchmarkIndexBuild/100-4                 	      56	  22140367 ns/op	    221403 ns/doc	13908008 B/op	  178162 allocs/op
+BenchmarkIndexBuild/100-4                 	      62	  21277617 ns/op	    212776 ns/doc	13907978 B/op	  178162 allocs/op
+BenchmarkIndexBuild/1000-4                	       5	 215444212 ns/op	    215444 ns/doc	133173443 B/op	 1715295 allocs/op
+BenchmarkIndexBuild/1000-4                	       5	 219013048 ns/op	    219013 ns/doc	133175099 B/op	 1715295 allocs/op
+BenchmarkIndexBuild/1000-4                	       5	 218337051 ns/op	    218337 ns/doc	133175092 B/op	 1715295 allocs/op
+BenchmarkIndexBuild/5000-4                	       1	1185717126 ns/op	    237143 ns/doc	658527128 B/op	 8472212 allocs/op
+BenchmarkIndexBuild/5000-4                	       1	1097779305 ns/op	    219556 ns/doc	658527112 B/op	 8472212 allocs/op
+BenchmarkIndexBuild/5000-4                	       1	1083713310 ns/op	    216742 ns/doc	658527032 B/op	 8472212 allocs/op
+BenchmarkIndexSummary/save/100-4          	    1700	    933432 ns/op	  992791 B/op	     473 allocs/op
+BenchmarkIndexSummary/save/100-4          	    1322	    957688 ns/op	  992791 B/op	     473 allocs/op
+BenchmarkIndexSummary/save/100-4          	    1545	    897772 ns/op	  992791 B/op	     473 allocs/op
+BenchmarkIndexSummary/load/100-4          	     825	   1635630 ns/op	    106819 summary-B	 3269120 B/op	   22090 allocs/op
+BenchmarkIndexSummary/load/100-4          	     846	   1576419 ns/op	    106819 summary-B	 3269098 B/op	   22090 allocs/op
+BenchmarkIndexSummary/load/100-4          	     650	   2051371 ns/op	    106819 summary-B	 3269102 B/op	   22090 allocs/op
+BenchmarkIndexSummary/save/1000-4         	     128	   9789463 ns/op	 9901496 B/op	    4082 allocs/op
+BenchmarkIndexSummary/save/1000-4         	     100	  10871849 ns/op	 9901495 B/op	    4082 allocs/op
+BenchmarkIndexSummary/save/1000-4         	     118	   9984065 ns/op	 9901496 B/op	    4082 allocs/op
+BenchmarkIndexSummary/load/1000-4         	      96	  15227980 ns/op	   1068204 summary-B	28601904 B/op	  182580 allocs/op
+BenchmarkIndexSummary/load/1000-4         	      91	  15819554 ns/op	   1068204 summary-B	28601909 B/op	  182580 allocs/op
+BenchmarkIndexSummary/load/1000-4         	     100	  15612573 ns/op	   1068204 summary-B	28601906 B/op	  182580 allocs/op
+BenchmarkIndexSummary/save/5000-4         	      21	  52921396 ns/op	49529784 B/op	   20089 allocs/op
+BenchmarkIndexSummary/save/5000-4         	      31	  45438923 ns/op	49529784 B/op	   20089 allocs/op
+BenchmarkIndexSummary/save/5000-4         	      26	  48665975 ns/op	49529784 B/op	   20089 allocs/op
+BenchmarkIndexSummary/load/5000-4         	      14	  82647593 ns/op	   5306695 summary-B	139401108 B/op	  857163 allocs/op
+BenchmarkIndexSummary/load/5000-4         	      20	  86659172 ns/op	   5306695 summary-B	139401066 B/op	  857163 allocs/op
+BenchmarkIndexSummary/load/5000-4         	      18	  82853221 ns/op	   5306695 summary-B	139401067 B/op	  857163 allocs/op
+BenchmarkSearch/bm25/100/rare-4           	 1475926	       839.2 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
+BenchmarkSearch/bm25/100/rare-4           	 1367102	       874.8 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
+BenchmarkSearch/bm25/100/rare-4           	 1349888	       850.4 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
+BenchmarkSearch/search/100/rare-4         	    3686	    383082 ns/op	         1.000 hits	   86458 B/op	     788 allocs/op
+BenchmarkSearch/search/100/rare-4         	    3124	    385051 ns/op	         1.000 hits	   86456 B/op	     788 allocs/op
+BenchmarkSearch/search/100/rare-4         	    3274	    355010 ns/op	         1.000 hits	   86456 B/op	     788 allocs/op
+BenchmarkSearch/bm25/100/topic-4          	  527432	      2430 ns/op	         8.000 hits	    2592 B/op	      14 allocs/op
+BenchmarkSearch/bm25/100/topic-4          	  524053	      2428 ns/op	         8.000 hits	    2592 B/op	      14 allocs/op
+BenchmarkSearch/bm25/100/topic-4          	  593586	      2484 ns/op	         8.000 hits	    2592 B/op	      14 allocs/op
+BenchmarkSearch/search/100/topic-4        	    2389	    504606 ns/op	         8.000 hits	  109608 B/op	     840 allocs/op
+BenchmarkSearch/search/100/topic-4        	    2682	    460588 ns/op	         8.000 hits	  109608 B/op	     840 allocs/op
+BenchmarkSearch/search/100/topic-4        	    2517	    429831 ns/op	         8.000 hits	  109608 B/op	     840 allocs/op
+BenchmarkSearch/bm25/100/multi-4          	  339258	      3300 ns/op	        13.00 hits	    2720 B/op	      19 allocs/op
+BenchmarkSearch/bm25/100/multi-4          	  393309	      3351 ns/op	        13.00 hits	    2720 B/op	      19 allocs/op
+BenchmarkSearch/bm25/100/multi-4          	  386034	      3379 ns/op	        13.00 hits	    2720 B/op	      19 allocs/op
+BenchmarkSearch/search/100/multi-4        	    2600	    475500 ns/op	        13.00 hits	  124448 B/op	     869 allocs/op
+BenchmarkSearch/search/100/multi-4        	    2583	    530366 ns/op	        13.00 hits	  124448 B/op	     869 allocs/op
+BenchmarkSearch/search/100/multi-4        	    2089	    481234 ns/op	        13.00 hits	  124448 B/op	     869 allocs/op
+BenchmarkSearch/bm25/100/english-4        	 1000000	      1386 ns/op	         5.000 hits	    2528 B/op	      11 allocs/op
+BenchmarkSearch/bm25/100/english-4        	  926467	      1402 ns/op	         5.000 hits	    2528 B/op	      11 allocs/op
+BenchmarkSearch/bm25/100/english-4        	 1000000	      1363 ns/op	         5.000 hits	    2528 B/op	      11 allocs/op
+BenchmarkSearch/search/100/english-4      	    2788	    413731 ns/op	         5.000 hits	   99584 B/op	     815 allocs/op
+BenchmarkSearch/search/100/english-4      	    3308	    400971 ns/op	         5.000 hits	   99584 B/op	     815 allocs/op
+BenchmarkSearch/search/100/english-4      	    3106	    369581 ns/op	         5.000 hits	   99584 B/op	     815 allocs/op
+BenchmarkSearch/bm25/100/common-4         	   56328	     21116 ns/op	       100.0 hits	    4896 B/op	     106 allocs/op
+BenchmarkSearch/bm25/100/common-4         	   54043	     21624 ns/op	       100.0 hits	    4896 B/op	     106 allocs/op
+BenchmarkSearch/bm25/100/common-4         	   59215	     22467 ns/op	       100.0 hits	    4896 B/op	     106 allocs/op
+BenchmarkSearch/search/100/common-4       	    1298	    931373 ns/op	       100.0 hits	  241624 B/op	    1196 allocs/op
+BenchmarkSearch/search/100/common-4       	    1383	    943529 ns/op	       100.0 hits	  241624 B/op	    1196 allocs/op
+BenchmarkSearch/search/100/common-4       	    1323	    960196 ns/op	       100.0 hits	  241624 B/op	    1196 allocs/op
+BenchmarkSearch/bm25/1000/rare-4          	 1376776	       813.0 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
+BenchmarkSearch/bm25/1000/rare-4          	 1433253	       847.6 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
+BenchmarkSearch/bm25/1000/rare-4          	 1448647	       862.3 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
+BenchmarkSearch/search/1000/rare-4        	     793	   1638250 ns/op	         1.000 hits	  817202 B/op	    5353 allocs/op
+BenchmarkSearch/search/1000/rare-4        	     891	   1660457 ns/op	         1.000 hits	  817201 B/op	    5353 allocs/op
+BenchmarkSearch/search/1000/rare-4        	     866	   1624215 ns/op	         1.000 hits	  817201 B/op	    5353 allocs/op
+BenchmarkSearch/bm25/1000/topic-4         	   80008	     16496 ns/op	        72.00 hits	    4192 B/op	      78 allocs/op
+BenchmarkSearch/bm25/1000/topic-4         	   78478	     15608 ns/op	        72.00 hits	    4192 B/op	      78 allocs/op
+BenchmarkSearch/bm25/1000/topic-4         	   77538	     15884 ns/op	        72.00 hits	    4192 B/op	      78 allocs/op
+BenchmarkSearch/search/1000/topic-4       	     530	   2291806 ns/op	        72.00 hits	  956383 B/op	    5656 allocs/op
+BenchmarkSearch/search/1000/topic-4       	     565	   2240255 ns/op	        72.00 hits	  956311 B/op	    5656 allocs/op
+BenchmarkSearch/search/1000/topic-4       	     505	   2384192 ns/op	        72.00 hits	  956322 B/op	    5656 allocs/op
+BenchmarkSearch/bm25/1000/multi-4         	   41247	     30950 ns/op	       120.0 hits	   10240 B/op	     128 allocs/op
+BenchmarkSearch/bm25/1000/multi-4         	   42584	     29305 ns/op	       120.0 hits	   10240 B/op	     128 allocs/op
+BenchmarkSearch/bm25/1000/multi-4         	   40376	     29826 ns/op	       120.0 hits	   10240 B/op	     128 allocs/op
+BenchmarkSearch/search/1000/multi-4       	     405	   2561030 ns/op	       120.0 hits	  967097 B/op	    5763 allocs/op
+BenchmarkSearch/search/1000/multi-4       	     558	   2052076 ns/op	       120.0 hits	  967112 B/op	    5763 allocs/op
+BenchmarkSearch/search/1000/multi-4       	     601	   2059075 ns/op	       120.0 hits	  967097 B/op	    5763 allocs/op
+BenchmarkSearch/bm25/1000/english-4       	  166692	      7548 ns/op	        50.00 hits	    3616 B/op	      56 allocs/op
+BenchmarkSearch/bm25/1000/english-4       	  166752	      7639 ns/op	        50.00 hits	    3616 B/op	      56 allocs/op
+BenchmarkSearch/bm25/1000/english-4       	  161642	      7452 ns/op	        50.00 hits	    3616 B/op	      56 allocs/op
+BenchmarkSearch/search/1000/english-4     	     574	   2044959 ns/op	        50.00 hits	  961945 B/op	    5649 allocs/op
+BenchmarkSearch/search/1000/english-4     	     642	   2015909 ns/op	        50.00 hits	  961945 B/op	    5649 allocs/op
+BenchmarkSearch/search/1000/english-4     	     621	   2022706 ns/op	        50.00 hits	  961959 B/op	    5649 allocs/op
+BenchmarkSearch/bm25/1000/common-4        	    3775	    334020 ns/op	       200.0 hits	   96336 B/op	    1013 allocs/op
+BenchmarkSearch/bm25/1000/common-4        	    3757	    333408 ns/op	       200.0 hits	   96336 B/op	    1013 allocs/op
+BenchmarkSearch/bm25/1000/common-4        	    3446	    337033 ns/op	       200.0 hits	   96336 B/op	    1013 allocs/op
+BenchmarkSearch/search/1000/common-4      	     513	   2404971 ns/op	       200.0 hits	 1069586 B/op	    6769 allocs/op
+BenchmarkSearch/search/1000/common-4      	     482	   2518361 ns/op	       200.0 hits	 1069554 B/op	    6769 allocs/op
+BenchmarkSearch/search/1000/common-4      	     462	   2522741 ns/op	       200.0 hits	 1069554 B/op	    6769 allocs/op
+BenchmarkSearch/bm25/5000/rare-4          	 1386400	       809.5 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
+BenchmarkSearch/bm25/5000/rare-4          	 1473369	       816.4 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
+BenchmarkSearch/bm25/5000/rare-4          	 1278966	       856.2 ns/op	         1.000 hits	    2392 B/op	       6 allocs/op
+BenchmarkSearch/search/5000/rare-4        	     146	   8339916 ns/op	         1.000 hits	 3801671 B/op	   25417 allocs/op
+BenchmarkSearch/search/5000/rare-4        	     154	   7123269 ns/op	         1.000 hits	 3801831 B/op	   25417 allocs/op
+BenchmarkSearch/search/5000/rare-4        	     170	   7121844 ns/op	         1.000 hits	 3801670 B/op	   25417 allocs/op
+BenchmarkSearch/bm25/5000/topic-4         	   12410	     93161 ns/op	       200.0 hits	   25840 B/op	     383 allocs/op
+BenchmarkSearch/bm25/5000/topic-4         	   12205	     89973 ns/op	       200.0 hits	   25840 B/op	     383 allocs/op
+BenchmarkSearch/bm25/5000/topic-4         	   13338	     94284 ns/op	       200.0 hits	   25840 B/op	     383 allocs/op
+BenchmarkSearch/search/5000/topic-4       	     120	   9133448 ns/op	       200.0 hits	 3971124 B/op	   26153 allocs/op
+BenchmarkSearch/search/5000/topic-4       	     129	   8575880 ns/op	       200.0 hits	 3971124 B/op	   26153 allocs/op
+BenchmarkSearch/search/5000/topic-4       	     141	   8785188 ns/op	       200.0 hits	 3971125 B/op	   26153 allocs/op
+BenchmarkSearch/bm25/5000/multi-4         	    5587	    202334 ns/op	       200.0 hits	   50416 B/op	     623 allocs/op
+BenchmarkSearch/bm25/5000/multi-4         	    5517	    215118 ns/op	       200.0 hits	   50416 B/op	     623 allocs/op
+BenchmarkSearch/bm25/5000/multi-4         	    6222	    201063 ns/op	       200.0 hits	   50416 B/op	     623 allocs/op
+BenchmarkSearch/search/5000/multi-4       	     142	   9099710 ns/op	       200.0 hits	 3993787 B/op	   26402 allocs/op
+BenchmarkSearch/search/5000/multi-4       	     123	   9515148 ns/op	       200.0 hits	 3993789 B/op	   26402 allocs/op
+BenchmarkSearch/search/5000/multi-4       	     130	   9498147 ns/op	       200.0 hits	 3993788 B/op	   26402 allocs/op
+BenchmarkSearch/bm25/5000/english-4       	   24982	     48246 ns/op	       200.0 hits	   22800 B/op	     257 allocs/op
+BenchmarkSearch/bm25/5000/english-4       	   26988	     45265 ns/op	       200.0 hits	   22800 B/op	     257 allocs/op
+BenchmarkSearch/bm25/5000/english-4       	   26521	     47886 ns/op	       200.0 hits	   22800 B/op	     257 allocs/op
+BenchmarkSearch/search/5000/english-4     	     152	   8081358 ns/op	       200.0 hits	 3979499 B/op	   26065 allocs/op
+BenchmarkSearch/search/5000/english-4     	     151	   8269281 ns/op	       200.0 hits	 3979500 B/op	   26065 allocs/op
+BenchmarkSearch/search/5000/english-4     	     139	   8776624 ns/op	       200.0 hits	 3979499 B/op	   26065 allocs/op
+BenchmarkSearch/bm25/5000/common-4        	     534	   2217419 ns/op	       200.0 hits	  414352 B/op	    5013 allocs/op
+BenchmarkSearch/bm25/5000/common-4        	     554	   2140692 ns/op	       200.0 hits	  414352 B/op	    5013 allocs/op
+BenchmarkSearch/bm25/5000/common-4        	     560	   2197575 ns/op	       200.0 hits	  414352 B/op	    5013 allocs/op
+BenchmarkSearch/search/5000/common-4      	      90	  13591540 ns/op	       200.0 hits	 4368584 B/op	   30833 allocs/op
+BenchmarkSearch/search/5000/common-4      	      99	  14114028 ns/op	       200.0 hits	 4368833 B/op	   30833 allocs/op
+BenchmarkSearch/search/5000/common-4      	      94	  14595847 ns/op	       200.0 hits	 4368845 B/op	   30833 allocs/op
+BenchmarkHybridSearch/bm25-only/100/rare-4         	    3063	    422471 ns/op	         1.000 hits	   96184 B/op	     793 allocs/op
+BenchmarkHybridSearch/bm25-only/100/rare-4         	    3476	    403632 ns/op	         1.000 hits	   96184 B/op	     793 allocs/op
+BenchmarkHybridSearch/bm25-only/100/rare-4         	    2418	    417090 ns/op	         1.000 hits	   96184 B/op	     793 allocs/op
+BenchmarkHybridSearch/bm25-only/100/topic-4        	    1959	    557629 ns/op	         8.000 hits	  181152 B/op	     850 allocs/op
+BenchmarkHybridSearch/bm25-only/100/topic-4        	    2367	    531025 ns/op	         8.000 hits	  181152 B/op	     850 allocs/op
+BenchmarkHybridSearch/bm25-only/100/topic-4        	    1993	    520677 ns/op	         8.000 hits	  181152 B/op	     850 allocs/op
+BenchmarkHybridSearch/bm25-only/100/multi-4        	    2013	    670035 ns/op	        13.00 hits	  238992 B/op	     887 allocs/op
+BenchmarkHybridSearch/bm25-only/100/multi-4        	    1536	    771088 ns/op	        13.00 hits	  238992 B/op	     887 allocs/op
+BenchmarkHybridSearch/bm25-only/100/multi-4        	    1672	    755090 ns/op	        13.00 hits	  238992 B/op	     887 allocs/op
+BenchmarkHybridSearch/bm25-only/100/english-4      	    2660	    451163 ns/op	         5.000 hits	  144368 B/op	     830 allocs/op
+BenchmarkHybridSearch/bm25-only/100/english-4      	    2746	    426844 ns/op	         5.000 hits	  144371 B/op	     830 allocs/op
+BenchmarkHybridSearch/bm25-only/100/english-4      	    2872	    430749 ns/op	         5.000 hits	  144371 B/op	     830 allocs/op
+BenchmarkHybridSearch/bm25-only/100/common-4       	     640	   1994766 ns/op	       100.0 hits	 1064546 B/op	    1396 allocs/op
+BenchmarkHybridSearch/bm25-only/100/common-4       	     570	   2050345 ns/op	       100.0 hits	 1064545 B/op	    1396 allocs/op
+BenchmarkHybridSearch/bm25-only/100/common-4       	     615	   2009213 ns/op	       100.0 hits	 1064546 B/op	    1396 allocs/op
+BenchmarkHybridSearch/hybrid/100/rare-4            	     420	   2569742 ns/op	       100.0 hits	 1224468 B/op	    2432 allocs/op
+BenchmarkHybridSearch/hybrid/100/rare-4            	     434	   2790029 ns/op	       100.0 hits	 1224476 B/op	    2432 allocs/op
+BenchmarkHybridSearch/hybrid/100/rare-4            	     420	   2814302 ns/op	       100.0 hits	 1224461 B/op	    2432 allocs/op
+BenchmarkHybridSearch/hybrid/100/topic-4           	     424	   2829376 ns/op	       100.0 hits	 1225738 B/op	    2451 allocs/op
+BenchmarkHybridSearch/hybrid/100/topic-4           	     460	   2808137 ns/op	       100.0 hits	 1225734 B/op	    2451 allocs/op
+BenchmarkHybridSearch/hybrid/100/topic-4           	     465	   2718796 ns/op	       100.0 hits	 1225747 B/op	    2451 allocs/op
+BenchmarkHybridSearch/hybrid/100/multi-4           	     462	   2764989 ns/op	       100.0 hits	 1231623 B/op	    2461 allocs/op
+BenchmarkHybridSearch/hybrid/100/multi-4           	     428	   2904865 ns/op	       100.0 hits	 1231621 B/op	    2461 allocs/op
+BenchmarkHybridSearch/hybrid/100/multi-4           	     427	   2967315 ns/op	       100.0 hits	 1231618 B/op	    2461 allocs/op
+BenchmarkHybridSearch/hybrid/100/english-4         	     477	   2716930 ns/op	       100.0 hits	 1221614 B/op	    2429 allocs/op
+BenchmarkHybridSearch/hybrid/100/english-4         	     453	   2660073 ns/op	       100.0 hits	 1221611 B/op	    2428 allocs/op
+BenchmarkHybridSearch/hybrid/100/english-4         	     454	   2636515 ns/op	       100.0 hits	 1221671 B/op	    2430 allocs/op
+BenchmarkHybridSearch/hybrid/100/common-4          	     446	   2776943 ns/op	       100.0 hits	 1241871 B/op	    2615 allocs/op
+BenchmarkHybridSearch/hybrid/100/common-4          	     445	   2867049 ns/op	       100.0 hits	 1241869 B/op	    2615 allocs/op
+BenchmarkHybridSearch/hybrid/100/common-4          	     428	   2889784 ns/op	       100.0 hits	 1241870 B/op	    2615 allocs/op
+BenchmarkHybridSearch/bm25-only/1000/rare-4        	     787	   1592477 ns/op	         1.000 hits	  843489 B/op	    5358 allocs/op
+BenchmarkHybridSearch/bm25-only/1000/rare-4        	     783	   1542267 ns/op	         1.000 hits	  843541 B/op	    5358 allocs/op
+BenchmarkHybridSearch/bm25-only/1000/rare-4        	     834	   1528921 ns/op	         1.000 hits	  843489 B/op	    5358 allocs/op
+BenchmarkHybridSearch/bm25-only/1000/topic-4       	     445	   2818893 ns/op	        72.00 hits	 1575809 B/op	    5800 allocs/op
+BenchmarkHybridSearch/bm25-only/1000/topic-4       	     421	   2841966 ns/op	        72.00 hits	 1575754 B/op	    5800 allocs/op
+BenchmarkHybridSearch/bm25-only/1000/topic-4       	     432	   2955083 ns/op	        72.00 hits	 1575792 B/op	    5800 allocs/op
+BenchmarkHybridSearch/bm25-only/1000/multi-4       	     344	   3401498 ns/op	       120.0 hits	 1966091 B/op	    5995 allocs/op
+BenchmarkHybridSearch/bm25-only/1000/multi-4       	     349	   3378952 ns/op	       120.0 hits	 1966114 B/op	    5995 allocs/op
+BenchmarkHybridSearch/bm25-only/1000/multi-4       	     356	   3466501 ns/op	       120.0 hits	 1966092 B/op	    5995 allocs/op
+BenchmarkHybridSearch/bm25-only/1000/english-4     	     450	   2698320 ns/op	        50.00 hits	 1386298 B/op	    5760 allocs/op
+BenchmarkHybridSearch/bm25-only/1000/english-4     	     417	   3065640 ns/op	        50.00 hits	 1386298 B/op	    5760 allocs/op
+BenchmarkHybridSearch/bm25-only/1000/english-4     	     453	   2662560 ns/op	        50.00 hits	 1386298 B/op	    5760 allocs/op
+BenchmarkHybridSearch/bm25-only/1000/common-4      	     238	   5180286 ns/op	       200.0 hits	 2711212 B/op	    7169 allocs/op
+BenchmarkHybridSearch/bm25-only/1000/common-4      	     237	   4972353 ns/op	       200.0 hits	 2711212 B/op	    7169 allocs/op
+BenchmarkHybridSearch/bm25-only/1000/common-4      	     241	   4895280 ns/op	       200.0 hits	 2711280 B/op	    7169 allocs/op
+BenchmarkHybridSearch/hybrid/1000/rare-4           	     100	  10696925 ns/op	       365.0 hits	 4704018 B/op	   13279 allocs/op
+BenchmarkHybridSearch/hybrid/1000/rare-4           	     100	  10574652 ns/op	       365.0 hits	 4704058 B/op	   13277 allocs/op
+BenchmarkHybridSearch/hybrid/1000/rare-4           	     100	  11127790 ns/op	       365.0 hits	 4704096 B/op	   13279 allocs/op
+BenchmarkHybridSearch/hybrid/1000/topic-4          	     100	  11139760 ns/op	       277.0 hits	 4115370 B/op	   13138 allocs/op
+BenchmarkHybridSearch/hybrid/1000/topic-4          	     100	  11091991 ns/op	       278.0 hits	 4116208 B/op	   13134 allocs/op
+BenchmarkHybridSearch/hybrid/1000/topic-4          	     100	  11422074 ns/op	       280.0 hits	 4114729 B/op	   13140 allocs/op
+BenchmarkHybridSearch/hybrid/1000/multi-4          	     100	  12526224 ns/op	       340.0 hits	 4581302 B/op	   13386 allocs/op
+BenchmarkHybridSearch/hybrid/1000/multi-4          	      91	  12941522 ns/op	       340.0 hits	 4581280 B/op	   13384 allocs/op
+BenchmarkHybridSearch/hybrid/1000/multi-4          	     100	  11967749 ns/op	       340.0 hits	 4581634 B/op	   13395 allocs/op
+BenchmarkHybridSearch/hybrid/1000/english-4        	     100	  12440081 ns/op	       323.0 hits	 4426277 B/op	   13248 allocs/op
+BenchmarkHybridSearch/hybrid/1000/english-4        	     100	  11864030 ns/op	       323.0 hits	 4426598 B/op	   13259 allocs/op
+BenchmarkHybridSearch/hybrid/1000/english-4        	     100	  11740140 ns/op	       323.0 hits	 4426426 B/op	   13253 allocs/op
+BenchmarkHybridSearch/hybrid/1000/common-4         	      81	  13795584 ns/op	       396.0 hits	 5140008 B/op	   14473 allocs/op
+BenchmarkHybridSearch/hybrid/1000/common-4         	     100	  12569241 ns/op	       396.0 hits	 5140070 B/op	   14477 allocs/op
+BenchmarkHybridSearch/hybrid/1000/common-4         	      92	  13230914 ns/op	       396.0 hits	 5140051 B/op	   14476 allocs/op
+BenchmarkHybridSearch/bm25-only/5000/rare-4        	     145	   8899793 ns/op	         1.000 hits	 3901555 B/op	   25422 allocs/op
+BenchmarkHybridSearch/bm25-only/5000/rare-4        	     128	   8477891 ns/op	         1.000 hits	 3901748 B/op	   25422 allocs/op
+BenchmarkHybridSearch/bm25-only/5000/rare-4        	     153	   7355509 ns/op	         1.000 hits	 3901609 B/op	   25422 allocs/op
+BenchmarkHybridSearch/bm25-only/5000/topic-4       	      98	  11488311 ns/op	       200.0 hits	 5682667 B/op	   26553 allocs/op
+BenchmarkHybridSearch/bm25-only/5000/topic-4       	     100	  11542146 ns/op	       200.0 hits	 5682577 B/op	   26553 allocs/op
+BenchmarkHybridSearch/bm25-only/5000/topic-4       	     100	  11607415 ns/op	       200.0 hits	 5682661 B/op	   26553 allocs/op
+BenchmarkHybridSearch/bm25-only/5000/multi-4       	     100	  11625189 ns/op	       200.0 hits	 5706293 B/op	   26794 allocs/op
+BenchmarkHybridSearch/bm25-only/5000/multi-4       	     100	  10702184 ns/op	       200.0 hits	 5706371 B/op	   26794 allocs/op
+BenchmarkHybridSearch/bm25-only/5000/multi-4       	     100	  11114182 ns/op	       200.0 hits	 5706291 B/op	   26794 allocs/op
+BenchmarkHybridSearch/bm25-only/5000/english-4     	     100	  10038886 ns/op	       200.0 hits	 5696433 B/op	   26476 allocs/op
+BenchmarkHybridSearch/bm25-only/5000/english-4     	     100	  10849484 ns/op	       200.0 hits	 5696680 B/op	   26476 allocs/op
+BenchmarkHybridSearch/bm25-only/5000/english-4     	     105	  11034310 ns/op	       200.0 hits	 5696269 B/op	   26476 allocs/op
+BenchmarkHybridSearch/bm25-only/5000/common-4      	      68	  17823987 ns/op	       200.0 hits	 6015974 B/op	   31233 allocs/op
+BenchmarkHybridSearch/bm25-only/5000/common-4      	      70	  19527667 ns/op	       200.0 hits	 6015842 B/op	   31233 allocs/op
+BenchmarkHybridSearch/bm25-only/5000/common-4      	      52	  19434230 ns/op	       200.0 hits	 6015954 B/op	   31233 allocs/op
+BenchmarkHybridSearch/hybrid/5000/rare-4           	      34	  36411610 ns/op	       396.0 hits	10691223 B/op	   50684 allocs/op
+BenchmarkHybridSearch/hybrid/5000/rare-4           	      32	  38852362 ns/op	       396.0 hits	10691420 B/op	   50682 allocs/op
+BenchmarkHybridSearch/hybrid/5000/rare-4           	      31	  38629548 ns/op	       396.0 hits	10691322 B/op	   50677 allocs/op
+BenchmarkHybridSearch/hybrid/5000/topic-4          	      38	  36717908 ns/op	       321.0 hits	10172214 B/op	   50987 allocs/op
+BenchmarkHybridSearch/hybrid/5000/topic-4          	      36	  35964453 ns/op	       321.0 hits	10171743 B/op	   50963 allocs/op
+BenchmarkHybridSearch/hybrid/5000/topic-4          	      34	  35298976 ns/op	       321.0 hits	10171510 B/op	   50965 allocs/op
+BenchmarkHybridSearch/hybrid/5000/multi-4          	      33	  37604343 ns/op	       466.0 hits	11336675 B/op	   51661 allocs/op
+BenchmarkHybridSearch/hybrid/5000/multi-4          	      31	  39685102 ns/op	       466.0 hits	11336335 B/op	   51646 allocs/op
+BenchmarkHybridSearch/hybrid/5000/multi-4          	      32	  38458564 ns/op	       466.0 hits	11336107 B/op	   51648 allocs/op
+BenchmarkHybridSearch/hybrid/5000/english-4        	      33	  38868947 ns/op	       467.0 hits	11351127 B/op	   51277 allocs/op
+BenchmarkHybridSearch/hybrid/5000/english-4        	      26	  38680075 ns/op	       467.0 hits	11352123 B/op	   51293 allocs/op
+BenchmarkHybridSearch/hybrid/5000/english-4        	      33	  42506443 ns/op	       467.0 hits	11351961 B/op	   51291 allocs/op
+BenchmarkHybridSearch/hybrid/5000/common-4         	      24	  50249229 ns/op	       518.0 hits	12145395 B/op	   56245 allocs/op
+BenchmarkHybridSearch/hybrid/5000/common-4         	      25	  49312807 ns/op	       518.0 hits	12146169 B/op	   56266 allocs/op
+BenchmarkHybridSearch/hybrid/5000/common-4         	      26	  49049681 ns/op	       518.0 hits	12144287 B/op	   56214 allocs/op
+BenchmarkSnapshotDiff/replace-5pct-4               	     202	   6528330 ns/op	         0 truncated	15518000 B/op	      10 allocs/op
+BenchmarkSnapshotDiff/replace-5pct-4               	     196	   6371265 ns/op	         0 truncated	15518000 B/op	      10 allocs/op
+BenchmarkSnapshotDiff/replace-5pct-4               	     190	   6201135 ns/op	         0 truncated	15518000 B/op	      10 allocs/op
+BenchmarkSnapshotDiff/insert-5pct-4                	     176	   6253113 ns/op	         0 truncated	16296240 B/op	      10 allocs/op
+BenchmarkSnapshotDiff/insert-5pct-4                	     189	   6242852 ns/op	         0 truncated	16296240 B/op	      10 allocs/op
+BenchmarkSnapshotDiff/insert-5pct-4                	     190	   6583784 ns/op	         0 truncated	16296240 B/op	      10 allocs/op
+BenchmarkSnapshotDiff/identical-4                  	   10000	    100733 ns/op	  362608 B/op	       8 allocs/op
+BenchmarkSnapshotDiff/identical-4                  	   12384	     93787 ns/op	  362608 B/op	       8 allocs/op
+BenchmarkSnapshotDiff/identical-4                  	   12416	     98023 ns/op	  362608 B/op	       8 allocs/op
+BenchmarkSnapshotService/DiffSnapshots-4           	     180	   6582596 ns/op	16640243 B/op	     151 allocs/op
+BenchmarkSnapshotService/DiffSnapshots-4           	     184	   6728643 ns/op	16640147 B/op	     151 allocs/op
+BenchmarkSnapshotService/DiffSnapshots-4           	     177	   6859336 ns/op	16640216 B/op	     151 allocs/op
+BenchmarkSnapshotService/DiffWithCurrent-4         	     175	   6845186 ns/op	16415788 B/op	      90 allocs/op
+BenchmarkSnapshotService/DiffWithCurrent-4         	     183	   6471037 ns/op	16415903 B/op	      90 allocs/op
+BenchmarkSnapshotService/DiffWithCurrent-4         	     186	   6430840 ns/op	16415899 B/op	      90 allocs/op
+BenchmarkSnapshotService/RestoreSnapshot-4         	    1462	    928712 ns/op	 1237581 B/op	     125 allocs/op
+BenchmarkSnapshotService/RestoreSnapshot-4         	    1360	    925866 ns/op	 1237586 B/op	     125 allocs/op
+BenchmarkSnapshotService/RestoreSnapshot-4         	    1454	    892519 ns/op	 1237589 B/op	     125 allocs/op
 PASS
-ok  	github.com/notevault/notevault/internal/service	421.754s
+ok  	github.com/notevault/notevault/internal/service	438.319s
