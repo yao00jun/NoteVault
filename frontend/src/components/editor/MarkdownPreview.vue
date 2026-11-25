@@ -4,6 +4,12 @@ import { marked } from 'marked'
 import markedKatex from 'marked-katex-extension'
 import 'katex/dist/katex.min.css'
 import { sanitizeHtml } from '@/utils/sanitize'
+import {
+  slugifyHeading,
+  cssEscape,
+  parseWikiLinkTarget,
+  type WikiLinkParts,
+} from '@/utils/markdownText'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { FileService } from '@/api'
@@ -30,13 +36,11 @@ const props = defineProps<{
  * - anchor 非空时，父组件应在文件加载后滚动到对应 heading
  * - block 非空时，父组件应滚动到 [data-block-id="..."] 元素
  * - raw 始终是 [[...]] 内部串原文，用于创建新文档场景的回退
+ *
+ * 字段来自 utils/markdownText 的 WikiLinkParts；alias 在解析时已消费，
+ * 不再往上传，故用 Omit 去掉（否则父组件容易误以为需要处理别名）。
  */
-interface WikiLinkTarget {
-  file: string
-  anchor: string
-  block: string
-  raw: string
-}
+type WikiLinkTarget = Omit<WikiLinkParts, 'alias'>
 
 const emit = defineEmits<{
   'wiki-link-click': [target: WikiLinkTarget]
@@ -102,48 +106,8 @@ async function loadImageData(workspacePath: string, relPath: string): Promise<st
 }
 
 // ===== 链接解析工具 =====
-
-/**
- * 把 [[...]] 内部串拆成 { file, anchor, block, alias } 四元组。
- * 与后端 internal/service/graphservice.go 的 parseWikiLinkTarget 保持同一口径。
- *
- * 顺序约定（与 Obsidian 一致）：
- *   1. 先剥别名 |xxx（别名内可能含 #、^ 字符，先剥避免误解析）
- *   2. 再剥块 ID ^xxx（取最后一个 ^，块 ID 仅在末尾）
- *   3. 最后剥锚点 #xxx（取第一个 #，标题可能含 # 但锚点引用取整段）
- *   4. 剩下的就是 file
- *
- * 例：
- *   "note#标题^blk|别名" → file=note, anchor=标题, block=blk, alias=别名
- *   "#标题"             → file="", anchor=标题, block="", alias=""
- *   "^blk"              → file="", anchor="", block=blk, alias=""
- */
-function parseWikiLinkTarget(target: string): WikiLinkTarget & { alias: string } {
-  let rest = target
-  let alias = ''
-  let block = ''
-  let anchor = ''
-  let file: string
-
-  const barIdx = rest.indexOf('|')
-  if (barIdx >= 0) {
-    alias = rest.slice(barIdx + 1).trim()
-    rest = rest.slice(0, barIdx).trim()
-  }
-  const caretIdx = rest.lastIndexOf('^')
-  if (caretIdx >= 0) {
-    block = rest.slice(caretIdx + 1).trim()
-    rest = rest.slice(0, caretIdx).trim()
-  }
-  const hashIdx = rest.indexOf('#')
-  if (hashIdx >= 0) {
-    anchor = rest.slice(hashIdx + 1).trim()
-    rest = rest.slice(0, hashIdx).trim()
-  }
-  file = rest.trim()
-
-  return { file, anchor, block, alias, raw: target }
-}
+// parseWikiLinkTarget / slugifyHeading / cssEscape 的实现与 EditorView 共用
+// utils/markdownText（原先两处各一份逐字相同的副本）。
 
 /** 转义 HTML 特殊字符，防止 data-* 注入 */
 function escapeHtml(s: string): string {
@@ -153,20 +117,6 @@ function escapeHtml(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
-}
-
-/**
- * 把标题文本转成 DOM id（GitHub 风格 slugify）。
- * marked 默认不生成 heading id，我们在渲染后用 DOM 操作补。
- */
-function slugifyHeading(text: string): string {
-  return text
-    .trim()
-    .toLowerCase()
-    // 去掉所有标点（保留字母、数字、CJK、空格、横线）
-    .replace(/[^\p{L}\p{N}\s-]/gu, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
 }
 
 // ===== 预处理 =====
@@ -535,14 +485,6 @@ function scrollToAnchor(root: HTMLElement, anchor: string, block: string): boole
     }
   }
   return false
-}
-
-function cssEscape(s: string): string {
-  try {
-    return CSS.escape(s)
-  } catch {
-    return s.replace(/["\\]/g, '\\$&')
-  }
 }
 
 /**

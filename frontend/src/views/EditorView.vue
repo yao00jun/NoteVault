@@ -34,6 +34,12 @@ import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { isLocalBaseURL } from '@/utils/localEndpoint'
 import { toSplitPairs } from '@/utils/textDiff'
+import {
+  WIKI_LINK_RE,
+  parseWikiLinkFile,
+  slugifyHeading,
+  cssEscape,
+} from '@/utils/markdownText'
 import { useToast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirm'
 import { promptDialog } from '@/composables/usePrompt'
@@ -358,21 +364,12 @@ const { backlinks, loadBacklinks, openBacklink } = useEditorBacklinks({
 })
 
 // ---- 出链（本文 [[引用]] 的目标文档）----
+// WIKI_LINK_RE / parseWikiLinkFile 与 MarkdownPreview 共用 utils/markdownText，
+// 避免两处对 [[a#b^c|d]] 的拆解口径漂移（那会导致出链与点击跳转对不上）。
 interface DrawerOutlink {
   path: string
   name: string
   exists: boolean
-}
-const WIKI_LINK_RE = /\[\[([^\]\n]+)\]\]/g
-
-function parseWikiLinkFile(target: string): string {
-  // 剥别名（首个 |）→ 剥块（最后一个 ^）→ 剥锚点（首个 #），与 MarkdownPreview 同口径
-  let file = target.split('|')[0]!
-  const caret = file.lastIndexOf('^')
-  if (caret >= 0) file = file.slice(0, caret)
-  const hash = file.indexOf('#')
-  if (hash >= 0) file = file.slice(0, hash)
-  return file.trim()
 }
 
 const outlinks = computed<DrawerOutlink[]>(() => {
@@ -617,23 +614,6 @@ function tryScrollToPendingAnchor(): boolean {
     pendingAnchor.value = null
   }
   return ok
-}
-
-function slugifyHeading(text: string): string {
-  return text
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s-]/gu, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-}
-
-function cssEscape(s: string): string {
-  try {
-    return CSS.escape(s)
-  } catch {
-    return s.replace(/["\\]/g, '\\$&')
-  }
 }
 
 // 新建指定名称的文件
