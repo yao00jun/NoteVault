@@ -11,6 +11,7 @@ import { EditorSelection, RangeSetBuilder, type Extension } from '@codemirror/st
 import { indentLess, indentMore, redo, undo } from '@codemirror/commands'
 import { insertCallout } from '@/components/editor/editorCommands'
 import { i18n } from '@/i18n'
+import { getActiveEditor } from './activeEditor'
 import type {
   CompiledDecoration,
   CompiledWidget,
@@ -18,18 +19,13 @@ import type {
   PluginTextTransform,
 } from './types'
 
-// 当前活动编辑器视图（由 MarkdownEditor 在创建/销毁时注册）。
-// 插件运行在 Worker 沙箱里，不能直接碰 DOM，因此“按钮点击→改选中文本”
-// 这一步必须由宿主在真实编辑器上执行——这就是 editorBridge 的职责。
-let activeEditor: EditorView | null = null
-
-export function setActiveEditor(view: EditorView | null): void {
-  activeEditor = view
-}
-
-export function getActiveEditor(): EditorView | null {
-  return activeEditor
-}
+// 活动编辑器注册表（setActiveEditor / getActiveEditor）与不依赖 CM 对象模型的
+// 读写（getEditorSelection / insertAtCursor）住在 ./activeEditor——那一层运行时
+// 零 CodeMirror 依赖，应用外壳可以放心引用而不把 CM 拖进首屏。
+// 本模块是「重型」编辑器桥：变换、对齐、内置命令、插件装饰，只在编辑器
+// 相关 chunk 里被静态引入；外壳若要用，走 activeEditor.loadEditorBridge()。
+// 这里原样转出，既有的 `import { ... } from '@/plugins/editorBridge'` 不受影响。
+export { setActiveEditor, getActiveEditor, getEditorSelection, insertAtCursor } from './activeEditor'
 
 // ---------------------------------------------------------------------------
 // 宿主内置编辑器命令（P14）
@@ -78,7 +74,7 @@ function isAlignTag(text: string, align: AlignMode): boolean {
  * 用 HTML 标签是因为 Markdown 没有原生对齐语法，这与 Obsidian 的做法一致。
  */
 export function applyAlign(align: AlignMode): void {
-  const view = activeEditor
+  const view = getActiveEditor()
   if (!view) return
   const { state } = view
   const wrapText = (text: string) =>
@@ -128,7 +124,7 @@ export function runBuiltinEditorCommand(command: string): boolean {
     return true
   }
 
-  const view = activeEditor
+  const view = getActiveEditor()
   if (!view) return false
 
   switch (command) {
@@ -180,7 +176,7 @@ const LINE_PREFIX_PATTERN = /^(#{1,6}\s+|>\s?|[-*+]\s+|\d+\.\s+)/
  * 这样 H1 按钮点两次会回到普通文本，符合编辑器工具栏的常规行为。
  */
 export function applyLinePrefix(prefix: string): void {
-  const view = activeEditor
+  const view = getActiveEditor()
   if (!view || !prefix) return
   const { state } = view
   const changes: { from: number, insert: string, to: number }[] = []
@@ -207,24 +203,12 @@ export function applyLinePrefix(prefix: string): void {
 }
 
 /**
- * 读取当前选区文本（P14）。
- * 没有活动编辑器时返回空串——插件应当能容忍这个情况，
- * 而不是假设一定有编辑器打开着。
- */
-export function getEditorSelection(): string {
-  const view = activeEditor
-  if (!view) return ''
-  const { from, to } = view.state.selection.main
-  return view.state.sliceDoc(from, to)
-}
-
-/**
  * 替换当前选区（P14）；无选区时等价于在光标处插入。
  * 与 applyTransform 的区别：那个只能做「包裹」，这个允许插件
  * 自己算出替换后的文本（大小写转换、格式化、模板渲染等）。
  */
 export function replaceEditorSelection(text: string): void {
-  const view = activeEditor
+  const view = getActiveEditor()
   if (!view) return
   const { state } = view
   view.dispatch(
@@ -237,34 +221,11 @@ export function replaceEditorSelection(text: string): void {
 }
 
 /**
- * 在当前光标处插入文本，不替换已有选区（AI Copilot「插入当前笔记」专用，
- * AI-COPILOT-FLOATING-ORB 蓝图 Step 3）。
- * 与 replaceEditorSelection 的区别：后者会吞掉选区——用户复制了一段文字
- * 再点「插入」时，绝不能把选区内容顶掉。
- * 返回是否成功（没有活动编辑器时为 false，由调用方降级提示）。
- */
-export function insertAtCursor(text: string): boolean {
-  const view = activeEditor
-  if (!view) return false
-  const { state } = view
-  const pos = state.selection.main.head
-  view.dispatch(
-    state.update({
-      changes: { from: pos, insert: text },
-      selection: EditorSelection.cursor(pos + text.length),
-      userEvent: 'input',
-    }),
-  )
-  view.focus()
-  return true
-}
-
-/**
  * 应用插件声明的文本变换到当前选区/光标（宿主在真实编辑器上执行）。
  * UI 注册协议的落点：插件只能声明 transform，宿主拿到按钮点击后在这里真正改文本。
  */
 export function applyTransform(transform: PluginTextTransform): void {
-  const view = activeEditor
+  const view = getActiveEditor()
   if (!view) return
   const { state } = view
 
@@ -323,7 +284,7 @@ export type InlineFormat = 'bold' | 'italic' | 'code' | 'link'
 
 /** 对当前选区/光标施加行内 Markdown 格式 */
 export function applyInlineFormat(format: InlineFormat): void {
-  const view = activeEditor
+  const view = getActiveEditor()
   if (!view) return
   if (format === 'link') {
     applyLink()
@@ -340,7 +301,7 @@ export function applyInlineFormat(format: InlineFormat): void {
 
 /** 插入 Markdown 链接：[选中文本](url) 或 [链接文本](url)，并把 url 段选中便于直接键入 */
 function applyLink(): void {
-  const view = activeEditor
+  const view = getActiveEditor()
   if (!view) return
   const { state } = view
   const spec = state.changeByRange((range) => {

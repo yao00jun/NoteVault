@@ -28,13 +28,14 @@ vi.mock('@/api', () => ({
   ReminderService: { GetAllReminders: vi.fn(async () => []) },
 }))
 
-vi.mock('@/plugins/editorBridge', () => ({
+// 抽屉只经轻量的 activeEditor 访问编辑器（不把 CodeMirror 拖进首屏），故 mock 它
+vi.mock('@/plugins/activeEditor', () => ({
   insertAtCursor: vi.fn(() => true),
   getActiveEditor: vi.fn(() => null),
 }))
 
 import AICopilotDrawer from './AICopilotDrawer.vue'
-import { insertAtCursor, getActiveEditor } from '@/plugins/editorBridge'
+import { insertAtCursor, getActiveEditor } from '@/plugins/activeEditor'
 import { EditorState } from '@codemirror/state'
 import { editorSession } from '@/composables/useEditorSession'
 import { QnAService, FileService } from '@/api'

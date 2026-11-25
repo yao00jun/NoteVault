@@ -6,15 +6,8 @@ import { i18n } from '@/i18n'
 import { PluginRuntimeHost } from '@/plugins/runtime'
 import { createMainThreadTransport } from '@/plugins/mainThreadTransport'
 import { createWorkerSource } from '@/plugins/workerSource'
-import {
-  applyLinePrefix,
-  applyTransform,
-  getEditorSelection,
-  replaceEditorSelection,
-  runBuiltinEditorCommand,
-  setEditorUiHandlers,
-  type EditorUiHandlers,
-} from '@/plugins/editorBridge'
+import { getEditorSelection, loadEditorBridge } from '@/plugins/activeEditor'
+import type { EditorUiHandlers } from '@/plugins/editorBridge'
 import type {
   CompiledDecoration,
   CompiledWidget,
@@ -107,12 +100,15 @@ export const usePluginRuntimeStore = defineStore('plugin-runtime', () => {
         async savePluginData(pluginId, data) {
           await PluginService.SavePluginData(pluginId, data)
         },
-        // 编辑器（P14）：插件拿不到 DOM，读写选区由宿主在真实编辑器上执行
+        // 编辑器（P14）：插件拿不到 DOM，读写选区由宿主在真实编辑器上执行。
+        // 读选区走轻量的 activeEditor（同步、零 CM 依赖）；写选区要碰 CM 事务，
+        // 编辑器桥按需加载——编辑器开着时模块已在缓存里，这里只是不让外壳
+        // 为它在首屏背上整套 CodeMirror。
         getSelection() {
           return getEditorSelection()
         },
         replaceSelection(text) {
-          replaceEditorSelection(text)
+          void loadEditorBridge().then(bridge => bridge.replaceEditorSelection(text))
         },
       },
       notifications(message) {
@@ -365,36 +361,32 @@ export const usePluginRuntimeStore = defineStore('plugin-runtime', () => {
     //   1. command        → 宿主内置命令（撤销、缩进、取色器这类，插件碰不到）
     //   2. handledByPlugin → 通知插件自己处理（读选区 → 计算 → 写回）
     //   3. transform      → 宿主在编辑器上执行文本变换
-    if (button.command) {
-      runEditorCommand(button.command)
-      return
-    }
-    if (button.handledByPlugin) {
-      host.triggerToolbarButton(pluginId, buttonId)
-      return
-    }
-    // 行级（标题/引用/列表）与选区级（加粗/斜体）走不同的实现，
-    // transform 协议用 linePrefix 是否存在来区分
-    const transform = button.transform ?? {}
-    if (transform.linePrefix) {
-      applyLinePrefix(transform.linePrefix)
-      return
-    }
-    applyTransform(transform)
-  }
-
-  /**
-   * 执行宿主内置的编辑器命令（P14）。
-   * 这些命令需要碰编辑器的历史栈或打开宿主 UI，插件在沙箱里做不到，
-   * 所以由宿主提供固定集合，插件只能通过 command 名字引用。
-   */
-  function runEditorCommand(command: string): void {
-    runBuiltinEditorCommand(command)
+    //
+    // 工具栏按钮只渲染在编辑器里，此刻编辑器桥必然已在模块缓存中；
+    // 动态加载只是为了让首屏外壳不背上 CodeMirror，不改变三种分支的优先级。
+    void loadEditorBridge().then(bridge => {
+      if (button.command) {
+        bridge.runBuiltinEditorCommand(button.command)
+        return
+      }
+      if (button.handledByPlugin) {
+        host.triggerToolbarButton(pluginId, buttonId)
+        return
+      }
+      // 行级（标题/引用/列表）与选区级（加粗/斜体）走不同的实现，
+      // transform 协议用 linePrefix 是否存在来区分
+      const transform = button.transform ?? {}
+      if (transform.linePrefix) {
+        bridge.applyLinePrefix(transform.linePrefix)
+        return
+      }
+      bridge.applyTransform(transform)
+    })
   }
 
   /** 供编辑器组件注册取色器 / 格式刷这类依赖组件状态的 UI 操作 */
   function registerEditorUiHandlers(handlers: EditorUiHandlers): void {
-    setEditorUiHandlers(handlers)
+    void loadEditorBridge().then(bridge => bridge.setEditorUiHandlers(handlers))
   }
 
   return {

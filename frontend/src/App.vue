@@ -20,7 +20,7 @@ import { toWorkspace, toWorkspaceList } from '@/utils/workspace'
 import { usePluginRuntimeStore } from '@/stores/pluginRuntime'
 import { useReminderNotifications } from '@/composables/useReminderNotifications'
 import { WorkspaceService } from '@/api'
-import { applyInlineFormat, getActiveEditor } from '@/plugins/editorBridge'
+import { getActiveEditor } from '@/plugins/activeEditor'
 import { isImeComposing } from '@/utils/ime'
 import { useNavigationStore } from '@/stores/navigation'
 import { openDocument } from '@/utils/navigation'
@@ -154,7 +154,10 @@ function handleGlobalKeydown(e: KeyboardEvent) {
       if (view && view.dom.contains(document.activeElement)) return
       if (view) {
         e.preventDefault()
-        applyInlineFormat(fmt)
+        // editorBridge 带着 CodeMirror，应用外壳只在「确实有活动编辑器」时才取它
+        // ——此刻编辑器 chunk 已加载，动态 import 命中模块缓存，只是延后一个微任务。
+        // preventDefault 必须同步完成（上面已做），默认行为不会抢先触发。
+        void import('@/plugins/editorBridge').then(bridge => bridge.applyInlineFormat(fmt))
       }
       return
     }

@@ -206,6 +206,8 @@ describe('usePluginRuntimeStore', () => {
 
     const button = store.toolbarButtons[0]
     store.runToolbarButton(button.pluginId, button.id)
+    // 编辑器桥按需加载（动态 import），等模块 settles 后变换才落地
+    await vi.dynamicImportSettled()
     expect(applyTransformMock).toHaveBeenCalledWith(button.transform)
   })
 
