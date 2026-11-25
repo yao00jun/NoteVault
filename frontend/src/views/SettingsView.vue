@@ -10,12 +10,12 @@ import { useShortcuts } from '@/composables/useShortcuts'
 import { useEditorToolbarSettings } from '@/composables/useEditorToolbarSettings'
 import type { ThemeType } from '@/types'
 import type { Locale } from '@/i18n'
-import { ClipperService, FileService, WorkspaceService } from '@/api'
-import type { ClipperStatus } from '@/api'
+import { FileService, WorkspaceService } from '@/api'
 import { confirmDialog } from '@/composables/useConfirm'
 import { useToast } from '@/composables/useToast'
 import ThemePreview from '@/components/settings/ThemePreview.vue'
 import FolderDisplayNamesSettings from '@/components/settings/FolderDisplayNamesSettings.vue'
+import IntegrationSettings from '@/components/settings/IntegrationSettings.vue'
 
 const { t } = useI18n()
 const toast = useToast()
@@ -83,54 +83,9 @@ const {
   onDragStart, onDrop, addCustomCommand, removeCustomCommand,
 } = useEditorToolbarSettings()
 
-// MCP 接入（P1）：为 notevault-mcp 生成客户端接入配置，工作区路径按当前工作区填入
-const mcpCliCommand = computed(() => {
-  const ws = workspaceStore.currentWorkspace?.path || t('settings.mcp.workspacePlaceholder')
-  const write = settingsStore.settings.mcp.enableWrite ? ' --enable-write' : ''
-  return `claude mcp add notevault -- notevault-mcp --workspace "${ws}"${write}`
-})
-const mcpJsonConfig = computed(() => {
-  const ws = workspaceStore.currentWorkspace?.path || t('settings.mcp.workspacePlaceholder')
-  const args = ['--workspace', ws]
-  if (settingsStore.settings.mcp.enableWrite) args.push('--enable-write')
-  return JSON.stringify({ mcpServers: { notevault: { command: 'notevault-mcp', args } } }, null, 2)
-})
-async function copyMcpConfig(text: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-    toast.success(t('settings.mcp.copied'))
-  } catch {
-    toast.error(t('settings.mcp.copyFailed'))
-  }
-}
+// 错误监控 / MCP 接入 / Web Clipper 三块整体搬到 components/settings/IntegrationSettings.vue：
+// 它们共享「读后端状态 + 生成配置文本 + 复制」的形态，与设置页其余区块没有数据往来。
 
-// Web Clipper：读取后端运行状态与 Token（后端 Status() 已暴露，Token 供填入浏览器扩展）
-const clipperStatus = ref<ClipperStatus | null>(null)
-const clipperLoading = ref(false)
-async function loadClipperStatus() {
-  clipperLoading.value = true
-  try {
-    clipperStatus.value = await ClipperService.Status()
-  } catch (e) {
-    clipperStatus.value = null
-    toast.error(t('settings.clipper.loadFailed', { msg: (e as Error).message }))
-  } finally {
-    clipperLoading.value = false
-  }
-}
-async function copyClipperToken() {
-  const token = clipperStatus.value?.token
-  if (!token) return
-  try {
-    await navigator.clipboard.writeText(token)
-    toast.success(t('settings.clipper.tokenCopied'))
-  } catch {
-    toast.error(t('settings.clipper.copyFailed'))
-  }
-}
-const clipperEndpoint = computed(() =>
-  clipperStatus.value ? `http://127.0.0.1:${clipperStatus.value.port}/api/clip` : ''
-)
 interface WorkspacePresetOption {
   id: string
   name: string
@@ -173,7 +128,6 @@ async function applyWorkspacePreset(id: string): Promise<void> {
 }
 
 onMounted(() => {
-  void loadClipperStatus()
   void loadPresets()
 })
 
@@ -1132,163 +1086,9 @@ async function scrollToSection(id: string) {
           </button>
         </div>
       </div>
-      <div
-        id="settings-section-errorReport"
-        class="settings-section"
-      >
-        <h3 class="section-title">
-          {{ t('settings.errorReport.title') }}
-        </h3>
-        <p class="section-desc">
-          {{ t('settings.errorReport.desc') }}
-        </p>
-        <div class="setting-item">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.errorReport.sentryDSN') }}</span>
-            <span class="setting-desc">{{ t('settings.errorReport.sentryDSNDesc') }}</span>
-          </div>
-          <input
-            v-model="settingsStore.settings.errorReport.sentryDSN"
-            class="setting-input"
-            type="password"
-            placeholder="https://publickey@sentry.io/1"
-          >
-        </div>
-        <div class="setting-item">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.errorReport.enableLocalLog') }}</span>
-            <span class="setting-desc">{{ t('settings.errorReport.enableLocalLogDesc') }}</span>
-          </div>
-          <label class="toggle-switch">
-            <input
-              v-model="settingsStore.settings.errorReport.enableLocalLog"
-              type="checkbox"
-            >
-            <span class="toggle-slider" />
-          </label>
-        </div>
-      </div>
 
-      <!-- 5c. MCP 接入 -->
-      <div
-        id="settings-section-mcp"
-        class="settings-section"
-      >
-        <h3 class="section-title">
-          {{ t('settings.mcp.title') }}
-        </h3>
-        <p class="section-desc">
-          {{ t('settings.mcp.desc') }}
-        </p>
-        <div class="setting-item">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.mcp.enableWrite') }}</span>
-            <span class="setting-desc">{{ t('settings.mcp.enableWriteDesc') }}</span>
-          </div>
-          <label class="toggle-switch">
-            <input
-              v-model="settingsStore.settings.mcp.enableWrite"
-              type="checkbox"
-            >
-            <span class="toggle-slider" />
-          </label>
-        </div>
-        <div class="setting-item">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.mcp.cli') }}</span>
-            <span class="setting-desc">{{ t('settings.mcp.cliDesc') }}</span>
-          </div>
-          <button
-            type="button"
-            class="preset-btn"
-            data-testid="mcp-copy-cli"
-            @click="copyMcpConfig(mcpCliCommand)"
-          >
-            {{ t('settings.mcp.copy') }}
-          </button>
-        </div>
-        <pre
-          class="mcp-snippet"
-          data-testid="mcp-cli-snippet"
-        >{{ mcpCliCommand }}</pre>
-        <div class="setting-item">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.mcp.json') }}</span>
-            <span class="setting-desc">{{ t('settings.mcp.jsonDesc') }}</span>
-          </div>
-          <button
-            type="button"
-            class="preset-btn"
-            data-testid="mcp-copy-json"
-            @click="copyMcpConfig(mcpJsonConfig)"
-          >
-            {{ t('settings.mcp.copy') }}
-          </button>
-        </div>
-        <pre
-          class="mcp-snippet"
-          data-testid="mcp-json-snippet"
-        >{{ mcpJsonConfig }}</pre>
-        <p class="section-desc">
-          {{ t('settings.mcp.buildHint') }}
-        </p>
-      </div>
-
-      <!-- 5d. Web Clipper 剪藏 -->
-      <div
-        id="settings-section-clipper"
-        class="settings-section"
-      >
-        <h3 class="section-title">
-          {{ t('settings.clipper.title') }}
-        </h3>
-        <p class="section-desc">
-          {{ t('settings.clipper.desc') }}
-        </p>
-        <div class="setting-item">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.clipper.status') }}</span>
-            <span class="setting-desc">{{ t('settings.clipper.statusDesc') }}</span>
-          </div>
-          <span
-            class="clipper-status-badge"
-            :class="{ running: clipperStatus?.running }"
-            data-testid="clipper-status"
-          >{{ clipperStatus?.running ? t('settings.clipper.running') : t('settings.clipper.stopped') }}</span>
-        </div>
-        <div class="setting-item">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.clipper.endpoint') }}</span>
-            <span class="setting-desc">{{ t('settings.clipper.endpointDesc') }}</span>
-          </div>
-          <code
-            class="mcp-snippet"
-            data-testid="clipper-endpoint"
-          >{{ clipperEndpoint || '—' }}</code>
-        </div>
-        <div class="setting-item">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.clipper.token') }}</span>
-            <span class="setting-desc">{{ t('settings.clipper.tokenDesc') }}</span>
-          </div>
-          <button
-            type="button"
-            class="preset-btn"
-            data-testid="clipper-copy-token"
-            :disabled="!clipperStatus?.token"
-            @click="copyClipperToken"
-          >
-            {{ t('settings.clipper.copyToken') }}
-          </button>
-        </div>
-        <code
-          class="mcp-snippet"
-          data-testid="clipper-token"
-        >{{ clipperStatus?.token || (clipperLoading ? '…' : '—') }}</code>
-        <p class="section-desc">
-          {{ t('settings.clipper.hint') }}
-        </p>
-      </div>
+      <!-- 5b/5c/5d. 错误监控 · MCP 接入 · Web Clipper（集成分组，见子组件） -->
+      <IntegrationSettings />
 
       <!-- 5e. 岗位工作台预设 -->
       <div
@@ -1371,6 +1171,8 @@ async function scrollToSection(id: string) {
     </div>
   </div>
 </template>
+
+<style scoped src="@/components/settings/settings-section.css"></style>
 
 <style scoped>
 .theme-previews { display: grid; grid-template-columns: repeat(3, minmax(145px, 1fr)); gap: 12px; width: 100%; margin-top: 12px; }
@@ -1466,35 +1268,7 @@ async function scrollToSection(id: string) {
   padding: var(--space-6);
 }
 
-/* MCP 接入：命令 / JSON 片段展示 */
-.mcp-snippet {
-  margin: calc(var(--space-2) * -1) 0 var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  user-select: all;
-}
 
-/* Web Clipper 运行状态徽标 */
-.clipper-status-badge {
-  padding: 3px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  font-size: 12px;
-  white-space: nowrap;
-}
-.clipper-status-badge.running {
-  border-color: var(--success, #1d9e75);
-  color: var(--success, #1d9e75);
-}
 
 .preset-list {
   display: flex;
@@ -1534,49 +1308,11 @@ async function scrollToSection(id: string) {
   line-height: 1.7;
 }
 
-.settings-section {
-  max-width: 900px;
-  margin-bottom: var(--space-6);
-}
 
-.section-title {
-  font-size: var(--text-lg);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 var(--space-4);
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--border);
-}
 
-.setting-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  margin-bottom: var(--space-2);
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-}
 
-.setting-info {
-  flex: 1;
-  min-width: 0;
-}
 
-.setting-label {
-  display: block;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--text-primary);
-  margin-bottom: 2px;
-}
 
-.setting-desc {
-  display: block;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
 
 /* 资产运维：孤立附件 GC（此前整块缺样式，按钮被全局 reset 成纯文本） */
 .setting-row {
@@ -1756,21 +1492,7 @@ async function scrollToSection(id: string) {
   color: var(--warning, #f59e0b);
 }
 
-.setting-input {
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--bg-input);
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-  outline: none;
-  width: 260px;
-  font-family: inherit;
-}
 
-.setting-input:focus {
-  border-color: var(--accent);
-}
 
 .input-with-action {
   display: flex;
@@ -1787,30 +1509,8 @@ async function scrollToSection(id: string) {
   max-width: 320px;
 }
 
-.preset-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--bg-input);
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  font-family: inherit;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-}
 
-.preset-btn:hover {
-  border-color: var(--accent);
-  color: var(--text-primary);
-}
 
-.preset-btn.active {
-  border-color: var(--accent);
-  color: var(--accent);
-}
 
 .preset-badge {
   padding: 0 4px;
@@ -1968,44 +1668,6 @@ async function scrollToSection(id: string) {
   color: var(--text-secondary);
 }
 
-/* 切换开关（错误监控等场景） */
-.toggle-switch {
-  position: relative;
-  display: inline-block;
-  width: 38px;
-  height: 20px;
-  flex-shrink: 0;
-}
-.toggle-switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-.toggle-slider {
-  position: absolute;
-  inset: 0;
-  background: var(--bg-sidebar, #ccc);
-  border-radius: 20px;
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-.toggle-slider::before {
-  content: "";
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  left: 2px;
-  top: 2px;
-  background: white;
-  border-radius: 50%;
-  transition: transform var(--transition-fast);
-}
-.toggle-switch input:checked + .toggle-slider {
-  background: var(--accent);
-}
-.toggle-switch input:checked + .toggle-slider::before {
-  transform: translateX(18px);
-}
 
 /* 编辑器工具栏配置 */
 .toolbar-config.column {
