@@ -133,7 +133,7 @@ jobs:
               build/darwin/Info.plist > build/darwin/Info.plist.tmp \
             && mv build/darwin/Info.plist.tmp build/darwin/Info.plist
           wails3 task darwin:package:dmg VERSION="$VERSION" ARCH="${{ matrix.arch }}"
-          GOARCH="${{ matrix.arch }}" wails3 task mcp:build
+          GOARCH="${{ matrix.arch }}" wails3 task mcp:build VERSION="$VERSION"
 
       - name: Build Linux binaries and packages
         if: matrix.package == 'linux'
@@ -148,12 +148,13 @@ jobs:
           # CI 按当前 tag 覆写（去掉 v 前缀），保证与 Release 版本一致
           sed -i "s/^version: .*/version: \"${VERSION#v}\"/" build/linux/nfpm/nfpm.yaml
           wails3 task linux:build VERSION="$VERSION"
-          wails3 task mcp:build
-          # 三个打包任务各自依赖 build：go build 有缓存，多跑几次只是重复 vite 构建
-          wails3 task linux:create:deb
-          wails3 task linux:create:rpm
-          wails3 task linux:create:aur
-          wails3 task linux:create:appimage
+          wails3 task mcp:build VERSION="$VERSION"
+          # 每个打包任务都依赖 build，会真的重跑一次（go 缓存省编译但产物会被覆盖）：
+          # 不传 VERSION 就会用默认 0.1.0 重建并覆盖掉上面注入过版本号的二进制。
+          wails3 task linux:create:deb VERSION="$VERSION"
+          wails3 task linux:create:rpm VERSION="$VERSION"
+          wails3 task linux:create:aur VERSION="$VERSION"
+          wails3 task linux:create:appimage VERSION="$VERSION"
 
       # 统一产物命名，并把 MCP 二进制一并打包（它不在安装包里）
       - name: Collect release assets

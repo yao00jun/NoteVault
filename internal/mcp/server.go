@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/notevault/notevault/internal/core"
 	"github.com/notevault/notevault/internal/service"
 )
 
@@ -26,8 +27,12 @@ import (
 const (
 	ProtocolVersion = "2025-06-18"
 	ServerName      = "notevault-mcp"
-	ServerVersion   = "1.0.0"
 )
+
+// ServerVersion 是 initialize 回给客户端的版本号。与客户端二进制同源：
+// core.AppVersion 由构建时的 -ldflags -X 注入 tag，因此 MCP 二进制自报的
+// 版本与安装包版本不会各说各话（此前这里硬编码 "1.0.0"，发 v3.1.0 时报 1.0.0）。
+var ServerVersion = core.AppVersion
 
 // Server 持有一个工作区的所有复用服务实例，并处理 MCP 消息。
 type Server struct {
