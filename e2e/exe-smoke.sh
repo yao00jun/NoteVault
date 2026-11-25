@@ -10,7 +10,7 @@
 #
 # 注意：
 #   - 在无交互桌面/沙箱环境下 WebView2 渲染进程不会启动（CDP 端口不监听），
-#     因此完整 UI 自动化需在真实桌面环境进行（见 README 中 NOTEvault_DEBUG_PORT）。
+#     因此完整 UI 自动化需在真实桌面环境进行（见 README 中 NOTEVAULT_DEBUG_PORT）。
 #   - 本脚本不负责杀掉测试进程（Git Bash kill 对 Windows GUI 进程无效），
 #     测试结束后请用 PowerShell 执行：Get-Process notevault | Stop-Process -Force
 # =============================================================================
@@ -31,8 +31,11 @@ if [ ! -f "$EXE" ]; then
   exit 1
 fi
 
-# 1. 启动（带调试端口开关，验证 NOTEvault_DEBUG_PORT 路径）
-NOTEvault_DEBUG_PORT=$PORT "$EXE" >"$LOG" 2>&1 &
+# 1. 启动（带调试端口开关，验证 NOTEVAULT_DEBUG_PORT 路径）
+#    变量名必须与 main.go 的 os.Getenv("NOTEVAULT_DEBUG_PORT") 逐字一致：
+#    曾误写成 NOTEvault_DEBUG_PORT，程序读不到，等于从没验证过这条路径，
+#    而脚本照样全绿。
+NOTEVAULT_DEBUG_PORT=$PORT "$EXE" >"$LOG" 2>&1 &
 sleep 3
 
 # 2. 进程存活
