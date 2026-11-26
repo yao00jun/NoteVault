@@ -307,4 +307,62 @@ describe('editor and Markdown workbench integration', () => {
     expect(FileService.SaveFile).not.toHaveBeenCalled()
     expect(tabs.value[0]?.isDirty).toBe(true)
   })
+
+  it('keeps isSaving true until the last of several concurrent writes finishes', async () => {
+    const { draft, tabs } = mountDraft()
+    tabs.value[0]!.isDirty = true
+    tabs.value[1]!.isDirty = true
+    const finishes: Array<() => void> = []
+    vi.mocked(FileService.SaveFile).mockImplementation(() => new Promise<void>(resolve => {
+      finishes.push(resolve)
+    }) as ReturnType<typeof FileService.SaveFile>)
+
+    const first = draft.saveTab(0)
+    const second = draft.saveTab(1)
+    expect(FileService.SaveFile).toHaveBeenCalledTimes(2)
+    expect(draft.isSaving.value).toBe(true)
+
+    finishes[0]!()
+    await flushPromises()
+    // 一个写完不代表保存结束：另一个还在飞
+    expect(draft.isSaving.value).toBe(true)
+
+    finishes[1]!()
+    await Promise.all([first, second])
+    expect(draft.isSaving.value).toBe(false)
+    expect(draft.saveErrors.value).toEqual({})
+  })
+
+  it('drops the result of a write whose tab was closed while it was in flight', async () => {
+    const { draft, tabs } = mountDraft()
+    tabs.value[0]!.isDirty = true
+    let finish!: () => void
+    vi.mocked(FileService.SaveFile).mockImplementationOnce(() => new Promise<void>(resolve => {
+      finish = resolve
+    }) as ReturnType<typeof FileService.SaveFile>)
+
+    const saving = draft.saveTab(0)
+    tabs.value.splice(0, 1)
+    finish()
+
+    expect(await saving).toBe(false)
+    expect(draft.isSaving.value).toBe(false)
+    expect(draft.saveErrors.value).toEqual({})
+  })
+
+  it('does not blame the new workspace for a write that finished after the switch', async () => {
+    const { draft, tabs, workspace } = mountDraft()
+    tabs.value[0]!.isDirty = true
+    let finish!: () => void
+    vi.mocked(FileService.SaveFile).mockImplementationOnce(() => new Promise<void>(resolve => {
+      finish = resolve
+    }) as ReturnType<typeof FileService.SaveFile>)
+
+    const saving = draft.saveTab(0)
+    workspace.value = '/workspace-b'
+    finish()
+
+    expect(await saving).toBe(false)
+    expect(draft.saveErrors.value).toEqual({})
+  })
 })
