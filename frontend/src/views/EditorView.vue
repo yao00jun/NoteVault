@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, nextTick } from 'vue'
+import { ref, shallowRef, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch, nextTick } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import {
   BookOpen,
@@ -34,21 +34,15 @@ import { marked } from 'marked'
 import { sanitizeHtml } from '@/utils/sanitize'
 import { isLocalBaseURL } from '@/utils/localEndpoint'
 import { toSplitPairs } from '@/utils/textDiff'
-import {
-  WIKI_LINK_RE,
-  parseWikiLinkFile,
-  slugifyHeading,
-  cssEscape,
-} from '@/utils/markdownText'
+import { WIKI_LINK_RE, parseWikiLinkFile } from '@/utils/markdownText'
 import { useToast } from '@/composables/useToast'
-import { confirmDialog } from '@/composables/useConfirm'
 import { promptDialog } from '@/composables/usePrompt'
-import { useEditorDraft, type EditorTab } from '@/composables/useEditorDraft'
+import { useEditorDraft } from '@/composables/useEditorDraft'
 import { useEditorFileOperations } from '@/composables/useEditorFileOperations'
 import { useEditorBacklinks } from '@/composables/useEditorBacklinks'
+import { useEditorAnchorNavigation } from '@/composables/useEditorAnchorNavigation'
+import { useEditorTabs } from '@/composables/useEditorTabs'
 import { editorSession, registerEditorFlush } from '@/composables/useEditorSession'
-import { normalizeNotePath } from '@/utils/navigation'
-import { isEntryPath, windowsWorkspace } from '@/utils/filePaths'
 import { findFileByName } from '@/utils/wikiLinkFiles'
 import { useEditorLayout } from '@/composables/useEditorLayout'
 import { distillationPaths, distillNoteTitle, isDistillableSource, type DistillationSource } from '@/utils/distillKnowledge'
@@ -62,20 +56,40 @@ const settingsStore = useSettingsStore()
 const { t } = useI18n()
 const toast = useToast()
 
-// 标签页数据结构（字段定义与草稿/冲突逻辑同源，见 useEditorDraft）
-type Tab = EditorTab
-
 // 状态
 const fileTree = ref<FileNode[]>([])
-const tabs = ref<Tab[]>([])
-const activeTabIndex = ref(-1)
 const focusFolder = ref<string | null>(null)
 const distillSource = ref<DistillationSource | null>(null)
 const preparingDistillation = ref(false)
 const { mainRef, panesRef, treeWidth, showTree, overlayTree, splitPercent, viewMode, effectiveViewMode, toggleTree, setTreeOpen, toggleViewMode, beginResize, adjust } = useEditorLayout()
-let openFileVersion = 0
 let fileTreeRequest = 0
-let deferredOpen: string | null = null
+
+const sessionWorkspacePath = workspaceStore.currentWorkspace?.path
+const currentWorkspace = computed(() => workspaceStore.currentWorkspace?.path === sessionWorkspacePath ? workspaceStore.currentWorkspace : null)
+
+// 草稿层（useEditorDraft）要用 tabs，而标签层又要 saveTab / applyInProgress，
+// 用一个延迟句柄打破先后顺序，避免两边的初始化顺序被固定死。
+// 必须是 shallowRef 而不是普通变量：标签层的排队打开靠 watch(applyInProgress) 触发，
+// 普通变量在 watch 建立后不会再被追踪，rename 结束时的排队请求就永远不执行。
+const draftState = shallowRef<ReturnType<typeof useEditorDraft>>()
+
+const {
+  tabs, activeTabIndex, activeTab, findTabIndex,
+  openFile, openFileByPath, switchToTab,
+  removeTabAt, closeTab, closeOthers, closeRight, invalidatePendingOpens,
+} = useEditorTabs({
+  workspacePath: computed(() => currentWorkspace.value?.path),
+  sessionWorkspacePath,
+  route,
+  router,
+  workspace: {
+    openFile: (path: string) => workspaceStore.openFile(path),
+    closeFile: (path: string) => workspaceStore.closeFile(path),
+    setActiveFile: (path: string | null) => workspaceStore.setActiveFile(path),
+  },
+  applyInProgress: () => draftState.value?.isApplyingExternalChanges.value ?? false,
+  saveTab: (index: number) => draftState.value?.saveTab(index) ?? Promise.resolve(false),
+})
 
 // ---- Mybase 式知识库浏览模式：/editor 无 file 参数时，左侧文件树固定展开，右侧显示知识库概览 ----
 const vaultBrowseMode = computed(() => route.path === '/editor' && typeof route.query.file !== 'string')
@@ -119,12 +133,6 @@ function focusSpace(dir: string) {
 const recentFiles = computed(() => workspaceStore.recentFiles.slice(0, 6))
 
 // 计算属性
-const activeTab = computed(() => {
-  if (activeTabIndex.value >= 0 && activeTabIndex.value < tabs.value.length) {
-    return tabs.value[activeTabIndex.value]
-  }
-  return null
-})
 const canDistill = computed(() => !!activeTab.value && isDistillableSource(activeTab.value.path))
 
 // 编辑器只显示正文（front matter 元数据不在正文区渲染）；
@@ -167,8 +175,6 @@ const wordCount = computed(() => {
 })
 
 const charCount = computed(() => fileContent.value.length)
-const sessionWorkspacePath = workspaceStore.currentWorkspace?.path
-const currentWorkspace = computed(() => workspaceStore.currentWorkspace?.path === sessionWorkspacePath ? workspaceStore.currentWorkspace : null)
 
 // 标签服务带 30s TTL 缓存；文件变化后必须主动失效，避免标签页读到旧空结果。
 async function invalidateTagCache() {
@@ -193,92 +199,8 @@ async function loadFileTree() {
   }
 }
 
-// 查找文件是否已在标签页中
-function findTabIndex(path: string): number {
-  return tabs.value.findIndex((tab) => isEntryPath(tab.path, path, false, windowsWorkspace(sessionWorkspacePath || '')))
-}
-
-// 打开文件
-async function openFile(node: FileNode) {
-  if (node.isDir) return
-
-  // Canvas 白板是文档类型而非编辑器内容：直达画布视图
-  if (node.name.toLowerCase().endsWith('.canvas')) {
-    router.push({ path: '/canvas', query: { file: node.path } })
-    return
-  }
-
-  await openFileByPath(node.path)
-}
-
-async function openFileByPath(filePath: string, fromRoute = false) {
-  const workspacePath = currentWorkspace.value?.path
-  if (!workspacePath || route.path !== '/editor') return
-  if (isApplyingExternalChanges.value) {
-    deferredOpen = filePath
-    if (!fromRoute && route.query.file !== filePath) {
-      void router.push({ path: '/editor', query: { ...route.query, file: filePath, folder: undefined } })
-    }
-    return
-  }
-  filePath = normalizeNotePath(filePath)
-  const version = ++openFileVersion
-  if (activeTab.value?.isDirty && activeTab.value.path !== filePath) void saveTab(activeTabIndex.value)
-  try {
-    const existingIndex = findTabIndex(filePath)
-    if (existingIndex >= 0) {
-      activeTabIndex.value = existingIndex
-      filePath = tabs.value[existingIndex]!.path
-    } else {
-      const content = await FileService.ReadFile(workspacePath, filePath)
-      if (version !== openFileVersion || currentWorkspace.value?.path !== workspacePath || route.path !== '/editor') return
-      tabs.value.push({
-        path: filePath,
-        name: filePath.split('/').pop() || filePath,
-        content,
-        isDirty: false,
-        lastSavedAt: new Date().toLocaleTimeString(),
-      })
-      activeTabIndex.value = tabs.value.length - 1
-    }
-    workspaceStore.openFile(filePath)
-    if (route.query.file !== filePath) {
-      const location = { path: '/editor', query: { ...route.query, file: filePath, folder: undefined } }
-      if (fromRoute) await router.replace(location)
-      else await router.push(location)
-    }
-  } catch (e) {
-    console.error('Failed to open file:', e)
-    toast.error(t('editor.view.openFailed', { path: filePath, msg: e instanceof Error ? e.message : String(e) }))
-  }
-}
-
-// 切换标签页
-function switchToTab(index: number) {
-  if (index < 0 || index >= tabs.value.length) return
-  void openFileByPath(tabs.value[index]!.path)
-}
-
 // ---- 草稿生命周期与冲突保护（自动保存/脏标记/fsnotify 冲突监听已抽到 useEditorDraft）----
-const {
-  isSaving,
-  saveErrors,
-  saveTab,
-  saveCurrentTab,
-  scheduleAutoSave,
-  flushDirtyTab,
-  flushAllTabs,
-  withExternalFileChanges,
-  isApplyingExternalChanges,
-  conflictedPaths,
-  diffModal,
-  activeConflictPath,
-  abandonDraftAndReload,
-  saveDraftAsCopy,
-  openConflictDiff,
-  startConflictWatcher,
-  dispose: disposeDraft,
-} = useEditorDraft({
+const draft = useEditorDraft({
   tabs,
   activeTabIndex,
   workspacePath: computed(() => currentWorkspace.value?.path),
@@ -286,17 +208,16 @@ const {
   findTabIndex,
   onSaved: invalidateTagCache,
 })
+draftState.value = draft
+const {
+  isSaving, saveErrors, saveTab, saveCurrentTab, scheduleAutoSave,
+  flushDirtyTab, flushAllTabs, withExternalFileChanges, isApplyingExternalChanges,
+  conflictedPaths, diffModal, activeConflictPath,
+  abandonDraftAndReload, saveDraftAsCopy, openConflictDiff,
+  startConflictWatcher, dispose: disposeDraft,
+} = draft
 
 const unregisterFlush = registerEditorFlush(flushAllTabs)
-watch(isApplyingExternalChanges, applying => {
-  if (applying || !deferredOpen) return
-  const pending = deferredOpen
-  deferredOpen = null
-  if (route.path !== '/editor') return
-  // Same-editor sidebar links can arrive while a rename RPC is in progress.
-  // Honor the latest URL once paths and drafts have been reconciled.
-  void openFileByPath(typeof route.query.file === 'string' ? route.query.file : pending, true)
-})
 
 async function openDistillModal() {
   const tab = activeTab.value
@@ -343,7 +264,7 @@ watch(() => [activeTab.value?.path, activeTab.value?.isDirty, isSaving.value, sa
   editorSession.draftPath = tabs.value.find(item => item.isDirty)?.path || ''
 }, { deep: true, immediate: true })
 onBeforeRouteLeave(async () => {
-  openFileVersion++
+  invalidatePendingOpens()
   if (!await flushAllTabs()) {
     toast.warning(t('editor.view.leaveWithUnsaved'))
     return false
@@ -392,53 +313,13 @@ const outlinks = computed<DrawerOutlink[]>(() => {
   return result
 })
 
-function closeOthers(index: number) {
-  for (let i = tabs.value.length - 1; i >= 0; i--) {
-    if (i !== index) void closeTab(i)
-  }
-}
-
-function closeRight(index: number) {
-  for (let i = tabs.value.length - 1; i > index; i--) {
-    void closeTab(i)
-  }
-}
-
-// 关闭标签页
-async function closeTab(index: number, event?: Event) {
-  if (event) event.stopPropagation()
-
-  const tab = tabs.value[index]
-  if (!tab) return
-
-  if (tab.isDirty && !await saveTab(index)) {
-    toast.warning(t('editor.view.saveUnfinished'))
-    return
-  }
-
-  // 从标签页列表中移除
-  tabs.value.splice(index, 1)
-  workspaceStore.closeFile(tab.path)
-
-  // 调整当前激活的标签页索引
-  if (tabs.value.length === 0) {
-    activeTabIndex.value = -1
-  } else if (index <= activeTabIndex.value) {
-    activeTabIndex.value = Math.max(0, activeTabIndex.value - 1)
-  }
-  if (route.query.file === tab.path) {
-    workspaceStore.setActiveFile(activeTab.value?.path || null)
-    await router.replace({ path: '/editor', query: { ...route.query, file: activeTab.value?.path } })
-  }
-}
-
 const { busy: fileOperationsBusy, handleNewFile, handleNewFolder, handleRename, handleMoveEntry, handleDeleteFile, handleArchiveFile, handleTrashFile } = useEditorFileOperations({
   tabs, activeTabIndex, focusFolder,
   workspacePath: computed(() => currentWorkspace.value?.path),
   withExternalFileChanges,
   // 文件树新建：新文档打开时确保不在纯预览模式（新建是为了写）
   openFile: async (node) => { await openFile(node); ensureWritableMode() },
-  onBegin: () => { openFileVersion++ },
+  onBegin: invalidatePendingOpens,
   refresh: async () => {
     await invalidateTagCache()
     await loadFileTree()
@@ -503,118 +384,20 @@ async function saveAndInsertImage(file: File, insertText: (text: string) => void
   }
 }
 
-// 待跳转锚点：打开目标文件后用它滚动到对应 heading / 块
-// - 当 wiki-link 指向的文件还没在标签页里时，先 openFile，加载完后 watch activeTab 触发滚动
-// - file 为空时由 MarkdownPreview 自己处理同文件锚点跳转，不会进到这里
-const pendingAnchor = ref<{ anchor: string; block: string } | null>(null)
-
-// 处理 wiki-link 点击（接收结构化对象，支持锚点 / 块跳转）
-async function handleWikiLinkClick(target: { file: string; anchor: string; block: string; raw: string }) {
-  if (!currentWorkspace.value) return
-  const { file, anchor, block, raw } = target
-
-  // 同文件锚点：MarkdownPreview 自己已经处理了滚动，不会传到这层。
-  // 但保险起见，如果 file 为空且 anchor/block 非空，记下 pending 让 watch 触发
-  if (!file) {
-    if (anchor || block) {
-      pendingAnchor.value = { anchor, block }
-      tryScrollToPendingAnchor()
-    }
-    return
-  }
-
-  // 跨文件：在文件树里找匹配
-  const targetFile = findFileByName(fileTree.value, file)
-  if (targetFile) {
-    // 已在标签页 → 切换后立即滚动；否则 openFile 异步加载，watch 触发滚动
-    const existing = findTabIndex(targetFile.path) >= 0
-    if (anchor || block) {
-      pendingAnchor.value = { anchor, block }
-    }
-    await openFile(targetFile)
-    if (existing && (anchor || block)) {
-      // 已打开：预览 DOM 早已渲染，同步尝试即可，失败就是锚点真不存在
-      resolvePendingAnchor()
-    }
-  } else {
-    // 找不到，询问是否创建新文档（用 file 名，不带锚点）
-    if (await confirmDialog({ message: t('editor.createLinkDoc', { name: file }) })) {
-      const fileName = file.endsWith('.md') ? file : file + '.md'
-      await handleNewFileWithName(fileName)
-    }
-  }
-}
-
-/**
- * ¶ 复制块 / 标题链接后的回调。
- * 剪贴板不可用（非安全上下文或权限被拒）时也要有反馈，
- * 否则用户点了 ¶ 什么都没发生会以为是 bug。
- */
-function handleAnchorCopy(info: { text: string; ok: boolean }) {
-  if (info.ok) {
-    toast.success(t('editor.linkCopied', { text: info.text }))
-    return
-  }
-  // 剪贴板写不进去：文本打进 console 兜底，避免内容彻底丢失
-  console.warn('[anchor-copy] clipboard unavailable, link text:', info.text)
-  toast.error(t('editor.copyFallbackPrompt'), 6000)
-}
-
-/**
- * 尝试滚动到 pendingAnchor，失败即认为目标锚点不存在。
- * 必须清空 pending——否则它会一直挂着，下次切标签页时误触发跳转。
- */
-function resolvePendingAnchor() {
-  if (!pendingAnchor.value) return
-  if (tryScrollToPendingAnchor()) return
-  const { anchor, block } = pendingAnchor.value
-  pendingAnchor.value = null
-  const label = block ? `^${block}` : anchor
-  if (label) {
-    toast.warning(t('editor.anchorNotFound', { anchor: label }))
-  }
-}
-
-// 在当前预览中尝试滚动到 pendingAnchor
-// 失败时保留 pending，等 watch(activeTab) 或下个 tick 重试一次
-function tryScrollToPendingAnchor(): boolean {
-  if (!pendingAnchor.value) return false
-  const { anchor, block } = pendingAnchor.value
-  // 找到当前可见的预览容器
-  const root = document.querySelector('.markdown-preview') as HTMLElement | null
-  if (!root) return false
-  let ok = false
-  if (block) {
-    const el = root.querySelector(`[data-block-id="${cssEscape(block)}"]`) as HTMLElement | null
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      ok = true
-    }
-  }
-  if (!ok && anchor) {
-    const slug = slugifyHeading(anchor)
-    let el: HTMLElement | null = slug ? (root.querySelector(`#${cssEscape(slug)}`) as HTMLElement | null) : null
-    if (!el) {
-      const headings = Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'))
-      for (const h of headings) {
-        // 优先读 data-heading-text（预览注入 ¶ 后 textContent 会带 "¶"）
-        const raw = (h as HTMLElement).dataset.headingText ?? (h.textContent || '').replace(/¶$/, '')
-        if (raw.trim() === anchor.trim()) {
-          el = h as HTMLElement
-          break
-        }
-      }
-    }
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      ok = true
-    }
-  }
-  if (ok) {
-    pendingAnchor.value = null
-  }
-  return ok
-}
+// ---- 锚点跳转（wiki-link / ?anchor= 引用 / 大纲）----
+// 「等预览渲染完再滚」的两帧重试与 pendingAnchor 的清空规则收敛在 composable 内，
+// 视图只负责接线；时序契约由 EditorView.anchorTiming.test.ts 锁定。
+const { handleWikiLinkClick, handleAnchorCopy, openFileWithAnchor, scrollToAnchor } = useEditorAnchorNavigation({
+  workspacePath: computed(() => currentWorkspace.value?.path),
+  fileTree,
+  activePath: computed(() => activeTab.value?.path),
+  findTabIndex,
+  openFile,
+  openFileByPath,
+  createLinkedNote: handleNewFileWithName,
+  route,
+  router,
+})
 
 // 新建指定名称的文件
 async function handleNewFileWithName(fileName: string) {
@@ -698,21 +481,8 @@ function openDrawerPath(path: string) {
   void openFileByPath(path)
 }
 
-// 监听当前标签页变化，加载反向链接（watch 在 useEditorBacklinks 内注册）
-// 文件加载完成后尝试滚动到待跳转锚点
-// 跨文件 [[note#heading]] 点击后：先 openFile 异步加载，加载完 activeTab 变化触发此 watch
-watch(activeTab, () => {
-  if (pendingAnchor.value && activeTab.value) {
-    nextTick(() => {
-      // 给 MarkdownPreview 一帧时间渲染 HTML
-      requestAnimationFrame(() => {
-        if (tryScrollToPendingAnchor()) return
-        // 第一次失败（DOM 还没渲染完），再等一帧；第二帧仍失败就提示并放弃
-        requestAnimationFrame(() => resolvePendingAnchor())
-      })
-    })
-  }
-})
+// 反向链接的加载由 useEditorBacklinks 内部的 watch 负责；
+// 锚点重试随 pendingAnchor 一起搬进了 useEditorAnchorNavigation。
 watch(() => workspaceStore.activeFile, async (requestedPath) => {
   if (!requestedPath || route.path !== '/editor' || requestedPath === activeTab.value?.path) return
   await openFileByPath(requestedPath)
@@ -824,9 +594,7 @@ async function handleCompile() {
       return
     }
     // 文件已移动到 Compiled/，关闭旧标签页并跟随到新位置，保持编辑器一致
-    tabs.value.splice(oldIndex, 1)
-    if (tabs.value.length === 0) activeTabIndex.value = -1
-    else if (oldIndex <= activeTabIndex.value) activeTabIndex.value = Math.max(0, activeTabIndex.value - 1)
+    removeTabAt(oldIndex)
     await openFileByPath(result.Dest)
     await invalidateTagCache()
     await loadFileTree()
@@ -1058,50 +826,10 @@ onBeforeUnmount(() => {
 })
 
 /**
- * P3-9：QnA / 全局检索的引用跳转。route.query.anchor 是目标标题文本，
- * 转成 pendingAnchor 复用既有的 [[note#heading]] 滚动机制。
- * anchor 缺省时等价 openFileByPath（只打开文件，保持旧行为）。
+ * 打开请求的文件：优先 route.query.file（欢迎页「新建文档」经此跳转），
+ * 其次 store 里的 activeFile。keep-alive 下 onMounted 只跑一次，
+ * 第二次从欢迎页带 query 跳转必须由 watcher 接住，否则新文件静默不打开。
  */
-async function openFileWithAnchor(filePath: string, fromRoute = false) {
-  const raw = route.query.anchor
-  const anchor = typeof raw === 'string' ? raw.trim() : ''
-  if (!anchor) {
-    await openFileByPath(filePath, fromRoute)
-    return
-  }
-  // 目标本来就是活动标签时 openFileByPath 不会改变 activeTabIndex，
-  // watch(activeTab) 不触发 → 必须同步兜底，否则跳转静默失效（与今日日记同款陷阱）。
-  const alreadyActive = activeTab.value?.path === normalizeNotePath(filePath)
-  pendingAnchor.value = { anchor, block: '' }
-  await openFileByPath(filePath, fromRoute)
-  // 摘除 anchor 放在打开之后：一次跳转只生效一次，避免用户滚开后又被"粘"回锚点；
-  // 且此时重入的 watcher 会因「文件已打开且无锚点」提前返回，不会重复打开
-  if (route.query.anchor !== undefined) {
-    await router.replace({ path: route.path, query: { ...route.query, anchor: undefined } })
-  }
-  if (alreadyActive) {
-    await nextTick()
-    requestAnimationFrame(() => {
-      if (!tryScrollToPendingAnchor()) requestAnimationFrame(() => resolvePendingAnchor())
-    })
-  }
-}
-
-/** 已在目标文档上、只带 anchor（同一文件内换章节）时不必重开文件，直接滚 */
-async function scrollToAnchor(heading: string) {
-  pendingAnchor.value = { anchor: heading, block: '' }
-  if (route.query.anchor !== undefined) {
-    await router.replace({ path: route.path, query: { ...route.query, anchor: undefined } })
-  }
-  await nextTick()
-  requestAnimationFrame(() => {
-    if (!tryScrollToPendingAnchor()) requestAnimationFrame(() => resolvePendingAnchor())
-  })
-}
-
-// 打开请求的文件：优先 route.query.file（欢迎页"新建文档"经此跳转），
-// 其次 store 里的 activeFile。keep-alive 下 onMounted 只跑一次，
-// 第二次从欢迎页带 query 跳转必须由 watcher 接住，否则新文件静默不打开。
 async function openRequestedFile() {
   const requestedPath = route.query.file
   if (typeof requestedPath === 'string' && requestedPath.trim()) {
@@ -1156,7 +884,7 @@ onMounted(async () => {
 
 // 工作区变化时重新加载文件树并清空标签页
 watch(() => currentWorkspace.value?.path, () => {
-  openFileVersion++
+  invalidatePendingOpens()
   distillSource.value = null
   tabs.value = []
   activeTabIndex.value = -1
