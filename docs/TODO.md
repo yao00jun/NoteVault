@@ -218,7 +218,7 @@
 - **修正**：`e2e/exe-smoke.sh` 的 `NOTEvault_DEBUG_PORT` 拼写错误——程序读
   `NOTEVAULT_DEBUG_PORT`，该路径从未被真正验证过却一直显示 PASS。
 
-### 14. 【P2 · 可维护性】巨型组件拆分 —— 🚧 第二轮完成（2026-11-26）
+### 14. 【P2 · 可维护性】巨型组件拆分 —— ✅ 三档全部完成（2026-11-26）
 
 - **先量了构成，结论和「行数」不一致**：
   | 文件 | 总行 | script | template | style | 真实问题 |
@@ -260,9 +260,36 @@
   块 ID 取最后一个 `^`、`matchAll` 不共享 `lastIndex`）。
   EditorView −36 行、MarkdownPreview −82 行；入口包体不变（305.20 kB，
   utils 只被两个懒加载视图引用）。
-- **下一轮建议**：中风险档（wiki 链接 / 锚点导航簇抽 composable）有 15 个
-  navigation 用例兜底，可做；高风险档（标签页生命周期）必须先补
-  「冲突与并发保存」的测试，否则现有 9 个 fileOperations 用例覆盖不到。
+- **第三轮（补测试 → 中/高两档一起做，2026-11-26）**
+  - **先补的三类测试（14 个用例）**：
+    - `EditorView.anchorTiming.test.ts`（6）：用**手动帧泵**（stub `requestAnimationFrame`）
+      而不是等 `setTimeout`——锚点的正确性取决于「第几帧能看到目标」，真实计时器只能测出
+      「最终跳到了」，测不出「第一帧没渲染出来时会不会重试」。锁住的契约：第一帧未命中→
+      第二帧重试；两帧都未命中→警告一次并**清空 pending**（否则下次切标签会被粘回去）；
+      目标标签已打开时同步跳（不等 watcher）；`data-heading-text` 优先、`textContent`
+      兜底时剥掉注入的 `¶`；块引用走 `[data-block-id]`。
+    - `EditorView.conflict.test.ts`（5）：视图层横幅与三个出口的接线（丢弃重载 /
+      另存副本 / 行级对比），并断言冲突期间**一律不写盘**；干净标签收到外部变更不弹横幅。
+      此前只有 `useEditorDraft` 的状态机单测，按钮接线断了测试也发现不了。
+    - `useEditorDraft.test.ts` +3：跨文档并发保存时 `isSaving` 不提前归零；
+      写入中关闭标签 → 结果丢弃且不留下 `saveErrors`；写入中切工作区 → 不把旧会话的失败
+      记到新工作区头上。
+  - **中风险档**：`useEditorAnchorNavigation.ts`（`pendingAnchor` / 两帧重试 / 清空规则 /
+    wiki-link 点击 / `?anchor=` 引用 / 大纲滚动）。时序契约从视图里搬进 composable，
+    由上面 6 个用例锁定。
+  - **高风险档**：`useEditorTabs.ts`（tabs / activeTabIndex / 打开 / 切换 / 关闭 / 路由同步 /
+    延迟打开队列）。真正的收益不是行数，而是**索引不变式只剩一份实现**：
+    「删掉第 i 个标签后 activeTabIndex 怎么变」原先在 `closeTab` 与「编译后标签跟随」
+    两处各写一遍，漏改一处就是关错标签；现在统一走 `removeTabAt()`。
+    新增 `useEditorTabs.test.ts`（6）：同一文档只占一个标签、晚到的读盘结果被丢弃
+    （版本号守卫）、关左侧标签后当前文档不变、关当前标签落到邻居、保存失败拒绝关闭、
+    Windows 大小写别名复用同一标签。
+  - **踩到的坑（值得记）**：标签层与草稿层互相依赖，用「延迟句柄」破环时一开始写成了
+    普通 `let`——`watch(applyInProgress)` 建立时读到 `undefined` 之后再也不会被追踪，
+    rename 结束时的排队打开永远不执行（4 个 fileOperations 用例里立刻挂了 2 个）。
+    改成 `shallowRef` 后恢复。**跨 composable 的延迟依赖必须是响应式的**，否则 watch 静默失效。
+  - 结果：`EditorView.vue` 1952 → 1663 行（−289），单测 91 文件 / 1024 用例 →
+    **94 文件 / 1044 用例**；typecheck / lint / 生产构建干净，入口包体仍 305.20 kB。
 
 ---
 
