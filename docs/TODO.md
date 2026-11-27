@@ -520,6 +520,10 @@
   gcc，复用同一份 GTK4 依赖安装）。大库压测需 NV_STRESS_TEST=1 显式开启，
   默认不进 race 轮。并行建索引 / 并行 snippet 读盘 / 分片倒排的数据竞争
   从此有 CI 级检测兜底，不再只依赖源码审计。
+  **首跑即立功（run 46058852400）**：抓到 watcher 测试无锁读 `idx.docs`
+  与 `InvalidatePath` 并发删 map 的真实竞争——生产代码无恙（InvalidalidatePath
+  本就持写锁），测试读取补上 RLock（`10f7ae5`）。这类问题只有 race 检测
+  能稳定抓到，源码审计漏网。
 
 - **测试**：后端 +1（惰性记账契约四段断言）；全量 Go 套件 + 分片等价锁 +
   前端 1049 用例全绿；双平台编译 + lint 0 issues；2 万篇压测 PASS。
