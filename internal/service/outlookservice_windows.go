@@ -216,33 +216,9 @@ func outlookBool(item *ole.IDispatch, name string) bool {
 	return raw.Val != 0
 }
 
-// Outlook ResponseStatus 枚举（olResponse*，与会话接收者的响应状态对应）。
-const (
-	olResponseNone      = 0
-	olResponseOrganized = 1
-	olResponseAccepted  = 2
-	olResponseDeclined  = 3
-	olResponseTentative = 4
-)
-
-// outlookResponseLabel 把 ResponseStatus 数值映射为稳定的字符串标签
-// （json 侧不透传数值枚举，前端按标签做本地化展示；未知值原样透传十进制）。
-func outlookResponseLabel(v int64) string {
-	switch v {
-	case olResponseOrganized:
-		return "organized"
-	case olResponseAccepted:
-		return "accepted"
-	case olResponseDeclined:
-		return "declined"
-	case olResponseTentative:
-		return "tentative"
-	default:
-		return "none"
-	}
-}
-
 // outlookResponseStatus 安全读取接收者的 ResponseStatus，异常按未响应处理。
+// 枚举与标签映射放在无 build tag 的 outlookservice.go——无平台的测试文件
+// 引用带 build tag 文件的符号会在另一平台编译失败（CI 红灯教训，第 9/18 项）。
 func outlookResponseStatus(rec *ole.IDispatch) string {
 	raw, err := oleutil.GetProperty(rec, "ResponseStatus")
 	if err != nil {

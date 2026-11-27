@@ -34,6 +34,35 @@ type OutlookMeeting struct {
 	AllDay           bool     `json:"allDay"`
 }
 
+// Outlook ResponseStatus 枚举（olResponse*，与会话接收者的响应状态对应）。
+// 与标签映射一起放在无 build tag 的文件里：无平台的测试文件引用带 build
+// tag 文件的符号，会在另一平台编译失败（第 9 项 lint 盲区教训的变体，
+// 2026-11-28 CI 首跑实锤——测试文件引用了 windows 文件里的常量）。
+const (
+	olResponseNone      = 0
+	olResponseOrganized = 1
+	olResponseAccepted  = 2
+	olResponseDeclined  = 3
+	olResponseTentative = 4
+)
+
+// outlookResponseLabel 把 ResponseStatus 数值映射为稳定的字符串标签
+// （json 侧不透传数值枚举，前端按标签做本地化展示；未知值兜底 none）。
+func outlookResponseLabel(v int64) string {
+	switch v {
+	case olResponseOrganized:
+		return "organized"
+	case olResponseAccepted:
+		return "accepted"
+	case olResponseDeclined:
+		return "declined"
+	case olResponseTentative:
+		return "tentative"
+	default:
+		return "none"
+	}
+}
+
 // OutlookEmail 是一封旗标邮件的只读投影。
 type OutlookEmail struct {
 	Subject      string `json:"subject"`
