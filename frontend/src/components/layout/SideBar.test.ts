@@ -100,11 +100,17 @@ describe('SideBar', () => {
     piniaInstances.splice(0).forEach(disposePinia)
   })
 
-  it('renders page navigation and direct actions as pure navigation', async () => {
+  it('renders grouped page navigation and direct actions as pure navigation', async () => {
     const { wrapper } = mountSideBar()
     await flushPromises()
+    // 分组平铺（2026-11）：三组小标题 + 全部一级直达，无折叠子树
+    expect(wrapper.findAll('.sidebar-scroll .section-heading').map(heading => heading.text())).toEqual([
+      '工作流', '知识', '工具',
+    ])
     expect(wrapper.findAll('.nav-item').map(item => item.attributes('data-testid'))).toEqual([
-      'nav-today', 'nav-projects', 'nav-learning', 'nav-vault',
+      'nav-today', 'nav-projects', 'nav-learning',
+      'nav-vault', 'nav-discover', 'nav-insights', 'nav-review', 'nav-canvas',
+      'nav-reports', 'nav-plugins', 'nav-trash', 'nav-settings',
     ])
     expect(wrapper.find('[data-testid="action-new"]').text()).toContain('新建')
     expect(wrapper.find('[data-testid="action-daily"]').text()).toContain('每日工作日志')
@@ -120,23 +126,18 @@ describe('SideBar', () => {
     expect(wrapper.findAll('.sidebar-scroll .sidebar-zone')).toHaveLength(1)
   })
 
-  it('expands the vault subtree on the vault section and navigates via flat routes', async () => {
+  it('navigates knowledge and tool groups directly without a folded subtree', async () => {
     const { wrapper, router } = mountSideBar()
     await flushPromises()
-    // 非库区不渲染子树
+    // 折叠子树已移除：原库子树的目的地在「知识」组一级直达
     expect(wrapper.find('[data-testid="sidebar-vault-subtree"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="nav-discover"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="nav-insights"]').exists()).toBe(true)
 
-    await router.push('/vault')
-    await flushPromises()
-    const subtree = wrapper.get('[data-testid="sidebar-vault-subtree"]')
-    const subItems = subtree.findAll('.vault-sub-item')
-    expect(subItems).toHaveLength(8)
-    // 键缺失时 i18n 会 fallback 到键名本身，表现为整排 sidebar.sub.xxx
-    expect(subItems.map(item => item.text()).filter(t => !t || t.includes('sidebar.sub.'))).toEqual([])
-
-    await wrapper.get('[data-testid="nav-vault-sub-canvas"]').trigger('click')
+    await wrapper.get('[data-testid="nav-canvas"]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/canvas')
+    expect(wrapper.get('[data-testid="nav-canvas"]').attributes('aria-current')).toBe('page')
   })
 
   it.each([
@@ -241,7 +242,10 @@ describe('SideBar', () => {
     settingsStore.toggleSidebar()
     await nextTick()
     expect(wrapper.findAll('.nav-label')).toHaveLength(0)
-    expect(wrapper.findAll('.nav-item.collapsed')).toHaveLength(4)
+    expect(wrapper.findAll('.nav-item.collapsed')).toHaveLength(12)
+    // 折叠态组标题隐藏、只留分隔线
+    expect(wrapper.findAll('.section-heading')).toHaveLength(0)
+    expect(wrapper.findAll('.nav-group-divider')).toHaveLength(3)
     expect(wrapper.get('[data-testid="action-daily"]').attributes('aria-label')).toContain('每日工作日志')
     expect(wrapper.get('[data-testid="action-report"]').attributes('aria-label')).toContain('生成日报')
   })
@@ -294,10 +298,10 @@ describe('SideBar', () => {
     expect(settingsStore.settings.sidebarCollapsed).toBe(true)
   })
 
-  it.each(['trash', 'settings'])('opens the footer %s destination', async destination => {
+  it.each(['trash', 'settings'])('opens the %s destination from the tools group', async destination => {
     const { wrapper, router } = mountSideBar()
     await flushPromises()
-    await wrapper.get('[data-testid="sidebar-' + destination + '"]').trigger('click')
+    await wrapper.get('[data-testid="nav-' + destination + '"]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/' + destination)
   })

@@ -60,11 +60,20 @@ export default {
       workspace: 'Workspace',
       manage: 'Manage',
     },
+    group: {
+      workflow: 'Workflow',
+      knowledge: 'Knowledge',
+      tools: 'Tools',
+    },
     navDesc: {
       today: 'Todos, work log and due reviews',
       projects: 'Project briefs, tasks and progress',
       learning: 'Tech learning and spaced repetition',
       vault: 'Documents, backlinks and graph',
+      reports: 'Weekly report, daily report and batch summaries',
+      plugins: 'Pluggable JS plugins with permissions',
+      trash: 'Deleted notes and scheduled cleanup',
+      settings: 'Workspace, AI config and integrations',
     },
     // Vault sub-navigation tree (expands while Vault is active)
     sub: {

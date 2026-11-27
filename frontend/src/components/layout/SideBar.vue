@@ -17,13 +17,10 @@ import {
   Rocket,
   History,
   Presentation,
-  GitGraph,
-  Table2,
   Search,
-  Brain,
-  Tags,
+  Lightbulb,
+  Puzzle,
   LayoutDashboard,
-  ListTodo,
 } from '@lucide/vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -213,72 +210,147 @@ interface NavItem {
 
 const completedToday = computed(() => workbenchStore.todayTasks.filter(task => task.completed).length)
 
-// 知识库子导航：文档浏览之外的库内工具，平铺短路由直达（随「知识库」激活展开）。
-// 长尾兜底仍由 Ctrl+K 命令面板承接，与子树内容保持一致。
-interface VaultSubItem {
+// 分组平铺导航（2026-11，对齐 WorkBuddy 工作台的分组直达口径）：
+// 一级三组、全部直达、无折叠子树——此前报告/提醒/插件等散落在聚合页签与
+// 页面内嵌入口，「感觉菜单不够直接明显」的根源。聚合页签（发现/洞察/回顾）
+// 保留为分组内一项直达，组内细分交给页内页签；长尾仍由 Ctrl+K 承接。
+interface NavGroup {
   id: string
   label: string
-  icon: Component
-  route: string
+  items: NavItem[]
 }
 
-const vaultSubItems = computed<VaultSubItem[]>(() => [
-  { id: 'documents', label: t('sidebar.sub.documents'), icon: FileText, route: '/vault' },
-  { id: 'search', label: t('sidebar.sub.search'), icon: Search, route: '/search' },
-  { id: 'qna', label: t('sidebar.sub.qna'), icon: Brain, route: '/qna' },
-  { id: 'tags', label: t('sidebar.sub.tags'), icon: Tags, route: '/tags' },
-  { id: 'graph', label: t('sidebar.sub.graph'), icon: GitGraph, route: '/graph' },
-  { id: 'bases', label: t('sidebar.sub.bases'), icon: Table2, route: '/bases' },
-  { id: 'canvas', label: t('sidebar.sub.canvas'), icon: Presentation, route: '/canvas' },
-  { id: 'review', label: t('sidebar.sub.review'), icon: ListTodo, route: '/review' },
-])
-
-const vaultSubExpanded = computed(() => context.value.section === 'vault')
-
-function isActiveSub(item: VaultSubItem) {
-  return router.currentRoute.value.path === item.route
-}
-
-const navItems = computed<NavItem[]>(() => [
+const navGroups = computed<NavGroup[]>(() => [
   {
-    id: 'today',
-    label: t('sidebar.nav.today'),
-    description: t('sidebar.navDesc.today'),
-    icon: Zap,
-    route: '/today',
-    badge: workspaceStore.hasWorkspace && workbenchStore.lastUpdated
-      ? `${completedToday.value}/${workbenchStore.todayTasks.length}` : undefined,
+    id: 'workflow',
+    label: t('sidebar.group.workflow'),
+    items: [
+      {
+        id: 'today',
+        label: t('sidebar.nav.today'),
+        description: t('sidebar.navDesc.today'),
+        icon: Zap,
+        route: '/today',
+        badge: workspaceStore.hasWorkspace && workbenchStore.lastUpdated
+          ? `${completedToday.value}/${workbenchStore.todayTasks.length}` : undefined,
+      },
+      {
+        id: 'projects',
+        label: t('sidebar.nav.projects'),
+        description: t('sidebar.navDesc.projects'),
+        icon: Rocket,
+        route: '/projects',
+        badge: workspaceStore.hasWorkspace && workbenchStore.lastUpdated ? workbenchStore.projects.length : undefined,
+        alert: workbenchStore.blockers.length > 0,
+      },
+      {
+        id: 'learning',
+        label: t('sidebar.nav.learning'),
+        description: t('sidebar.navDesc.learning'),
+        icon: BookOpen,
+        route: '/learning',
+        badge: workspaceStore.hasWorkspace && workbenchStore.lastUpdated && workbenchStore.reviewQueue.length ? t('sidebar.reviewBadge', { count: workbenchStore.reviewQueue.length }) : undefined,
+      },
+    ],
   },
   {
-    id: 'projects',
-    label: t('sidebar.nav.projects'),
-    description: t('sidebar.navDesc.projects'),
-    icon: Rocket,
-    route: '/projects',
-    badge: workspaceStore.hasWorkspace && workbenchStore.lastUpdated ? workbenchStore.projects.length : undefined,
-    alert: workbenchStore.blockers.length > 0,
+    id: 'knowledge',
+    label: t('sidebar.group.knowledge'),
+    items: [
+      {
+        id: 'vault',
+        label: t('sidebar.nav.files'),
+        description: t('sidebar.navDesc.vault'),
+        icon: Library,
+        // Mybase 式左树右文：直达编辑器空态（知识库浏览模式），仪表盘保留在 /vault
+        route: '/editor',
+        badge: 'PARA',
+      },
+      {
+        id: 'discover',
+        label: t('sidebar.nav.discover'),
+        description: t('sidebar.extended.discover'),
+        icon: Search,
+        route: '/discover',
+      },
+      {
+        id: 'insights',
+        label: t('sidebar.nav.insights'),
+        description: t('sidebar.extended.insights'),
+        icon: Lightbulb,
+        route: '/insights',
+      },
+      {
+        id: 'review',
+        label: t('sidebar.nav.review'),
+        description: t('sidebar.extended.review'),
+        icon: History,
+        route: '/review',
+      },
+      {
+        id: 'canvas',
+        label: t('sidebar.nav.canvas'),
+        description: t('sidebar.extended.canvas'),
+        icon: Presentation,
+        route: '/canvas',
+      },
+    ],
   },
   {
-    id: 'learning',
-    label: t('sidebar.nav.learning'),
-    description: t('sidebar.navDesc.learning'),
-    icon: BookOpen,
-    route: '/learning',
-    badge: workspaceStore.hasWorkspace && workbenchStore.lastUpdated && workbenchStore.reviewQueue.length ? t('sidebar.reviewBadge', { count: workbenchStore.reviewQueue.length }) : undefined,
-  },
-  {
-    id: 'vault',
-    label: t('sidebar.nav.vault'),
-    description: t('sidebar.navDesc.vault'),
-    icon: Library,
-    // Mybase 式左树右文：直达编辑器空态（知识库浏览模式），仪表盘保留在 /vault
-    route: '/editor',
-    badge: 'PARA',
+    id: 'tools',
+    label: t('sidebar.group.tools'),
+    items: [
+      {
+        id: 'reports',
+        label: t('sidebar.nav.reports'),
+        description: t('sidebar.navDesc.reports'),
+        icon: BarChart3,
+        // 报告页是「回顾」聚合页的 reports 页签——直达该页签
+        route: '/review?tab=reports',
+      },
+      {
+        id: 'plugins',
+        label: t('sidebar.nav.plugins'),
+        description: t('sidebar.navDesc.plugins'),
+        icon: Puzzle,
+        route: '/plugins',
+      },
+      {
+        id: 'trash',
+        label: t('sidebar.nav.trash'),
+        description: t('sidebar.navDesc.trash'),
+        icon: Trash2,
+        route: '/trash',
+      },
+      {
+        id: 'settings',
+        label: t('titlebar.settings'),
+        description: t('sidebar.navDesc.settings'),
+        icon: SettingsIcon,
+        route: '/settings',
+      },
+    ],
   },
 ])
 
 function isActive(item: NavItem) {
-  return context.value.section === item.id
+  // 工作流三区沿用 section 口径（路由有重定向与页签嵌套）；
+  // 回顾与报告共享 /review 路径，按页签区分高亮
+  const current = router.currentRoute.value
+  switch (item.id) {
+    case 'today':
+    case 'projects':
+    case 'learning':
+      return context.value.section === item.id
+    case 'vault':
+      return context.value.section === 'vault'
+    case 'review':
+      return current.path === '/review' && String(current.query.tab ?? '') !== 'reports'
+    case 'reports':
+      return current.path === '/review' && String(current.query.tab ?? '') === 'reports'
+    default:
+      return current.path === item.route
+  }
 }
 
 function openReport() {
@@ -486,74 +558,61 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
         class="sidebar-zone nav-list"
         :aria-label="t('sidebar.navZoneAria')"
       >
-        <div
-          v-if="!collapsed"
-          class="section-heading"
+        <!-- 分组平铺导航：三组直达，组间小标题（折叠态只留分隔线） -->
+        <template
+          v-for="group in navGroups"
+          :key="group.id"
         >
-          {{ t('sidebar.pagesTitle') }}
-        </div>
-        <!-- 页面入口：功能页导航，紧凑排列 -->
-        <div
-          class="nav-chip-row"
-          :class="{ collapsed }"
-        >
-          <button
-            v-for="item in navItems"
-            :key="item.id"
-            class="nav-item"
-            :data-testid="`nav-${item.id}`"
-            :class="{ collapsed, active: isActive(item) }"
-            :aria-current="isActive(item) ? 'page' : undefined"
-            :aria-label="item.label"
-            :title="item.alert ? t('sidebar.navBlockersTip', { label: item.label, count: workbenchStore.blockers.length }) : `${item.label} · ${item.description}`"
-            @click="router.push(item.route)"
+          <div
+            v-if="!collapsed"
+            class="section-heading"
           >
-            <component
-              :is="item.icon"
-              :size="16"
-              class="nav-icon"
-            />
-            <span
-              v-if="!collapsed"
-              class="nav-label"
+            {{ group.label }}
+          </div>
+          <div
+            v-else
+            class="nav-group-divider"
+            role="separator"
+          />
+          <div
+            class="nav-chip-row"
+            :class="{ collapsed }"
+          >
+            <button
+              v-for="item in group.items"
+              :key="item.id"
+              class="nav-item"
+              :data-testid="`nav-${item.id}`"
+              :class="{ collapsed, active: isActive(item) }"
+              :aria-current="isActive(item) ? 'page' : undefined"
+              :aria-label="item.label"
+              :title="item.alert ? t('sidebar.navBlockersTip', { label: item.label, count: workbenchStore.blockers.length }) : `${item.label} · ${item.description}`"
+              @click="router.push(item.route)"
             >
-              <span>{{ item.label }}</span>
-            </span>
-            <span
-              v-if="!collapsed && item.badge !== undefined"
-              class="nav-badge"
-              :class="{ 'has-blockers': item.alert }"
-            >{{ item.badge }}</span>
-            <span
-              v-if="collapsed && item.alert"
-              class="blocker-dot"
-              :aria-label="t('sidebar.hasBlockersAria')"
-            />
-          </button>
-        </div>
-        <div
-          v-if="vaultSubExpanded && !collapsed"
-          class="vault-subtree"
-          data-testid="sidebar-vault-subtree"
-        >
-          <button
-            v-for="sub in vaultSubItems"
-            :key="sub.id"
-            type="button"
-            class="vault-sub-item"
-            :data-testid="`nav-vault-sub-${sub.id}`"
-            :class="{ active: isActiveSub(sub) }"
-            :aria-current="isActiveSub(sub) ? 'page' : undefined"
-            @click="router.push(sub.route)"
-          >
-            <component
-              :is="sub.icon"
-              :size="14"
-              class="nav-icon"
-            />
-            <span>{{ sub.label }}</span>
-          </button>
-        </div>
+              <component
+                :is="item.icon"
+                :size="16"
+                class="nav-icon"
+              />
+              <span
+                v-if="!collapsed"
+                class="nav-label"
+              >
+                <span>{{ item.label }}</span>
+              </span>
+              <span
+                v-if="!collapsed && item.badge !== undefined"
+                class="nav-badge"
+                :class="{ 'has-blockers': item.alert }"
+              >{{ item.badge }}</span>
+              <span
+                v-if="collapsed && item.alert"
+                class="blocker-dot"
+                :aria-label="t('sidebar.hasBlockersAria')"
+              />
+            </button>
+          </div>
+        </template>
       </nav>
     </div>
 
@@ -576,26 +635,7 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
         <span><kbd>Ctrl+K</kbd> {{ t('sidebar.shortcutSearch') }} · <kbd>Ctrl+J</kbd> Copilot</span>
       </div>
       <div class="footer-actions">
-        <button
-          class="footer-settings-btn"
-          data-testid="sidebar-trash"
-          :title="t('sidebar.nav.trash')"
-          :aria-label="t('sidebar.nav.trash')"
-          @click="router.push('/trash')"
-        >
-          <Trash2 :size="15" />
-          <span v-if="!collapsed">{{ t('sidebar.nav.trash') }}</span>
-        </button>
-        <button
-          class="footer-settings-btn"
-          data-testid="sidebar-settings"
-          :title="t('titlebar.settings')"
-          :aria-label="t('titlebar.settings')"
-          @click="router.push('/settings')"
-        >
-          <SettingsIcon :size="15" />
-          <span v-if="!collapsed">{{ t('titlebar.settings') }}</span>
-        </button>
+        <!-- 回收站/设置已上移到「工具」分组（分组平铺直达）；footer 只留折叠开关 -->
         <button
           class="collapse-btn"
           :title="collapsed ? t('sidebar.expandSidebar') : t('sidebar.collapseSidebar')"
@@ -830,16 +870,8 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
 }
 .nav-badge.has-blockers { color: var(--error, #d54c4c); background: rgba(213, 76, 76, 0.1); }
 /* 知识库子导航树：随「知识库」激活展开，缩进层次体现从属关系 */
-.vault-subtree { display: flex; flex-direction: column; gap: 1px; padding: 2px 0 4px 22px; }
-.vault-sub-item {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 5px 8px; border-radius: 6px; border: 0; background: transparent;
-  color: var(--text-secondary); font-size: 12px; text-align: left; cursor: pointer;
-}
-.vault-sub-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-.vault-sub-item.active { background: var(--accent-alpha, rgba(0, 122, 255, 0.1)); color: var(--accent); font-weight: 600; }
-.vault-sub-item .nav-icon { color: var(--text-muted); }
-.vault-sub-item.active .nav-icon { color: var(--accent); }
+/* 分组平铺导航：折叠态的组间分隔线（展开态用 .section-heading 小标题） */
+.nav-group-divider { height: 1px; margin: 6px 10px; background: var(--border-light, var(--border)); opacity: 0.7; }
 .blocker-dot { position: absolute; top: 5px; right: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--error, #d54c4c); }
 .sidebar-footer { padding: 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
 .index-status { display: flex; align-items: center; gap: 6px; min-height: 20px; padding: 0 5px; color: var(--text-muted); font-size: 11px; }
@@ -851,20 +883,19 @@ const sidebarWidth = computed(() => collapsed.value ? '56px' : `${resizableWidth
 .shortcut-hints span { white-space: nowrap; }
 .shortcut-hints kbd { font-family: inherit; font-size: 10px; }
 .footer-actions { display: flex; align-items: center; gap: 2px; margin-top: 3px; }
-.footer-settings-btn, .collapse-btn {
+.collapse-btn {
   display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px;
   padding: 6px; border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 12px;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
-.footer-settings-btn { flex: 1; white-space: nowrap; }
 .collapse-btn { flex-shrink: 0; color: var(--text-muted); }
-.footer-settings-btn:hover, .collapse-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.collapse-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .sidebar.collapsed .action-grid { grid-template-columns: minmax(0, 1fr); }
 .sidebar.collapsed .report-btn { grid-column: auto; }
 .sidebar.collapsed .sidebar-zone { padding: 6px; }
 .sidebar.collapsed .nav-item.collapsed { justify-content: center; padding: 8px; }
 .sidebar.collapsed .footer-actions { flex-direction: column; }
-.sidebar.collapsed .footer-settings-btn, .sidebar.collapsed .collapse-btn { width: 100%; }
+.sidebar.collapsed .collapse-btn { width: 100%; }
 .sidebar.collapsed .index-status { justify-content: center; }
 .sidebar.collapsed .ws-dropdown { right: auto; width: 220px; }
 .sidebar button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

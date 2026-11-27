@@ -60,11 +60,20 @@ export default {
       workspace: '工作区',
       manage: '管理',
     },
+    group: {
+      workflow: '工作流',
+      knowledge: '知识',
+      tools: '工具',
+    },
     navDesc: {
       today: '今日待办、工作日志与到期复习',
       projects: '项目档案、任务与进展',
       learning: '技术学习与间隔复习',
       vault: '文档、双链与知识图谱',
+      reports: '工作周报、日报与批量总结',
+      plugins: '可插拔 JS 插件与权限管理',
+      trash: '已删除笔记与定时清理',
+      settings: '工作区、AI 配置与集成',
     },
     // 知识库子导航树（随「知识库」激活展开）
     sub: {
