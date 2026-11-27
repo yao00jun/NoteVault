@@ -429,6 +429,14 @@
   留下孤儿 go.exe（1.3GB 驻留 60+ 分钟），压测前确认无残留 go 进程。
   ③ go test 的 `-timeout` 与管道 grep 缓冲叠加会把「还在跑」伪装成「没输出」，
   长压测一律输出直落文件。
+  ④ **第 9 项「平台文件盲区」教训的变体实锤（CI 首跑三 job 连锁红）**：
+  `outlookResponseLabel` 与 olResponse* 常量写在 `outlookservice_windows.go`，
+  无平台的测试文件引用它们——Windows 本地全绿、Linux CI 上 windows 文件
+  不参与编译 → undefined → Go Tests / lint / Benchmarks 三个 job 一起挂
+  （bench.txt 空是因为同一个测试包编译不过，报错点不等于根因）。
+  修复：枚举与纯映射函数移到无 build tag 的 `outlookservice.go`，COM 读取
+  留 windows 文件。**流程修正：补带平台符号的测试后，必须重跑
+  `GOOS=linux go vet`（vet 覆盖 _test.go，本地 build 不覆盖）再推送。**
 - **测试**：后端 +2（ResponseStatus 标签映射含未知值兜底；压测口径注释）、
   前端 +1（状态标注与名单分离/无状态降级/未知状态透传）；分片等价锁
   （默认分片 vs 强制单分片逐位相等）通过；全量 Go 套件 + 前端 94 文件 /
