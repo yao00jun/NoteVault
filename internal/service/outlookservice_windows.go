@@ -23,6 +23,10 @@ const (
 	olFolderInbox    = 6
 )
 
+// outlookMeetingCap 单次会议枚举的护栏上限：重复会议展开后单日窗口理论上可能
+// 出现高频系列（如每 15 分钟一次的日程），防止病态数据拖垮 COM 枚举。
+const outlookMeetingCap = 200
+
 func newOutlookProvider() outlookProvider { return outlookComTimeoutProvider{} }
 
 // outlookComTimeoutProvider 给 COM 调用加超时护栏：Outlook 有未处理完的
@@ -113,6 +117,17 @@ func (outlookComProvider) list(start, end time.Time) ([]OutlookMeeting, error) {
 	items := itemsRaw.ToIDispatch()
 	defer items.Release()
 
+	// 重复会议（每周例会等）在 Items 里只有一个"主约会"，其 Start/End 在创建日；
+	// 不过滤重复项的话 Restrict 永远命中不了今天的那次。微软文档配方：
+	// 先按 [Start] 升序排序，再 IncludeRecurrences = true，然后 Restrict——
+	// 结果集里重复系列会展开为窗口内的具体次数。
+	if _, err := oleutil.CallMethod(items, "Sort", "[Start]", false); err != nil {
+		return nil, fmt.Errorf("日历排序失败：%w", err)
+	}
+	if _, err := oleutil.PutProperty(items, "IncludeRecurrences", true); err != nil {
+		return nil, fmt.Errorf("开启重复会议展开失败：%w", err)
+	}
+
 	// Restrict 用本地时间字符串过滤；yyyy-MM-dd HH:mm 在各语言版本下均可解析
 	filter := fmt.Sprintf("[Start] >= '%s' AND [End] <= '%s'",
 		start.Format("2006-01-02 15:04"), end.Format("2006-01-02 15:04"))
@@ -123,17 +138,13 @@ func (outlookComProvider) list(start, end time.Time) ([]OutlookMeeting, error) {
 	restricted := restrictedRaw.ToIDispatch()
 	defer restricted.Release()
 
-	countRaw, err := oleutil.GetProperty(restricted, "Count")
-	if err != nil {
-		return nil, fmt.Errorf("读取会议数量失败：%w", err)
-	}
-	count := int(countRaw.Val)
-
-	meetings := make([]OutlookMeeting, 0, count)
-	for i := 1; i <= count; i++ {
+	// 展开重复项后 Count 只统计非重复条目（微软文档明确其不可靠），
+	// 改为顺序枚举到越界；上限护栏防病态日历（单日窗口内高频重复）。
+	meetings := make([]OutlookMeeting, 0, 8)
+	for i := 1; i <= outlookMeetingCap; i++ {
 		itemRaw, err := oleutil.GetProperty(restricted, "Item", i)
 		if err != nil {
-			continue // 单条失败不阻断整批
+			break // 越界 = 枚举结束
 		}
 		item := itemRaw.ToIDispatch()
 		meeting, readErr := readMeeting(item)
