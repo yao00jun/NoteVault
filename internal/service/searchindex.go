@@ -485,19 +485,22 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 	// -------------------------------------------------------------------
 	// 阶段 1（无锁）：扫描目录树。
 	//
-	// 拆成「收集路径」与「并行取元数据」两步。readdir 本身很便宜，贵的是
-	// 每个文件的 lstat——5000 篇实测串行约 320ms（Windows 上单次 60µs，
-	// 大头是文件系统过滤驱动），而 lstat 之间互不依赖，按 CPU 并行可压到
-	// 五分之一以下。
+	// 元数据直接取自目录枚举：filepath.WalkDir 底层的 os.ReadDir 在 Windows
+	// 上已经带回了 modTime/size，DirEntry.Info() 零系统调用取回（Linux 上
+	// Info() 退化为一次 lstat，与旧 os.Stat 同价，仍走并行 worker）。
+	// 此前的「并行 os.Stat」是为绕开单次 60µs 的过滤驱动开销——现在这笔开销
+	// 整个消失，2 万篇冷查询的 walk+stat 段从 ~370ms 再降一个台阶。
 	//
-	// 这里刻意不做「扫过就缓存 N 秒」的 TTL 短路：用户写完立刻搜是常规操作，
-	// 任何缓存窗口都会让新内容搜不到，代价远大于省下的 lstat。
+	// 语义保持：symlink 的 Info() 是 lstat 口径（读不到目标），对这类条目
+	// 回退 os.Stat（跟随链接），与旧实现完全一致；仍不做任何 TTL 缓存——
+	// 「写完立刻搜」是常规操作，每次 walk 都拿到当下最新的 modTime。
 	// -------------------------------------------------------------------
 	type scanned struct {
 		absPath string
 		modTime time.Time
 	}
 	var paths []string
+	entries := make([]fs.DirEntry, 0, 1024)
 	scanComplete = true
 	walkErr := filepath.WalkDir(workspacePath, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -519,6 +522,7 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 			return filepath.SkipDir
 		}
 		paths = append(paths, path)
+		entries = append(entries, d)
 		return nil
 	})
 	if walkErr != nil {
@@ -555,8 +559,17 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 				local := make(map[string]scanned, hi-lo)
 				for i := lo; i < hi; i++ {
 					abs := paths[i]
-					info, statErr := os.Stat(abs)
-					if statErr != nil {
+					entry := entries[i]
+					var info fs.FileInfo
+					var infoErr error
+					if entry.Type()&fs.ModeSymlink != 0 {
+						// Info() 对 symlink 是 lstat 口径；跟随链接取目标元数据，
+						// 与旧 os.Stat 行为一致（symlink 在笔记库里罕见，走慢路径无妨）
+						info, infoErr = os.Stat(abs)
+					} else {
+						info, infoErr = entry.Info()
+					}
+					if infoErr != nil {
 						// 遍历期间被删除 / 无权限：跳过该文件，
 						// 与 Walk 时代「回调收到 err 就 return nil」一致
 						continue
