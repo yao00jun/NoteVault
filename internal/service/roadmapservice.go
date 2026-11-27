@@ -201,3 +201,42 @@ func percentOrZero(done, total int) int {
 	}
 	return done * 100 / total
 }
+
+// roadmapChapterTargets 从工作区文件集合里收集「路径勾选项 → 双链目标」的投影：
+// 目标名 -> 是否在任一路径文档中被勾选。只扫描 Learning 顶层带 kind: roadmap
+// frontmatter 的 .md；同一目标被多篇路径引用时取并集（任一勾选即视为完成）。
+// 同文档锚点（[[#标题]]）、块引用与无名目标不产生条目；目标是否属于某本书的
+// 章节，由调用方结合文档列表解析（本函数不做文档存在性判断）。
+func roadmapChapterTargets(files []workbenchFile) map[string]bool {
+	targets := map[string]bool{}
+	for _, file := range files {
+		rel := strings.TrimPrefix(file.path, "Learning/")
+		if !strings.HasPrefix(file.path, "Learning/") || strings.Contains(rel, "/") || !strings.EqualFold(filepath.Ext(file.path), ".md") {
+			continue // 只看 Learning 顶层；book.md 与章节都在子文件夹
+		}
+		if kind, ok := workbenchProperty(file.props, "kind", "类型"); !ok || kind.IsEmpty() || !strings.EqualFold(kind.StringValue(), "roadmap") {
+			continue
+		}
+		for i, line := range file.lines {
+			if !file.visible[i] {
+				continue
+			}
+			done := roadmapDoneRE.MatchString(line.text)
+			if !done && !roadmapPendingRE.MatchString(line.text) {
+				continue
+			}
+			for _, match := range wikiLinkRegex.FindAllStringSubmatch(line.text, -1) {
+				name, _, _, _ := parseWikiLinkTarget(match[1])
+				if name == "" {
+					continue
+				}
+				if done {
+					targets[name] = true
+				} else if _, seen := targets[name]; !seen {
+					targets[name] = false
+				}
+			}
+		}
+	}
+	return targets
+}

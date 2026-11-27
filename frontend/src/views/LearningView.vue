@@ -812,7 +812,12 @@ watch(
                   </div>
                 </div>
                 <div class="collection-card-footer">
-                  <span>{{ t('learning.chapterCount', { n: book.chapters.length }) }}</span><button
+                  <span>{{ t('learning.chapterCount', { n: book.chapters.length }) }}</span><span
+                    v-if="book.roadmapTotal"
+                    class="learning-roadmap-checked"
+                    :class="{ complete: book.roadmapDone === book.roadmapTotal }"
+                    data-testid="book-roadmap-checked"
+                  >{{ t('learning.roadmapChecked', { done: book.roadmapDone, total: book.roadmapTotal }) }}</span><button
                     type="button"
                     @click="selectBook(book)"
                   >
@@ -1402,6 +1407,9 @@ watch(
   font-family: var(--font-mono);
   min-width: 22px;
 }
+/* 路径勾选投影徽章（书架卡片脚注）：手填进度之外的对照数据 */
+.learning-roadmap-checked { font-variant-numeric: tabular-nums; }
+.learning-roadmap-checked.complete { color: var(--success, #22c55e); }
 .learning-section-intro {
   color: var(--text-secondary);
   font-size: 13px;

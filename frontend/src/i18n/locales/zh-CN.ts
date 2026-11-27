@@ -2017,6 +2017,7 @@ export default {
     bookIndex: '技术分册 / {n}',
     notLinked: '尚未关联项目',
     chapterCount: '{n} 个章节',
+    roadmapChecked: '路径勾选 {done}/{total}',
     continueReading: '继续阅读',
     notFoundTitle: '没有找到这个分册',
     emptyTitle: '为下一项技术留一个位置',

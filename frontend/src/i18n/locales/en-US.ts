@@ -2017,6 +2017,7 @@ export default {
     bookIndex: 'Tech book / {n}',
     notLinked: 'Not linked to a project',
     chapterCount: '{n} chapters',
+    roadmapChecked: 'Roadmap {done}/{total}',
     continueReading: 'Continue reading',
     notFoundTitle: 'No such book found',
     emptyTitle: 'Save a spot for the next technology',

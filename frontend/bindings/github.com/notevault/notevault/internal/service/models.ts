@@ -1353,6 +1353,14 @@ export interface WorkbenchBook {
     "attachments": WorkbenchAttachment[] | null;
     "studyPlanPath": string;
     "sourceRecordsPath": string;
+
+    /**
+     * RoadmapDone / RoadmapTotal：本书章节被各路径文档（kind: roadmap）勾选的只读投影。
+     * 路径勾选项的双链目标解析到本书文件夹内的章节文档时计入（同一文档多篇路径去重，
+     * 任一路径勾选即视为完成）；书架进度仍以 book.md 手填 progress 为准，此处只作对照展示。
+     */
+    "roadmapDone": number;
+    "roadmapTotal": number;
 }
 
 /**

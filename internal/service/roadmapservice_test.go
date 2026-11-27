@@ -107,3 +107,79 @@ func TestRoadmapService_NoFrontmatterFileSkipped(t *testing.T) {
 	}
 	_ = strings.TrimSpace("")
 }
+
+// TestWorkbenchBookRoadmapProjection 路径勾选投影到书架：双链目标解析到本书章节文档的
+// 计入 RoadmapTotal / RoadmapDone（多篇路径取并集、同一文档去重）；整册链接（指向
+// book.md）与解析不到的目标不计；非 roadmap 文档里的勾选不参与。
+func TestWorkbenchBookRoadmapProjection(t *testing.T) {
+	root := t.TempDir()
+	workbenchWrite(t, root, "Learning/Java基础/book.md", "---\nname: Java基础\nprogress: 20%\n---\n# Java基础\n")
+	workbenchWrite(t, root, "Learning/Java基础/第1章 环境与工具.md", "# 第1章 环境与工具\n")
+	workbenchWrite(t, root, "Learning/Java基础/第2章 语法基础.md", "# 第2章 语法基础\n")
+	workbenchWrite(t, root, "Learning/Java基础/第3章 练习.md", "# 第3章 练习\n")
+	workbenchWrite(t, root, "Learning/AI应用开发/book.md", "---\nname: AI应用开发\n---\n# AI应用开发\n")
+	workbenchWrite(t, root, "Learning/AI应用开发/第1章 LLM 与 API 调用.md", "# 第1章 LLM 与 API 调用\n")
+	workbenchWrite(t, root, "Learning/AI转型路径-13周.md",
+		"---\nkind: roadmap\ngoal: 转型\n---\n# 路径\n\n## 轨一\n\n"+
+			"- [x] [[第1章 环境与工具]] #est/1h\n"+
+			"- [ ] [[第2章 语法基础]] #est/1.5h\n"+
+			"- [ ] [[Java基础]] #est/2.5h\n"+
+			"- [ ] [[不存在的章节]]\n"+
+			"- [ ] [[AI应用开发#第1章 LLM 与 API 调用]] #est/2.5h\n")
+	// 第二篇路径重复引用第1章（未勾选）：并集后仍视为已勾选；同一文档只计一次
+	workbenchWrite(t, root, "Learning/补课路径.md",
+		"---\nkind: roadmap\n---\n# 补课\n\n## 回炉\n\n- [ ] [[第1章 环境与工具]]\n")
+	// 非 roadmap 的随手笔记里勾选不参与投影（第3章只在这里出现 → 不计入任何 RoadmapTotal）
+	workbenchWrite(t, root, "Learning/随手记.md", "# 随手记\n\n- [ ] [[第3章 练习]]\n")
+
+	snapshot, err := NewTodoService().GetWorkbench(root, "2026-09-08")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bookBy := func(name string) *WorkbenchBook {
+		for i := range snapshot.Books {
+			if snapshot.Books[i].Name == name {
+				return &snapshot.Books[i]
+			}
+		}
+		t.Fatalf("book %q not found: %+v", name, snapshot.Books)
+		return nil
+	}
+	java := bookBy("Java基础")
+	// Total=2（第1、2章被路径引用），Done=1（第1章）；第3章虽存在但只被非路径文档勾选，不计
+	if java.RoadmapTotal != 2 || java.RoadmapDone != 1 {
+		t.Fatalf("unexpected roadmap projection: %+v", java)
+	}
+	if java.NoteCount != 3 || java.Progress != 20 {
+		t.Fatalf("chapters and manual progress must stay independent: %+v", java)
+	}
+	// [[书名#章节]] 解析到 book.md 本身 → 整册链接不计为章节勾选
+	ai := bookBy("AI应用开发")
+	if ai.RoadmapTotal != 0 || ai.RoadmapDone != 0 {
+		t.Fatalf("whole-book link must not count: %+v", ai)
+	}
+}
+
+// TestRoadmapChapterTargetsUnionAndSkips 直测收集器：跨文档并集、非 roadmap 跳过、
+// 同文档锚点与无名目标跳过、Learning 子文件夹跳过。
+func TestRoadmapChapterTargetsUnionAndSkips(t *testing.T) {
+	root := t.TempDir()
+	workbenchWrite(t, root, "Learning/主路径.md",
+		"---\nkind: roadmap\n---\n# 主\n\n## 轨\n\n- [x] [[第1章]]\n- [ ] [[第2章]]\n- [ ] [[#本章锚点]]\n- [ ] [[第1章|别名]]\n")
+	workbenchWrite(t, root, "Learning/副路径.md",
+		"---\nkind: roadmap\n---\n# 副\n\n## 轨\n\n- [ ] [[第1章]]\n- [ ] [[第3章]]\n")
+	workbenchWrite(t, root, "Learning/Java/book.md", "---\nkind: roadmap\n---\n# 子文件夹里的不是路径\n\n- [ ] [[第4章]]\n")
+	workbenchWrite(t, root, "Learning/随手记.md", "# 非 roadmap\n\n- [ ] [[第5章]]\n")
+	files, _, err := readWorkbenchFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets := roadmapChapterTargets(files)
+	if len(targets) != 3 {
+		t.Fatalf("expected 3 targets (第1/2/3章), got %+v", targets)
+	}
+	// 第1章：主路径勾选 + 副路径未勾选 → 并集为已完成；别名不影响目标名
+	if !targets["第1章"] || targets["第2章"] || targets["第3章"] {
+		t.Fatalf("unexpected union: %+v", targets)
+	}
+}

@@ -25,11 +25,11 @@ beforeEach(() => {
     attachments: [{ name: '后端.pdf', path: `${folder}/后端.pdf`, size: 6000, notePath: '', warning: '未提取正文' }], studyPlanPath: `${folder}/ai-plan.md`, sourceRecordsPath: `${folder}/sources.md` }], cards: [], documents: [], reviewTarget: 0, reviewedToday: 0, reviewQueue: [], radar: { path: '', content: '' }, loading: false, error: '' })
 })
 
-async function render() {
+async function render(query: Record<string, string> = { book: `${folder}/book.md` }) {
   const workspace = useWorkspaceStore()
   workspace.setCurrentWorkspace({ id: 'vault', name: 'Vault', path: 'E:/Vault', createdAt: '', lastOpenedAt: '' })
   const router = createRouter({ history: createMemoryHistory(), routes: ['/learning', '/editor', '/projects'].map(path => ({ path, component: { template: '<div />' } })) })
-  await router.push({ path: '/learning', query: { book: `${folder}/book.md` } })
+  await router.push({ path: '/learning', query })
   await router.isReady()
   const wrapper = mount(LearningView, { global: { plugins: [router, i18n] } })
   await flushPromises()
@@ -56,5 +56,23 @@ describe('Learning book source materials', () => {
     await flushPromises()
     expect(router.currentRoute.value.query.file).toBe(`${folder}/sources.md`)
     expect(wrapper.find('[data-testid="book-study-plan"]').exists()).toBe(true)
+  })
+
+  it('shows the roadmap checkbox projection as a badge on the book card', async () => {
+    // 书架卡片（不带 ?book= 进详情）：roadmapTotal>0 时显示路径勾选对照，全勾变绿
+    const book = (harness.state.books as Array<Record<string, unknown>>)[0]!
+    book.progress = 40
+    book.roadmapDone = 2
+    book.roadmapTotal = 2
+    const { wrapper } = await render({})
+    const badge = wrapper.get('[data-testid="book-roadmap-checked"]')
+    expect(badge.text()).toContain('路径勾选 2/2')
+    expect(badge.classes()).toContain('complete')
+  })
+
+  it('hides the roadmap badge for books no roadmap document references', async () => {
+    // 夹具书没有 roadmapTotal（旧快照兼容）→ 不渲染徽章
+    const { wrapper } = await render({})
+    expect(wrapper.find('[data-testid="book-roadmap-checked"]').exists()).toBe(false)
   })
 })

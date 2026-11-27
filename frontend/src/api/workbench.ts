@@ -104,6 +104,9 @@ export interface WorkbenchBook {
   attachments?: WorkbenchAttachment[]
   studyPlanPath?: string
   sourceRecordsPath?: string
+  /** 路径勾选投影（RoadmapService 只读对照，书架进度仍以 book.md 手填 progress 为准） */
+  roadmapDone?: number
+  roadmapTotal?: number
 }
 
 export interface InterviewCard {

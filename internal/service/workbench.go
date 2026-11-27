@@ -84,6 +84,11 @@ type WorkbenchBook struct {
 	Attachments       []WorkbenchAttachment `json:"attachments"`
 	StudyPlanPath     string                `json:"studyPlanPath"`
 	SourceRecordsPath string                `json:"sourceRecordsPath"`
+	// RoadmapDone / RoadmapTotal：本书章节被各路径文档（kind: roadmap）勾选的只读投影。
+	// 路径勾选项的双链目标解析到本书文件夹内的章节文档时计入（同一文档多篇路径去重，
+	// 任一路径勾选即视为完成）；书架进度仍以 book.md 手填 progress 为准，此处只作对照展示。
+	RoadmapDone  int `json:"roadmapDone"`
+	RoadmapTotal int `json:"roadmapTotal"`
 }
 
 type InterviewCard struct {
@@ -250,14 +255,31 @@ func (s *TodoService) GetWorkbench(workspacePath, date string) (*WorkbenchSnapsh
 			project.Notes = append(project.Notes, document)
 		}
 	}
+	roadmapTargets := roadmapChapterTargets(files)
 	for i := range snapshot.Books {
 		book := &snapshot.Books[i]
+		chapterPaths := map[string]bool{}
 		for _, document := range snapshot.Documents {
 			if strings.HasPrefix(document.Path, book.Folder+"/") && document.Path != book.Path && document.Path != book.Folder+"/sources.md" && document.Path != book.Folder+"/ai-plan.md" {
+				chapterPaths[document.Path] = true
 				book.Chapters = append(book.Chapters, document)
 			}
 		}
 		book.NoteCount = len(book.Chapters)
+		// 路径勾选投影：双链目标解析到本书章节文档的计入 RoadmapTotal，已勾选计入 RoadmapDone。
+		// 整册链接（指向 book.md 本身）与解析不到文档的目标天然落在 chapterPaths 之外。
+		seen := map[string]bool{}
+		for target, done := range roadmapTargets {
+			resolved := workbenchResolveLinkTarget(target, snapshot.Documents)
+			if !chapterPaths[resolved] || seen[resolved] {
+				continue
+			}
+			seen[resolved] = true
+			book.RoadmapTotal++
+			if done {
+				book.RoadmapDone++
+			}
+		}
 		if err := workbenchBookSources(workspacePath, book); err != nil {
 			snapshot.Warnings = append(snapshot.Warnings, fmt.Sprintf("无法完整读取 %s 的来源资料：%v", book.Name, err))
 		}
@@ -376,6 +398,22 @@ func workbenchHeadingTitle(file workbenchFile, fallback string) string {
 		}
 	}
 	return fallback
+}
+
+// workbenchResolveLinkTarget 把双链目标解析为工作区文档路径：优先按文件名去扩展名
+// 精确匹配（与图谱的 base→path 口径一致），其次按文档标题匹配；找不到返回空串。
+func workbenchResolveLinkTarget(target string, documents []WorkbenchDocument) string {
+	for _, document := range documents {
+		if strings.EqualFold(strings.TrimSuffix(path.Base(document.Path), path.Ext(document.Path)), target) {
+			return document.Path
+		}
+	}
+	for _, document := range documents {
+		if strings.EqualFold(document.Title, target) {
+			return document.Path
+		}
+	}
+	return ""
 }
 
 func workbenchDocument(file workbenchFile) WorkbenchDocument {
