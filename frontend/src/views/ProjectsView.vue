@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useViewRoute } from '@/composables/useViewRoute'
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
@@ -44,6 +44,7 @@ import {
 import '@/styles/workbench-collections.css'
 import { requestSourceImport } from '@/composables/useSourceImport'
 import { formatRelativeTime } from '@/utils/relativeTime'
+import { cssEscape } from '@/utils/markdownText'
 import CollectionOnboarding from '@/components/workbench/CollectionOnboarding.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 
@@ -78,6 +79,34 @@ const selectedProject = computed(() => {
   return workbench.projects.find((project) =>
     [project.path, project.folder, project.name].includes(String(query ?? ''))
   )
+})
+
+// 里程碑锚点定位：今天页跳转带 ?milestone=<名称> 时，滚到 frontmatter 对应行并闪烁提示；
+// 处理完即从地址栏消费掉该参数（与今日页 ?action 同款），避免同一次跳转重复触发。
+// 在组件自己的列表里查找（模板引用），不依赖全局 document。
+const milestonesRef = ref<HTMLUListElement | null>(null)
+const flashedMilestone = ref('')
+let milestoneFlashTimer: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => String(route.query.milestone ?? ''),
+  async (name) => {
+    if (!name) return
+    await nextTick()
+    const row = milestonesRef.value?.querySelector(`[data-milestone="${cssEscape(name)}"]`)
+    if (row) {
+      row.scrollIntoView({ block: 'center' })
+      flashedMilestone.value = name
+      if (milestoneFlashTimer) clearTimeout(milestoneFlashTimer)
+      milestoneFlashTimer = setTimeout(() => {
+        flashedMilestone.value = ''
+      }, 2400)
+    }
+    void router.replace({ query: { ...route.query, milestone: undefined } })
+  },
+  { immediate: true }
+)
+onBeforeUnmount(() => {
+  if (milestoneFlashTimer) clearTimeout(milestoneFlashTimer)
 })
 const statusOptions = computed(() => [
   ...new Set([
@@ -492,6 +521,7 @@ watch(
             </p>
             <ul
               v-if="selectedProject.milestones?.length"
+              ref="milestonesRef"
               class="project-milestones"
               :aria-label="t('projects.milestonesLabel')"
               data-testid="project-milestones"
@@ -499,7 +529,12 @@ watch(
               <li
                 v-for="(milestone, index) in selectedProject.milestones"
                 :key="index"
-                :class="{ done: milestone.done, overdue: !milestone.done && isOverdue(milestone.date) }"
+                :data-milestone="milestone.name"
+                :class="{
+                  done: milestone.done,
+                  overdue: !milestone.done && isOverdue(milestone.date),
+                  'milestone-flash': flashedMilestone === milestone.name,
+                }"
               >
                 <CheckCircle2
                   v-if="milestone.done"
@@ -1475,6 +1510,18 @@ watch(
 .project-milestones li.overdue {
   color: var(--danger, #ef4444);
   border-color: color-mix(in srgb, var(--danger, #ef4444) 40%, var(--border));
+}
+.project-milestones li.milestone-flash {
+  animation: milestone-flash 1.2s ease-in-out 2;
+}
+@keyframes milestone-flash {
+  0%,
+  100% {
+    background: var(--bg-card);
+  }
+  50% {
+    background: color-mix(in srgb, var(--warning) 22%, var(--bg-card));
+  }
 }
 .project-milestones .pm-date {
   color: var(--text-muted);

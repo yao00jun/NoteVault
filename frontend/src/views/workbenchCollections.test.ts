@@ -371,6 +371,57 @@ describe('ProjectsView', () => {
     expect(items[3]!.text()).not.toContain('20')
     expect(strip.text()).toContain('一期上线')
   })
+
+  it('anchors the ?milestone row, flashes it and consumes the query param', async () => {
+    const scrolled: Element[] = []
+    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
+      scrolled.push(this)
+    }
+    harness.state.projects = [
+      {
+        ...project('商城', '进行中', ['US 登录接口']),
+        milestones: [
+          { name: '环境搭建', date: '2020-01-01', done: true },
+          { name: '需求评审通过', date: '2020-02-01', done: false },
+        ],
+      },
+    ]
+    // shouldAdvanceTime：microtask/flushPromises 正常走，只把 2.4s 闪烁窗口快进掉
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const { wrapper, router } = await renderView(
+        ProjectsView,
+        '/projects?project=Projects/商城/project.md&milestone=需求评审通过'
+      )
+      // 目标行滚进可视区并闪烁；未命中行不闪
+      expect(scrolled).toHaveLength(1)
+      const target = wrapper.get('[data-milestone="需求评审通过"]')
+      expect(scrolled[0]).toBe(target.element)
+      expect(target.classes()).toContain('milestone-flash')
+      expect(wrapper.find('[data-milestone="环境搭建"]').classes()).not.toContain('milestone-flash')
+      // 消费掉参数：地址栏不再携带 milestone；约 2.4s 后闪烁自动结束
+      expect(router.currentRoute.value.query.milestone).toBeUndefined()
+      await vi.advanceTimersByTimeAsync(2500)
+      expect(target.classes()).not.toContain('milestone-flash')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('consumes an unknown ?milestone without flashing anything', async () => {
+    harness.state.projects = [
+      {
+        ...project('商城', '进行中', ['US 登录接口']),
+        milestones: [{ name: '需求评审通过', date: '2020-02-01', done: false }],
+      },
+    ]
+    const { wrapper, router } = await renderView(
+      ProjectsView,
+      '/projects?project=Projects/商城/project.md&milestone=不存在的里程碑'
+    )
+    expect(wrapper.find('.milestone-flash').exists()).toBe(false)
+    expect(router.currentRoute.value.query.milestone).toBeUndefined()
+  })
 })
 
 describe('LearningView', () => {

@@ -407,11 +407,12 @@ describe('Today workspace boundaries', () => {
     expect(rows[1]!.classes()).not.toContain('overdue')
     expect(rows[0]!.text()).toContain('AI 转型')
 
-    // 点击里程碑行 → 打开所属项目页
+    // 点击里程碑行 → 打开所属项目页，带里程碑锚点（项目页滚到 frontmatter 对应行）
     await rows[0]!.trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/projects')
     expect(router!.currentRoute.value.query.project).toBe('Projects/AI 转型/project.md')
+    expect(router!.currentRoute.value.query.milestone).toBe('已逾期里程碑')
   })
 
   it('marks a milestone done from the strip and refreshes the projection', async () => {

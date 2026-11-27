@@ -86,7 +86,9 @@ const taskFilters = computed(() => [
 
 function openReport() { window.dispatchEvent(new CustomEvent('notevault:daily-report')) }
 function openFile(path: string) { workspace.openFile(path); void router.push({ path: '/editor', query: { file: path } }) }
-function openProject(folder: string) { void router.push({ path: '/projects', query: { project: `${folder}/project.md` } }) }
+function openProject(folder: string, milestone?: string) {
+  void router.push({ path: '/projects', query: { project: `${folder}/project.md`, ...(milestone ? { milestone } : {}) } })
+}
 
 // --- 近期里程碑（7 天内到期或已逾期，来自各项目 frontmatter）---
 const milestoneItems = computed(() => {
@@ -515,8 +517,8 @@ function showBlockers() { filter.value = 'blocked'; document.getElementById('tod
               class="milestone-row"
               :class="{ overdue: item.overdue }"
               :title="t('today.milestones.openProject')"
-              @click="openProject(item.folder)"
-              @keydown.enter="openProject(item.folder)"
+              @click="openProject(item.folder, item.name)"
+              @keydown.enter="openProject(item.folder, item.name)"
             >
               <Flag
                 :size="13"
