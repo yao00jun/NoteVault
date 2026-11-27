@@ -106,14 +106,14 @@ type cachedDoc struct {
 	modTime time.Time // 文件最后修改时间
 	title   string    // 文档标题（首个 "# " 行或文件名）
 
-	// tokenFreq token → 出现次数。
+	// tokenFreq 一篇文档的 token → 出现次数（按 token 升序的平行数组，见 tokenTable）。
 	//
-	// 原为 map[string]bool（仅集合），P0-1 升级为词频以支持 BM25 打分。
-	// 没有保留两个 map：二者 key 集合完全相同，同存一份会让索引内存翻倍，
-	// 而增量删除、倒排表维护都只需要遍历 key。
-	//
+	// 原为 map[string]bool（仅集合），P0-1 升级为词频以支持 BM25 打分；
+	// 2026-11 内存压缩：map 条目开销 ~53B/条，66 万条 ≈ 35MB，是索引常驻
+	// 内存的实测最大单项（探针 @5000 篇）——token 字符串数据去重后仅 ~23KB，
+	// 肥肉全在条目开销，故改为平行数组（header 16B + uint32 计数 ≈ 20B/条）。
 	// 构建完成后不再修改，可在持有 idx.mu 读锁时安全读取。
-	tokenFreq map[string]int
+	tokenFreq tokenTable
 
 	// docLen 文档 token 总数（BM25 的长度归一用）。
 	// 旧实现没有这个字段，因此排序无法区分「关键词密度高」与「文档本身长」，
@@ -206,7 +206,7 @@ func (idx *searchIndex) contentOf(doc *cachedDoc) (string, string, error) {
 type searchIndex struct {
 	mu   sync.RWMutex
 	docs map[string]*cachedDoc // relPath → doc
-	// inverted 倒排表，按文档分片：token(lowercase) → set(relPath)。
+	// inverted 倒排表，按文档分片：token(lowercase) → relPath 列表。
 	//
 	// 一个文档的全部 posting 只落在 shardOf(relPath) 指定的那一片，
 	// 查询时跨片遍历、删除时只碰一片。之所以分片而不是用单张 map：
@@ -214,7 +214,12 @@ type searchIndex struct {
 	// 的合并本身就是新瓶颈（实测 5000 篇 / 66 万 posting：串行 90ms，
 	// 8 分片各写各的 8.6ms，并行构建后串行合并仍要 67ms）。
 	// 分片让每个 worker 独占一片，零合并成本。
-	inverted      []map[string]map[string]bool
+	//
+	// 2026-11 内存压缩：内层从 map[string]bool 换成 []string——posting 条目
+	// 开销 ~53B → 16B（探针 @5000 篇省 ~24MB）。列表无序：打分结果最终按
+	// (score, relPath) 排序，候选集又是 map 收集，顺序本就不影响结果；
+	// 删除用 swap，文档的唯一 tokenFreq 保证同文档不会重复入列。
+	inverted      []map[string][]string
 	summaryLoaded bool // 标记是否已尝试加载磁盘摘要（幂等）
 	// refreshMu 串行化 refresh，避免并发搜索重复做同样的扫描与 IO。
 	// 它不阻塞查询（query 只取读锁），因此不影响搜索并发度。
@@ -331,10 +336,10 @@ func indexShardCount() int {
 	return n
 }
 
-func newInvertedShards(n int) []map[string]map[string]bool {
-	shards := make([]map[string]map[string]bool, n)
+func newInvertedShards(n int) []map[string][]string {
+	shards := make([]map[string][]string, n)
 	for i := range shards {
-		shards[i] = make(map[string]map[string]bool)
+		shards[i] = make(map[string][]string)
 	}
 	return shards
 }
@@ -356,15 +361,11 @@ func (idx *searchIndex) shardOf(relPath string) int {
 //
 // 分片下标按文档算一次即可：一篇文档的 tokenFreq 通常上千项，
 // 逐 token 重算 relPath 的 CRC 是纯浪费。
-func (idx *searchIndex) addPostingsLocked(relPath string, tokenFreq map[string]int) {
+// tokenTable 按 token 去重，同一文档对同一 token 只 append 一次。
+func (idx *searchIndex) addPostingsLocked(relPath string, tokens tokenTable) {
 	shard := idx.inverted[idx.shardOf(relPath)]
-	for token := range tokenFreq {
-		postings, ok := shard[token]
-		if !ok {
-			postings = make(map[string]bool, 1)
-			shard[token] = postings
-		}
-		postings[relPath] = true
+	for _, token := range tokens.toks {
+		shard[token] = append(shard[token], relPath)
 	}
 }
 
@@ -619,48 +620,76 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 
 	// -------------------------------------------------------------------
 	// 阶段 3（无锁 IO）：磁盘读与分词是最耗时的部分，全部放在锁外完成。
+	//
+	// 按 CPU 并行：toBuild 按连续区间分给各 worker，结果按槽位写回预分配
+	// 切片——顺序与串行版逐位一致（阶段 4 的应用顺序可复现），worker 之间
+	// 零共享、零合并（对照：阶段 1 的并行 stat 也是这个模式）。
+	// gse Segmenter 在词典加载后只读，CutAll 可并发调用（-race 全量验证）。
 	// -------------------------------------------------------------------
 	type builtDoc struct {
 		rel string
 		doc *cachedDoc
 	}
-	built := make([]builtDoc, 0, len(toBuild))
-	for _, rel := range toBuild {
-		sc := current[rel]
-		content, readErr := os.ReadFile(sc.absPath)
-		if readErr != nil {
-			continue
+	built := make([]builtDoc, len(toBuild))
+	if len(toBuild) > 0 {
+		workers := indexShardCount()
+		if workers > len(toBuild) {
+			workers = len(toBuild)
 		}
-		contentStr := string(content)
-
-		// 提取标题
-		title := filepath.Base(rel)
-		for _, line := range strings.Split(contentStr, "\n") {
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "# ") {
-				title = strings.TrimPrefix(trimmed, "# ")
+		chunk := (len(toBuild) + workers - 1) / workers
+		var wg sync.WaitGroup
+		for w := 0; w < workers; w++ {
+			lo := w * chunk
+			hi := lo + chunk
+			if hi > len(toBuild) {
+				hi = len(toBuild)
+			}
+			if lo >= hi {
 				break
 			}
+			wg.Add(1)
+			go func(lo, hi int) {
+				defer wg.Done()
+				for i := lo; i < hi; i++ {
+					rel := toBuild[i]
+					sc := current[rel]
+					content, readErr := os.ReadFile(sc.absPath)
+					if readErr != nil {
+						continue // 读失败的槽位留零值，阶段 4 按 doc == nil 跳过
+					}
+					contentStr := string(content)
+
+					// 提取标题
+					title := filepath.Base(rel)
+					for _, line := range strings.Split(contentStr, "\n") {
+						trimmed := strings.TrimSpace(line)
+						if strings.HasPrefix(trimmed, "# ") {
+							title = strings.TrimPrefix(trimmed, "# ")
+							break
+						}
+					}
+
+					// 分词并构建 token 频次表
+					tokens := tokenizeIndex(contentStr)
+
+					built[i] = builtDoc{rel: rel, doc: &cachedDoc{
+						relPath: rel,
+						absPath: sc.absPath,
+						modTime: sc.modTime,
+						title:   title,
+						// 正文已在手上（刚读过），先留着；是否保留由 enforceContentBudget 决定
+						content:       contentStr,
+						contentLower:  strings.ToLower(contentStr),
+						contentLoaded: true,
+						tokenFreq:     newTokenTable(tokens),
+						titleFreq:     freqOf(tokenizeIndex(title)),
+						docLen:        len(tokens),
+						lastUsed:      time.Now().UnixNano(),
+					}}
+				}
+			}(lo, hi)
 		}
-
-		// 分词并构建 token 集合
-		tokens := tokenizeIndex(contentStr)
-		tokenFreq := freqOf(tokens)
-
-		built = append(built, builtDoc{rel: rel, doc: &cachedDoc{
-			relPath: rel,
-			absPath: sc.absPath,
-			modTime: sc.modTime,
-			title:   title,
-			// 正文已在手上（刚读过），先留着；是否保留由 enforceContentBudget 决定
-			content:       contentStr,
-			contentLower:  strings.ToLower(contentStr),
-			contentLoaded: true,
-			tokenFreq:     tokenFreq,
-			titleFreq:     freqOf(tokenizeIndex(title)),
-			docLen:        len(tokens),
-			lastUsed:      time.Now().UnixNano(),
-		}})
+		wg.Wait()
 	}
 
 	// -------------------------------------------------------------------
@@ -672,6 +701,9 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 		idx.dirty = true
 	}
 	for _, b := range built {
+		if b.doc == nil {
+			continue // 阶段 3 读盘失败（文件遍历期间被删/无权限），与串行版 continue 口径一致
+		}
 		// 重新索引前先删除旧 token（顺带归还该文档的 totalDocLen）
 		if old, ok := idx.docs[b.rel]; ok {
 			idx.removeDocLocked(old)
@@ -713,12 +745,20 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 func (idx *searchIndex) removeDocLocked(doc *cachedDoc) {
 	// 归属分片固定，删除只需查一片（其余片里不可能有这个 relPath 的 posting）
 	shard := idx.inverted[idx.shardOf(doc.relPath)]
-	for token := range doc.tokenFreq {
-		if postings, ok := shard[token]; ok {
-			delete(postings, doc.relPath)
-			if len(postings) == 0 {
-				delete(shard, token)
+	for _, token := range doc.tokenFreq.toks {
+		postings := shard[token]
+		for i, rel := range postings {
+			if rel == doc.relPath {
+				// swap 删除：posting 列表无序（候选集经 map 收集、结果按分数排序）
+				postings[i] = postings[len(postings)-1]
+				postings = postings[:len(postings)-1]
+				break
 			}
+		}
+		if len(postings) == 0 {
+			delete(shard, token)
+		} else {
+			shard[token] = postings
 		}
 	}
 	delete(idx.docs, doc.relPath)
@@ -741,11 +781,11 @@ func (idx *searchIndex) query(queryLower string) []*cachedDoc {
 		return nil
 	}
 
-	// 收集包含任意 query token 的候选文档（跨分片遍历；nil map 可安全 range）
+	// 收集包含任意 query token 的候选文档（跨分片遍历；nil/缺失 token 可安全 range）
 	candidateSet := make(map[string]bool)
 	for _, qt := range queryTokens {
 		for _, shard := range idx.inverted {
-			for rel := range shard[qt] {
+			for _, rel := range shard[qt] {
 				candidateSet[rel] = true
 			}
 		}
@@ -782,7 +822,10 @@ const (
 	bm25TitleBoost = 3.0
 )
 
-// freqOf 把 token 序列统计成词频表
+// freqOf 把 token 序列统计成词频表。
+//
+// 2026-11 内存压缩后只剩标题词频（titleFreq）一个用户：标题很短，map 的
+// 条目开销可以忽略；正文的 tokenFreq 已换成 tokenTable（升序平行数组）。
 func freqOf(tokens []string) map[string]int {
 	if len(tokens) == 0 {
 		return nil
@@ -797,6 +840,48 @@ func freqOf(tokens []string) map[string]int {
 		freq[t]++
 	}
 	return freq
+}
+
+// tokenTable 一篇文档的 token → 词频，按 token 升序的平行数组。
+//
+// 内存模型（探针 @5000 篇基准语料，2026-11）：tokenFreq + postings 各 66 万条
+// map 条目，开销 ~53B/条，是索引常驻内存的最大两项（各 ~35MB）；而 token
+// 字符串数据全库去重后仅 ~23KB，重复 145 倍也无足轻重——肥肉是条目开销本身。
+// 平行数组把每条压到 string header 16B + uint32 计数 4B ≈ 20B。
+// 查找走二分：BM25 内核 5000 篇全库打分实测 0.5ms，二分增量可忽略；
+// 排序 + 去重在分词之后一次性完成（排序 1000 项 ≈ 数十 µs，远小于分词）。
+type tokenTable struct {
+	toks  []string // 升序
+	freqs []uint32 // 与 toks 逐位对齐
+}
+
+// newTokenTable 从 token 序列统计词频并构建表（升序去重）。
+func newTokenTable(tokens []string) tokenTable {
+	if len(tokens) == 0 {
+		return tokenTable{}
+	}
+	sorted := make([]string, len(tokens))
+	copy(sorted, tokens)
+	sort.Strings(sorted)
+	tt := tokenTable{toks: make([]string, 0, len(sorted)), freqs: make([]uint32, 0, len(sorted))}
+	for i, tok := range sorted {
+		if i > 0 && tok == sorted[i-1] {
+			tt.freqs[len(tt.freqs)-1]++
+			continue
+		}
+		tt.toks = append(tt.toks, tok)
+		tt.freqs = append(tt.freqs, 1)
+	}
+	return tt
+}
+
+// get 返回 token 的出现次数（二分查找；不存在返回 0）。调用者须持有 idx.mu 读锁。
+func (tt *tokenTable) get(tok string) int {
+	i := sort.SearchStrings(tt.toks, tok)
+	if i < len(tt.toks) && tt.toks[i] == tok {
+		return int(tt.freqs[i])
+	}
+	return 0
 }
 
 // scoredDoc 打分中间结构
@@ -829,7 +914,7 @@ func (idx *searchIndex) scoreBM25(queryTokens []string, limit int) []*scoredDoc 
 	candidates := make(map[*cachedDoc]struct{}, 64)
 	for _, qt := range queryTokens {
 		for _, shard := range idx.inverted {
-			for rel := range shard[qt] {
+			for _, rel := range shard[qt] {
 				if doc, ok := idx.docs[rel]; ok {
 					candidates[doc] = struct{}{}
 				}
@@ -852,7 +937,7 @@ func (idx *searchIndex) scoreBM25(queryTokens []string, limit int) []*scoredDoc 
 		}
 		var score float64
 		for i, qt := range queryTokens {
-			tfAll := float64(doc.tokenFreq[qt])
+			tfAll := float64(doc.tokenFreq.get(qt))
 			if tfAll == 0 {
 				continue
 			}
@@ -959,8 +1044,10 @@ func summaryPathFor(workspacePath string) string {
 }
 
 // gobSummaryVersion Gob 摘要自身的格式版本：结构变更时递增，
-// 版本不符直接丢弃重建（摘要纯缓存，与 schema.SearchSummary 的取舍一致）
-const gobSummaryVersion = 1
+// 版本不符直接丢弃重建（摘要纯缓存，与 schema.SearchSummary 的取舍一致）。
+// v2（2026-11）：entry 结构不变，但 Tokens 从 map 遍历序（随机）变为
+// tokenTable 升序——恢复路径按「已排序」构建 tokenTable，旧 v1 摘要必须作废。
+const gobSummaryVersion = 2
 
 // indexSummaryGob Gob 落盘载荷（不再套 JSON 信封——Gob 自带类型信息）
 type indexSummaryGob struct {
@@ -975,11 +1062,10 @@ func (idx *searchIndex) SaveSummary(workspacePath string) error {
 	idx.mu.RLock()
 	entries := make([]indexSummaryEntry, 0, len(idx.docs))
 	for rel, doc := range idx.docs {
-		tokens := make([]string, 0, len(doc.tokenFreq))
-		freqs := make([]int, 0, len(doc.tokenFreq))
-		for t, f := range doc.tokenFreq {
-			tokens = append(tokens, t)
-			freqs = append(freqs, f)
+		tokens := doc.tokenFreq.toks // tokenTable 升序，落盘即保持
+		freqs := make([]int, len(tokens))
+		for i, f := range doc.tokenFreq.freqs {
+			freqs[i] = int(f)
 		}
 		entries = append(entries, indexSummaryEntry{
 			RelPath: rel,
@@ -1122,19 +1208,23 @@ func (idx *searchIndex) restoreEntriesLocked(entries []indexSummaryEntry) {
 			local := make(map[string]*cachedDoc, len(groups[s]))
 			var total int64
 			for _, e := range groups[s] {
-				tokenFreq := make(map[string]int, len(e.Tokens))
-				for i, t := range e.Tokens {
-					f := 1
-					if i < len(e.Freqs) {
-						f = e.Freqs[i]
+				// v2 摘要的 Tokens 已按升序落盘（tokenTable 原样存取）；
+				// 版本门禁保证旧 v1 的随机序不会流到这里。
+				// 频次缺省 1：与旧 map 路径「i >= len(Freqs) 时 f=1」口径一致。
+				tokenFreq := tokenTable{
+					toks:  e.Tokens,
+					freqs: make([]uint32, len(e.Tokens)),
+				}
+				for i := range tokenFreq.freqs {
+					tokenFreq.freqs[i] = 1
+				}
+				for i, f := range e.Freqs {
+					if i < len(e.Tokens) {
+						tokenFreq.freqs[i] = uint32(f)
 					}
-					tokenFreq[t] = f
-					postings, ok := shard[t]
-					if !ok {
-						postings = make(map[string]bool, 1)
-						shard[t] = postings
-					}
-					postings[e.RelPath] = true
+				}
+				for _, t := range e.Tokens {
+					shard[t] = append(shard[t], e.RelPath)
 				}
 				local[e.RelPath] = &cachedDoc{
 					relPath: e.RelPath,

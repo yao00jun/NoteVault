@@ -53,7 +53,14 @@ type SearchResult struct {
 // 搜索健壮性常量
 const (
 	maxSearchFileSize = 2 * 1024 * 1024 // 超过 2MB 的文件跳过
-	maxScanFiles      = 5000            // 单次扫描最多处理的文件数
+
+	// maxScanFiles 单次扫描的文件数护栏（防挂错目录/网络盘等病态场景，
+	// 不是功能上限）。2026-11 从 5000 提到 50000：建索引并行化（3.4x）与
+	// tokenTable/postings 紧凑化（~25MB/5000 篇）就位后，全量 2 万篇的
+	// 建索引 ~2.8s、索引结构 ~110MB（content 另有 32MB 预算封顶），
+	// 实测线性无超线性退化（见 perf_stress_test）。此前 5000 篇上限会让
+	// 更大的库静默丢掉一部分可搜内容（scanComplete=false 仅状态栏提示）。
+	maxScanFiles = 50000
 
 	// defaultMaxSearchResults 单次搜索返回的最大结果数默认上限。
 	// 原先是包级 var（供测试临时调小），属于进程级全局可变状态：
@@ -206,7 +213,7 @@ func (s *SearchService) Search(workspacePath string, query string) ([]*SearchRes
 			matchCount = strings.Count(contentLower, queryLower)
 			if matchCount == 0 {
 				for _, qt := range queryTokens {
-					matchCount += sd.doc.tokenFreq[qt]
+					matchCount += sd.doc.tokenFreq.get(qt)
 				}
 			}
 			// 用首个查询 token 定位片段：多词查询时整串（含空格）在正文里
@@ -214,7 +221,7 @@ func (s *SearchService) Search(workspacePath string, query string) ([]*SearchRes
 			snippet = extractSnippet(content, queryTokens[0], 50)
 		} else {
 			for _, qt := range queryTokens {
-				matchCount += sd.doc.tokenFreq[qt]
+				matchCount += sd.doc.tokenFreq.get(qt)
 			}
 		}
 

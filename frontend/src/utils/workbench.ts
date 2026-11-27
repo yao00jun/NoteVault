@@ -244,6 +244,22 @@ export function meetingMinutesPath(date: string, subject: string): string {
   return `Daily/Meetings/${date}-${clean}.md`
 }
 
+// attendeeStatusLabels Outlook ResponseStatus 标签 → 纪要正文用的中文标注。
+// frontmatter 的 attendees 保持纯名单，状态只出现在「参会人」正文行。
+const attendeeStatusLabels: Record<string, string> = {
+  organized: '组织者',
+  accepted: '已接受',
+  tentative: '暂定',
+  declined: '已拒绝',
+  none: '无响应',
+}
+
+// attendeeDisplay 参会人展示名：有响应状态时追加标注；未知状态原样透传。
+function attendeeDisplay(name: string, status?: string): string {
+  if (!status) return name
+  return `${name}（${attendeeStatusLabels[status] ?? status}）`
+}
+
 // buildMeetingMinutes 生成会议纪要模板正文。
 export function buildMeetingMinutes(meeting: OutlookMeeting): string {
   const time = `${meeting.start.slice(11, 16)}-${meeting.end.slice(11, 16)}`
@@ -257,7 +273,10 @@ export function buildMeetingMinutes(meeting: OutlookMeeting): string {
   if (meeting.organizer) lines.push(`organizer: ${meeting.organizer}`)
   if (meeting.attendees?.length) lines.push(`attendees: [${meeting.attendees.join(', ')}]`)
   lines.push('---', '', `# ${meeting.subject} 会议纪要`, '')
-  if (meeting.attendees?.length) lines.push(`- 参会人：${meeting.attendees.join('、')}`, '')
+  if (meeting.attendees?.length) {
+    const people = meeting.attendees.map((name, i) => attendeeDisplay(name, meeting.attendeeStatuses?.[i]))
+    lines.push(`- 参会人：${people.join('、')}`, '')
+  }
   return lines.join('\n')
 }
 

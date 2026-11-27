@@ -33,10 +33,10 @@ import (
 //   - 落盘后重新加载的耗时。
 //
 // 分两段：
-//  1. 真实路径——直接调 refresh。注意 refresh 的 walk 有 maxScanFiles=5000 的扫描上限，
-//     20000 篇只会被索引前 5000 篇（scanComplete=false），这一段反映的是当前版本的真实行为；
+//  1. 真实路径——直接调 refresh。2026-11 起 maxScanFiles=50000，20000 篇全量
+//     可索引（scanComplete=true）；上限仅剩防病态护栏作用，这一段反映当前版本的真实行为；
 //  2. 推算路径——绕过 walk 直接把 20000 篇灌进索引（stressPopulateUncapped），
-//     用来回答「上限放开之后」的容量问题。它不复刻正文的常驻缓存，内存一项偏低。
+//     用来回答「上限再放开之后」的容量问题。它不复刻正文的常驻缓存，内存一项偏低。
 //
 // 清理：笔记目录用 t.TempDir()；索引摘要落在 %APPDATA% 而非工作区，显式删除。
 // ---------------------------------------------------------------------------
@@ -253,7 +253,7 @@ func stressPopulateUncapped(t *testing.T, idx *searchIndex, ws string, docs []pe
 			absPath:   absPath,
 			modTime:   info.ModTime(),
 			title:     title,
-			tokenFreq: freqOf(tokens),
+			tokenFreq: newTokenTable(tokens),
 			titleFreq: freqOf(tokenizeIndex(title)),
 			docLen:    len(tokens),
 			lastUsed:  time.Now().UnixNano(),

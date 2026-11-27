@@ -775,13 +775,13 @@ func (s *QnAService) HybridSearch(workspacePath, query, embBaseURL, embModel, em
 			matchCount = strings.Count(contentLower, queryLower)
 			if matchCount == 0 {
 				for _, qt := range queryTokens {
-					matchCount += doc.tokenFreq[qt]
+					matchCount += doc.tokenFreq.get(qt)
 				}
 			}
 			snippet = extractSnippet(content, queryTokens[0], 50)
 		} else {
 			for _, qt := range queryTokens {
-				matchCount += doc.tokenFreq[qt]
+				matchCount += doc.tokenFreq.get(qt)
 			}
 		}
 		results = append(results, &SearchResult{

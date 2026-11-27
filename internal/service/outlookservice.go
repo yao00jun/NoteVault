@@ -27,7 +27,11 @@ type OutlookMeeting struct {
 	Location  string   `json:"location"`
 	Organizer string   `json:"organizer"`
 	Attendees []string `json:"attendees,omitempty"` // 必填 + 可选参会人（名字列表）
-	AllDay    bool     `json:"allDay"`
+	// AttendeeStatuses 与 attendees 一一对应的响应状态（Outlook ResponseStatus）：
+	// organized / accepted / tentative / declined / none；读取失败缺省 none。
+	// 只用于纪要正文的展示标注，frontmatter 的 attendees 保持纯名单。
+	AttendeeStatuses []string `json:"attendeeStatuses,omitempty"`
+	AllDay           bool     `json:"allDay"`
 }
 
 // OutlookEmail 是一封旗标邮件的只读投影。

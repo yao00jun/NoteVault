@@ -165,7 +165,10 @@ func readMeeting(item *ole.IDispatch) (*OutlookMeeting, error) {
 	location := outlookString(item, "Location")
 	organizer := outlookString(item, "Organizer")
 	allDay := outlookBool(item, "AllDayEvent")
-	attendees := append(readAttendeeNames(item, "RequiredAttendees"), readAttendeeNames(item, "OptionalAttendees")...)
+	reqNames, reqStatuses := readAttendees(item, "RequiredAttendees")
+	optNames, optStatuses := readAttendees(item, "OptionalAttendees")
+	attendees := append(reqNames, optNames...)
+	attendeeStatuses := append(reqStatuses, optStatuses...)
 
 	startRaw, err := oleutil.GetProperty(item, "Start")
 	if err != nil {
@@ -184,13 +187,14 @@ func readMeeting(item *ole.IDispatch) (*OutlookMeeting, error) {
 		return nil, fmt.Errorf("解析会议结束时间失败：%w", err)
 	}
 	return &OutlookMeeting{
-		Subject:   strings.TrimSpace(subject),
-		Start:     start.Format("2006-01-02 15:04"),
-		End:       end.Format("2006-01-02 15:04"),
-		Location:  strings.TrimSpace(location),
-		Organizer: strings.TrimSpace(organizer),
-		Attendees: attendees,
-		AllDay:    allDay,
+		Subject:          strings.TrimSpace(subject),
+		Start:            start.Format("2006-01-02 15:04"),
+		End:              end.Format("2006-01-02 15:04"),
+		Location:         strings.TrimSpace(location),
+		Organizer:        strings.TrimSpace(organizer),
+		Attendees:        attendees,
+		AttendeeStatuses: attendeeStatuses,
+		AllDay:           allDay,
 	}, nil
 }
 
@@ -210,6 +214,41 @@ func outlookBool(item *ole.IDispatch, name string) bool {
 		return false
 	}
 	return raw.Val != 0
+}
+
+// Outlook ResponseStatus 枚举（olResponse*，与会话接收者的响应状态对应）。
+const (
+	olResponseNone      = 0
+	olResponseOrganized = 1
+	olResponseAccepted  = 2
+	olResponseDeclined  = 3
+	olResponseTentative = 4
+)
+
+// outlookResponseLabel 把 ResponseStatus 数值映射为稳定的字符串标签
+// （json 侧不透传数值枚举，前端按标签做本地化展示；未知值原样透传十进制）。
+func outlookResponseLabel(v int64) string {
+	switch v {
+	case olResponseOrganized:
+		return "organized"
+	case olResponseAccepted:
+		return "accepted"
+	case olResponseDeclined:
+		return "declined"
+	case olResponseTentative:
+		return "tentative"
+	default:
+		return "none"
+	}
+}
+
+// outlookResponseStatus 安全读取接收者的 ResponseStatus，异常按未响应处理。
+func outlookResponseStatus(rec *ole.IDispatch) string {
+	raw, err := oleutil.GetProperty(rec, "ResponseStatus")
+	if err != nil {
+		return outlookResponseLabel(olResponseNone)
+	}
+	return outlookResponseLabel(raw.Val)
 }
 
 // listFlagged 读取收件箱中带旗标（用户标记为待办）的邮件，按接收时间倒序。
@@ -324,22 +363,24 @@ func readEmail(item *ole.IDispatch) (*OutlookEmail, error) {
 	}, nil
 }
 
-// readAttendeeNames 读取会议的参会人集合（RequiredAttendees / OptionalAttendees），
-// 返回名字列表；集合读取失败降级为空列表（个别字段异常不影响整条会议）。
-func readAttendeeNames(item *ole.IDispatch, property string) []string {
+// readAttendees 读取会议的参会人集合（RequiredAttendees / OptionalAttendees），
+// 返回名字列表与一一对应的响应状态列表；集合读取失败降级为空列表
+// （个别字段异常不影响整条会议）。
+func readAttendees(item *ole.IDispatch, property string) (names, statuses []string) {
 	recipientsRaw, err := oleutil.GetProperty(item, property)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	recipients := recipientsRaw.ToIDispatch()
 	defer recipients.Release()
 
 	countRaw, err := oleutil.GetProperty(recipients, "Count")
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	count := int(countRaw.Val)
-	names := make([]string, 0, count)
+	names = make([]string, 0, count)
+	statuses = make([]string, 0, count)
 	for i := 1; i <= count; i++ {
 		recRaw, err := oleutil.GetProperty(recipients, "Item", i)
 		if err != nil {
@@ -347,12 +388,14 @@ func readAttendeeNames(item *ole.IDispatch, property string) []string {
 		}
 		rec := recRaw.ToIDispatch()
 		name := outlookString(rec, "Name")
+		status := outlookResponseStatus(rec)
 		rec.Release()
 		if trimmed := strings.TrimSpace(name); trimmed != "" {
 			names = append(names, trimmed)
+			statuses = append(statuses, status)
 		}
 	}
-	return names
+	return names, statuses
 }
 
 // emailBody 按 EntryID 读取邮件全文（不截断）。

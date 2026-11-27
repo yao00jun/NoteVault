@@ -189,3 +189,20 @@ func TestOutlookService_GetEmailBodyValidatesAndPropagates(t *testing.T) {
 		t.Fatalf("provider error must propagate: %v", err)
 	}
 }
+
+// TestOutlookResponseLabels ResponseStatus 数值 → 稳定标签的映射（含未知值兜底）。
+func TestOutlookResponseLabels(t *testing.T) {
+	cases := map[int64]string{
+		olResponseOrganized: "organized",
+		olResponseAccepted:  "accepted",
+		olResponseDeclined:  "declined",
+		olResponseTentative: "tentative",
+		olResponseNone:      "none",
+		99:                  "none", // 未知值兜底，绝不让前端拿到空串
+	}
+	for v, want := range cases {
+		if got := outlookResponseLabel(v); got != want {
+			t.Errorf("outlookResponseLabel(%d) = %q, want %q", v, got, want)
+		}
+	}
+}

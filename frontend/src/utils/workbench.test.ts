@@ -158,4 +158,19 @@ describe('weekly work report', () => {
     const noAttendees = buildMeetingMinutes({ subject: '站会', start: '2026-11-24 10:00', end: '2026-11-24 10:15', location: '', organizer: '', attendees: [], allDay: false })
     expect(noAttendees).not.toContain('attendees:')
   })
+
+  it('annotates attendee response statuses in the minutes body and keeps frontmatter a plain list', () => {
+    const minutes = buildMeetingMinutes({
+      subject: '评审会', start: '2026-11-28 14:00', end: '2026-11-28 15:00', location: '', organizer: '',
+      attendees: ['王五', '赵六', '钱七'], attendeeStatuses: ['accepted', 'tentative', 'declined'], allDay: false,
+    })
+    // 正文带状态标注；frontmatter 保持纯名单（机器可读，不带中文标注）
+    expect(minutes).toContain('- 参会人：王五（已接受）、赵六（暂定）、钱七（已拒绝）')
+    expect(minutes).toContain('attendees: [王五, 赵六, 钱七]')
+    // 无状态（旧投影/读取失败）→ 纯名字；未知状态原样透传
+    const plain = buildMeetingMinutes({ subject: '站会', start: '2026-11-28 10:00', end: '2026-11-28 10:15', location: '', organizer: '', attendees: ['甲'], attendeeStatuses: undefined, allDay: false })
+    expect(plain).toContain('- 参会人：甲')
+    const unknown = buildMeetingMinutes({ subject: '站会', start: '2026-11-28 10:00', end: '2026-11-28 10:15', location: '', organizer: '', attendees: ['乙', '丙'], attendeeStatuses: ['weird', 'accepted'], allDay: false })
+    expect(unknown).toContain('- 参会人：乙（weird）、丙（已接受）')
+  })
 })

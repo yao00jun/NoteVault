@@ -355,7 +355,7 @@ func TestSchema_SearchSummaryRoundTripsCurrentFormat(t *testing.T) {
 		relPath:   "note.md",
 		title:     "Note",
 		modTime:   time.Now(),
-		tokenFreq: map[string]int{"hello": 2},
+		tokenFreq: newTokenTable([]string{"hello", "hello"}),
 		docLen:    2,
 	}
 	if err := src.SaveSummary(ws); err != nil {
@@ -382,7 +382,7 @@ func TestSchema_SearchSummaryRoundTripsCurrentFormat(t *testing.T) {
 	if !ok {
 		t.Fatal("当前格式摘要应能加载回来")
 	}
-	if doc.tokenFreq["hello"] != 2 || doc.docLen != 2 {
+	if doc.tokenFreq.get("hello") != 2 || doc.docLen != 2 {
 		t.Errorf("摘要载荷不一致: %+v", doc)
 	}
 }

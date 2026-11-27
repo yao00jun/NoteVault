@@ -652,6 +652,13 @@ export interface OutlookMeeting {
      * 必填 + 可选参会人（名字列表）
      */
     "attendees"?: string[] | null;
+
+    /**
+     * AttendeeStatuses 与 attendees 一一对应的响应状态（Outlook ResponseStatus）：
+     * organized / accepted / tentative / declined / none；读取失败缺省 none。
+     * 只用于纪要正文的展示标注，frontmatter 的 attendees 保持纯名单。
+     */
+    "attendeeStatuses"?: string[] | null;
     "allDay": boolean;
 }
 
