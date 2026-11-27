@@ -1,8 +1,8 @@
 # NoteVault 开发进度与待办任务清单 (TODO)
 
-> **文档版本**：v3.7.0  
+> **文档版本**：v3.8.0  
 > **更新时间**：2026-11-28  
-> **当前状态**：核心功能已高度闭环（完成度约 94%~96%），生产构建零报错，94 个测试文件 / 1049 个用例全绿；**CI 五 job 全绿 + Release 流水线跨三平台完整验证**（v3.1.0 已发布 14 个产物：Win 3 / macOS 6 / Linux 5），`golangci-lint` 0 issues、eslint 0 errors；首屏 JS 入口 612KB → 305KB，并新增性能回归门禁。最新一批（大库能力）：建索引并行 3.9x、索引内存 −36%、扫描上限 5000 → 50000（2 万篇全量可搜）、参会人响应状态。  
+> **当前状态**：核心功能已高度闭环（完成度约 94%~96%），生产构建零报错，94 个测试文件 / 1049 个用例全绿；**CI 五 job 全绿 + Release 流水线跨三平台完整验证**（v3.1.0 已发布 14 个产物：Win 3 / macOS 6 / Linux 5），`golangci-lint` 0 issues、eslint 0 errors；首屏 JS 入口 612KB → 305KB，并新增性能回归门禁。最新两批：大库能力（建索引并行 3.9x、内存 −36%、上限 50000）、walk 免 stat（冷查询再降一档）。  
 > **定位边界**：单机、本地优先的程序员第二大脑与研发工作台。纯 Markdown 存储，无厂商锁定。
 
 ---
@@ -458,3 +458,28 @@
 | 前端 lint | `pnpm lint` | 0 errors（51 warnings 不阻断） |
 | 打包 | `wails3 task package` | exe 50.3M / mcp 37.1M / installer 17.0M |
 | 版本注入 | `wails3 task windows:build VERSION=v0.2.0` | exe 属性与 `core.AppVersion` 均为 0.2.0 |
+
+### 19. 【P1 · 性能工程】walk 免 stat——冷查询元数据改从目录枚举直取 —— ✅ 已完成（2026-11-28）
+
+- **背景**：第 18 项收口时记录的已知代价——无 watcher 时每次全链路 Search
+  walk 全库，2 万篇单次冷查询 P50 ~370ms，其中 stat 段是大头。TTL 缓存仍被
+  否决，但「免 stat」不缓存任何东西：元数据本就在枚举结果里。
+- **关键事实**：`filepath.WalkDir` 底层 `os.ReadDir` 在 Windows 上的目录
+  枚举（FindFirstFile / GetFileInformationByHandleEx）**已经带回** modTime
+  与 size，`fs.DirEntry.Info()` 直接从缓存返回、零系统调用；此前对每个文件
+  单独 `os.Stat`（60µs/次，大头是文件系统过滤驱动）是把递到手的数据丢掉
+  再花 60µs 买回来。Linux 上 Info() 退化为一次 lstat（与旧 os.Stat 同价），
+  并行 worker 结构原样保留。
+- **本轮落地**：
+  - [x] walk 回调同时收集 `fs.DirEntry`，元数据阶段改用 `entry.Info()`；
+  - [x] **symlink 语义保持**：Info() 对 symlink 是 lstat 口径，此类条目
+    回退 `os.Stat`（跟随链接），与旧实现逐行为一致（笔记库罕见，走慢路径无妨）；
+  - [x] 阶段 1 注释重写（不再宣称「贵的是 lstat」）。
+- **实测**（本机 12 核，BenchmarkSearch search 全链路 arm）：5000 篇
+  common 查询 126ms → **~40ms**；2 万篇压测冷查询 P50 370-475ms →
+  **~120ms**（walk+stat 段消失，readdir 本身成为地板）。
+- **方法论自省**：第 13 项做「并行 stat」优化时只把 60µs 摊薄到 1/5，
+  没有追问「这 60µs 是否必要」——枚举数据已在手上，问题本可以整个消掉。
+  优化的两个层次：摊薄常数 vs 消掉工作量，后者永远先问。
+- **测试**：分片等价锁与全量 Go 套件通过；`GOOS=linux go vet` 覆盖
+  _test.go（第 18 项流程修正执行到位）。
