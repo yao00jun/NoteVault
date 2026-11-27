@@ -37,8 +37,13 @@ func TestWatcherInvalidatesSearchIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	idx := indexes.Get(dir)
-	if len(idx.docs) != 1 {
-		t.Fatalf("expected 1 doc after warmup, got %d", len(idx.docs))
+	// idx.docs 的任何读取都必须持锁——watcher goroutine 会并发 InvalidatePath
+	// 删 map（CI race 步骤 2026-11 抓到的就是这里的无锁读）
+	idx.mu.RLock()
+	docs := len(idx.docs)
+	idx.mu.RUnlock()
+	if docs != 1 {
+		t.Fatalf("expected 1 doc after warmup, got %d", docs)
 	}
 	idx.MarkWatchActive()
 
@@ -47,16 +52,24 @@ func TestWatcherInvalidatesSearchIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 轮询等待 fsnotify 事件被消化（事件是异步投递的）
+	// 轮询等待 fsnotify 事件被消化（事件是异步投递的）；读取持读锁
 	deadline := time.Now().Add(5 * time.Second)
+	removed := false
 	for time.Now().Before(deadline) {
-		if len(idx.docs) == 0 {
+		idx.mu.RLock()
+		n := len(idx.docs)
+		idx.mu.RUnlock()
+		if n == 0 {
+			removed = true
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if len(idx.docs) != 0 {
-		t.Fatal("watcher delete event should remove doc from index")
+	if !removed {
+		idx.mu.RLock()
+		n := len(idx.docs)
+		idx.mu.RUnlock()
+		t.Fatalf("watcher delete event should remove doc from index, %d remain", n)
 	}
 
 	// 事件已被精确消化 → watchPending 未置位 → refresh 短路（不 walk）
