@@ -778,7 +778,7 @@ func (s *QnAService) HybridSearch(workspacePath, query, embBaseURL, embModel, em
 					matchCount += doc.tokenFreq.get(qt)
 				}
 			}
-			snippet = extractSnippet(content, queryTokens[0], 50)
+			snippet = extractSnippet(content, contentLower, queryTokens[0], 50)
 		} else {
 			for _, qt := range queryTokens {
 				matchCount += doc.tokenFreq.get(qt)

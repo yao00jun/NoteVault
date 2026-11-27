@@ -35,6 +35,12 @@ jobs:
         run: go vet ./...
       - name: Go test
         run: go test -count=1 ./...
+      # 并发安全网（2026-11）：并行建索引 / 并行 snippet 读盘 / 分片倒排的
+      # 数据竞争靠 race 检测兜底。开发机 Windows 无 gcc 跑不了 -race（源码审计
+      # 与分片等价锁是补位手段），CI 的 ubuntu runner 有 gcc，放在这里顺跑。
+      # 大库压测需要 NV_STRESS_TEST=1 显式开启，默认不进 race 轮（7 分钟）。
+      - name: Race detector
+        run: go test -race -count=1 ./internal/... ./cmd/...
       # 绑定漂移门禁（蓝图专项 7）：后端 Service 签名变更后未重新生成
       # bindings 就提交 → 这里直接阻断
       - name: Regenerate Wails bindings and detect drift

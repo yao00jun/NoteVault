@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 )
@@ -196,21 +197,62 @@ func (s *SearchService) Search(workspacePath string, query string) ([]*SearchRes
 	// GetSearchSnippet 取。这样把「给 Top-200 逐个读正文」的 p95 瓶颈从搜索
 	// 关键路径上挪走（P0 基线表点明的优化点）。matchCount 在两段下都用内存里的
 	// tokenFreq 之和估算（正文未读时本就只能如此）。
-	eagerCap := s.eagerSnippetCap()
+	eagerN := s.eagerSnippetCap()
+	if eagerN > len(scored) {
+		eagerN = len(scored)
+	}
+	// eager 段的正文读盘并行化（2026-11）：contentOnce 各自独立（per-doc 锁 +
+	// 原子记账），按区间分 worker、按槽位写回——顺序与串行逐位一致，错误槽位
+	// 在装配循环里跳过（口径与串行版 continue 一致）。冷路径 50 次串行 ReadFile
+	// ~30ms → 并行 ~5ms。
+	type eagerDoc struct {
+		content      string
+		contentLower string
+		err          error
+	}
+	eager := make([]eagerDoc, eagerN)
+	if eagerN > 0 {
+		workers := indexShardCount()
+		if workers > eagerN {
+			workers = eagerN
+		}
+		chunk := (eagerN + workers - 1) / workers
+		var wg sync.WaitGroup
+		for w := 0; w < workers; w++ {
+			lo := w * chunk
+			hi := lo + chunk
+			if hi > eagerN {
+				hi = eagerN
+			}
+			if lo >= hi {
+				break
+			}
+			wg.Add(1)
+			go func(lo, hi int) {
+				defer wg.Done()
+				for i := lo; i < hi; i++ {
+					content, contentLower, err := scored[i].doc.contentOnce(idx)
+					eager[i] = eagerDoc{content: content, contentLower: contentLower, err: err}
+				}
+			}(lo, hi)
+		}
+		wg.Wait()
+	}
+
 	results := make([]*SearchResult, 0, len(scored))
 	for i, sd := range scored {
 		var snippet string
 		var matchCount int
 
-		if i < eagerCap {
-			content, contentLower, err := sd.doc.contentOnce(idx)
-			if err != nil {
+		if i < eagerN {
+			ed := eager[i]
+			if ed.err != nil {
 				// 文档已被并发 refresh 重建/删除（errDocStale），或正文读取失败 → 跳过
 				continue
 			}
 			// 优先用整串出现次数（与用户直觉一致）；多词查询整串匹配不到时
 			// 回落到各 token 词频之和，避免显示「匹配 0 次」这种反直觉结果。
-			matchCount = strings.Count(contentLower, queryLower)
+			matchCount = strings.Count(ed.contentLower, queryLower)
 			if matchCount == 0 {
 				for _, qt := range queryTokens {
 					matchCount += sd.doc.tokenFreq.get(qt)
@@ -218,7 +260,7 @@ func (s *SearchService) Search(workspacePath string, query string) ([]*SearchRes
 			}
 			// 用首个查询 token 定位片段：多词查询时整串（含空格）在正文里
 			// 几乎不可能连续出现，按整串定位会退化成「返回开头 100 字」。
-			snippet = extractSnippet(content, queryTokens[0], 50)
+			snippet = extractSnippet(ed.content, ed.contentLower, queryTokens[0], 50)
 		} else {
 			for _, qt := range queryTokens {
 				matchCount += sd.doc.tokenFreq.get(qt)
@@ -265,7 +307,7 @@ func (s *SearchService) GetSearchSnippet(workspacePath, relPath, query string) (
 		return "", fmt.Errorf("文档不在索引中：%s", relPath)
 	}
 
-	content, _, err := doc.contentOnce(idx)
+	content, contentLower, err := doc.contentOnce(idx)
 	if err != nil {
 		return "", err
 	}
@@ -274,12 +316,13 @@ func (s *SearchService) GetSearchSnippet(workspacePath, relPath, query string) (
 	if len(queryTokens) == 0 {
 		return "", nil
 	}
-	return extractSnippet(content, queryTokens[0], 50), nil
+	return extractSnippet(content, contentLower, queryTokens[0], 50), nil
 }
 
-// extractSnippet 提取匹配位置周围的文本片段
-func extractSnippet(content string, query string, radius int) string {
-	contentLower := strings.ToLower(content)
+// extractSnippet 提取匹配位置周围的文本片段。
+// contentLower 由调用方传入（contentOnce 已缓存惰性生成的小写副本），
+// 避免每次调用重复对整篇正文做 ToLower。
+func extractSnippet(content, contentLower, query string, radius int) string {
 	queryLower := strings.ToLower(query)
 
 	idx := strings.Index(contentLower, queryLower)

@@ -150,3 +150,51 @@ func TestSearchIndex_RemovedDocIsStale(t *testing.T) {
 		t.Fatal("contentOf on a removed doc should fail (stale), got nil error")
 	}
 }
+
+// TestSearchIndex_LazyLowerAccounting contentLower 惰性生成（2026-11）的记账契约：
+// 建索引后只计正文一份；被查询命中（contentOnce）后该文档补计小写副本一份；
+// 重复命中不得重复计账；LRU 释放按实际持有量归还。
+func TestSearchIndex_LazyLowerAccounting(t *testing.T) {
+	contentA := "# A\n内容 alpha beta gamma\n"
+	contentB := "# B\n内容 delta\n"
+	root := t.TempDir()
+	workbenchWrite(t, root, "笔记A.md", contentA)
+	workbenchWrite(t, root, "笔记B.md", contentB)
+
+	idx := newSearchIndex()
+	if _, err := idx.refresh(root); err != nil {
+		t.Fatal(err)
+	}
+	if got := idx.contentBytes.Load(); got != int64(len(contentA)+len(contentB)) {
+		t.Fatalf("建索引后应只计正文一份：got %d want %d", got, len(contentA)+len(contentB))
+	}
+
+	idx.mu.RLock()
+	docA := idx.docs["笔记A.md"]
+	idx.mu.RUnlock()
+	if docA == nil {
+		t.Fatal("笔记A.md 不在索引中")
+	}
+	if _, _, err := docA.contentOnce(idx); err != nil {
+		t.Fatal(err)
+	}
+	want := int64(len(contentA)*2 + len(contentB))
+	if got := idx.contentBytes.Load(); got != want {
+		t.Fatalf("命中 A 后应补计小写副本一份：got %d want %d", got, want)
+	}
+	// 重复命中：小写副本已存在，不得重复计账
+	if _, _, err := docA.contentOnce(idx); err != nil {
+		t.Fatal(err)
+	}
+	if got := idx.contentBytes.Load(); got != want {
+		t.Fatalf("重复命中不得重复计账：got %d want %d", got, want)
+	}
+
+	// LRU 释放按实际持有量归还（正文 + 已生成的小写副本）
+	docA.contentMu.Lock()
+	docA.releaseContentLocked(idx)
+	docA.contentMu.Unlock()
+	if got := idx.contentBytes.Load(); got != int64(len(contentB)) {
+		t.Fatalf("释放 A 后应只剩 B 的正文：got %d want %d", got, len(contentB))
+	}
+}

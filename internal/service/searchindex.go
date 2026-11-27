@@ -163,21 +163,29 @@ func (d *cachedDoc) contentOnce(idx *searchIndex) (content, contentLower string,
 			return "", "", readErr
 		}
 		d.content = string(data)
-		d.contentLower = strings.ToLower(d.content)
 		d.contentLoaded = true
-		// 正文与小写副本各占一份，计入两倍
-		idx.accountContentBytes(int64(len(d.content)) * 2)
+		// 正文先计入一份；小写副本惰性生成，生成时补记账（见下）
+		idx.accountContentBytes(int64(len(d.content)))
+	}
+	if d.contentLower == "" && d.content != "" {
+		// 小写副本惰性计算（2026-11）：建索引与摘要恢复后常驻的只有原始正文，
+		// 小写副本等第一次真正被查询命中时才生成——常驻内存减半（README 候选表
+		// 落地，~11.5MB/5000 篇）。空正文的小写副本也是空串，无需生成；
+		// 生成条件用「非空」判定，空文档重复走到这里也只做零分配的 ToLower("")。
+		d.contentLower = strings.ToLower(d.content)
+		idx.accountContentBytes(int64(len(d.contentLower)))
 	}
 	d.lastUsed = time.Now().UnixNano()
 	return d.content, d.contentLower, nil
 }
 
 // releaseContentLocked 丢弃正文并归还预算；调用者须持有 d.contentMu。
+// 按实际持有量归还：小写副本可能尚未生成（惰性计算）。
 func (d *cachedDoc) releaseContentLocked(idx *searchIndex) {
 	if !d.contentLoaded {
 		return
 	}
-	idx.accountContentBytes(-int64(len(d.content)) * 2)
+	idx.accountContentBytes(-int64(len(d.content) + len(d.contentLower)))
 	d.content = ""
 	d.contentLower = ""
 	d.contentLoaded = false
@@ -264,7 +272,8 @@ type searchIndex struct {
 }
 
 // defaultContentBudgetBytes 单个工作区索引的正文缓存预算。
-// 正文与小写副本各存一份，故实际占用约为正文总量的 2 倍；这里按「2 倍后」的字节数计账。
+// 记账口径：正文一份，小写副本惰性生成、生成时补记一份（2026-11）——
+// 初始常驻 ≈ 正文总量，被命中过的文档最多 2 倍；预算按最坏 2 倍口径生效。
 // 超出后按 LRU 淘汰至预算的一半，避免大库场景下正文无限膨胀。
 const defaultContentBudgetBytes = 32 << 20 // 32 MiB
 
@@ -690,9 +699,10 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 						absPath: sc.absPath,
 						modTime: sc.modTime,
 						title:   title,
-						// 正文已在手上（刚读过），先留着；是否保留由 enforceContentBudget 决定
+						// 正文已在手上（刚读过），先留着；是否保留由 enforceContentBudget 决定。
+						// 小写副本不再在这里生成（惰性，见 contentOnce）——建索引少 2 万次
+						// ToLower，常驻少一份正文。
 						content:       contentStr,
-						contentLower:  strings.ToLower(contentStr),
 						contentLoaded: true,
 						tokenFreq:     newTokenTable(tokens),
 						titleFreq:     freqOf(tokenizeIndex(title)),
@@ -724,8 +734,9 @@ func (idx *searchIndex) refresh(workspacePath string) (scanComplete bool, err er
 		idx.addPostingsLocked(b.rel, b.doc.tokenFreq)
 		idx.docs[b.rel] = b.doc
 		idx.totalDocLen += int64(b.doc.docLen)
-		// 文档尚未发布到 idx.docs 之外，此处记账无需 contentMu
-		idx.accountContentBytes(int64(len(b.doc.content)) * 2)
+		// 文档尚未发布到 idx.docs 之外，此处记账无需 contentMu。
+		// 只计正文一份——小写副本惰性生成，生成时在 contentOnce 里补记账。
+		idx.accountContentBytes(int64(len(b.doc.content)))
 		idx.dirty = true
 	}
 	for _, rel := range toRelink {
