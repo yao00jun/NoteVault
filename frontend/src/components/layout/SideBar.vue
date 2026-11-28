@@ -333,17 +333,27 @@ const navGroups = computed<NavGroup[]>(() => [
   },
 ])
 
+// 知识/工具组的专属路由：这些页面上工作流项的 section 高亮让位。
+// section 推导的默认值是 'vault'（/discover 等未映射路由全落进去）、
+// /review 映射为 'today'——不排除会与知识/工具组项双高亮。
+const exclusiveNavPaths = [
+  '/discover', '/insights', '/review', '/canvas',
+  '/plugins', '/trash', '/settings', '/archive', '/import',
+]
+
 function isActive(item: NavItem) {
-  // 工作流三区沿用 section 口径（路由有重定向与页签嵌套）；
-  // 回顾与报告共享 /review 路径，按页签区分高亮
   const current = router.currentRoute.value
   switch (item.id) {
     case 'today':
     case 'projects':
     case 'learning':
-      return context.value.section === item.id
+      // 工作流三区沿用 section 口径（编辑 Projects//Learning//Daily/ 文档时
+      // 对应区高亮是保留的上下文提示），但在知识/工具组的专属页面上让位
+      return !exclusiveNavPaths.includes(current.path) && context.value.section === item.id
     case 'vault':
-      return context.value.section === 'vault'
+      // 文档项按真实目的地判定：左树右文入口与 /vault 仪表盘。
+      // 不能用 section（默认值 'vault' 会让它在发现/洞察/工具页常亮）
+      return current.path === '/editor' || current.path === '/vault'
     case 'review':
       return current.path === '/review' && String(current.query.tab ?? '') !== 'reports'
     case 'reports':

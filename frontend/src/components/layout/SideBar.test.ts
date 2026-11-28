@@ -126,6 +126,32 @@ describe('SideBar', () => {
     expect(wrapper.findAll('.sidebar-scroll .sidebar-zone')).toHaveLength(1)
   })
 
+  it('keeps exactly one nav item highlighted on knowledge and tool pages', async () => {
+    const { wrapper, router } = mountSideBar()
+    await flushPromises()
+    const active = () => wrapper.findAll('.nav-item.active').map(item => item.attributes('data-testid'))
+
+    // 点「发现」：只有发现亮（回归——section 默认值 'vault' 曾让文档双高亮）
+    await router.push('/discover')
+    await flushPromises()
+    expect(active()).toEqual(['nav-discover'])
+
+    // 点「回顾」：只有回顾亮（/review 的 section 是 'today'，曾让今天双高亮）
+    await router.push('/review')
+    await flushPromises()
+    expect(active()).toEqual(['nav-review'])
+
+    // 编辑器浏览模式：只有文档亮
+    await router.push('/editor')
+    await flushPromises()
+    expect(active()).toEqual(['nav-vault'])
+
+    // 工具组同理
+    await router.push('/plugins')
+    await flushPromises()
+    expect(active()).toEqual(['nav-plugins'])
+  })
+
   it('navigates knowledge and tool groups directly without a folded subtree', async () => {
     const { wrapper, router } = mountSideBar()
     await flushPromises()
